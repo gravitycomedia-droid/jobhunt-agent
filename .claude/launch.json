@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flutter-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd app && flutter run -d chrome --web-port 5173"],
+      "port": 5173
+    }
+  ]
+}

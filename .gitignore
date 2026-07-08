@@ -1,0 +1,26 @@
+# --- secrets ---
+.env
+server/.env
+server/firebase-service-account.json
+
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# --- Flutter/Dart ---
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/ios/Flutter/Flutter.podspec
+app/android/.gradle/
+*.iml
+
+# --- OS ---
+.DS_Store
+
+# --- Claude Code session state (not project config) ---
+.claude/scheduled_tasks.lock
