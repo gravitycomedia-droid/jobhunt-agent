@@ -34,7 +34,7 @@ jobhunt-agent/
 - **Mobile:** Flutter (Dart), Riverpod for state (introduce only from Brick 5+), `http` package for API calls
 - **Backend:** FastAPI + Pydantic v2, Python 3.11+
 - **DB:** Supabase Postgres with pgvector extension. Access via `supabase-py` from the server ONLY.
-- **LLM:** Google Gemini — `gemini-2.0-flash` for all generation, `text-embedding-004` for embeddings
+- **LLM:** Google Gemini — `gemini-2.5-flash` for all generation, `text-embedding-004` for embeddings
 - **Jobs data:** Adzuna API (primary) + JSearch via RapidAPI (secondary). NO scraping — legal APIs only.
 - **Push:** Firebase Cloud Messaging
 - **Hosting:** Render (web service + cron job)
@@ -49,7 +49,7 @@ jobhunt-agent/
 
 ## Current status
 - [x] Brick 1: Foundations (Flutter↔FastAPI loop)
-- [ ] Brick 2: Resume parser (vision LLM → structured profile)
+- [x] Brick 2: Resume parser (vision LLM → structured profile)
 - [ ] Brick 3: Job ingestion (Adzuna + JSearch + dedup + Supabase)
 - [ ] Brick 4: Embeddings + pgvector search
 - [ ] Brick 5: LLM re-ranker (two-stage RAG complete)

@@ -3,8 +3,10 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../models/health_status.dart';
+import '../models/resume_profile.dart';
 
 /// Golden Rule 1 (see CLAUDE.md): the phone never talks to Gemini/Supabase/etc
 /// directly — it only ever talks to OUR FastAPI server. This class is the one
@@ -46,5 +48,56 @@ class ApiClient {
     }
 
     return HealthStatus.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Uploads a resume PDF for parsing. `MultipartRequest` is Dart's way of
+  /// building a multipart/form-data POST — the same wire format a browser
+  /// uses for a file-upload `<form>`, just constructed in code instead of
+  /// dragged onto a FlutterFlow upload widget.
+  Future<ResumeProfile> parseResume(List<int> pdfBytes, String filename) async {
+    final uri = Uri.parse('$_baseUrl/resume/parse');
+    final request = http.MultipartRequest('POST', uri)
+      ..files.add(http.MultipartFile.fromBytes(
+        'file',
+        pdfBytes,
+        filename: filename,
+        contentType: MediaType('application', 'pdf'),
+      ));
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ResumeProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// PATCHes the (possibly hand-edited) profile back to the server.
+  Future<ResumeProfile> updateProfile(ResumeProfile profile) async {
+    final uri = Uri.parse('$_baseUrl/resume/profile/${profile.id}');
+    final response = await http.patch(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(profile.toJson()),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ResumeProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  String _extractErrorDetail(String responseBody, int statusCode) {
+    try {
+      final decoded = jsonDecode(responseBody) as Map<String, dynamic>;
+      return decoded['detail']?.toString() ?? 'Server returned $statusCode';
+    } catch (_) {
+      return 'Server returned $statusCode';
+    }
   }
 }

@@ -5,7 +5,7 @@
 ---
 
 ## 1. Resume Parser (task: `parse`, Brick 2)
-Model: gemini-2.0-flash (vision) · Temperature: 0.1
+Model: gemini-2.5-flash (vision) · Temperature: 0.1
 
 **SYSTEM**
 ```
@@ -31,7 +31,7 @@ Fix the issue and return ONLY the corrected JSON.
 ---
 
 ## 2. Match Re-Ranker (task: `rerank`, Brick 5)
-Model: gemini-2.0-flash · Temperature: 0.2
+Model: gemini-2.5-flash · Temperature: 0.2
 
 **SYSTEM**
 ```
@@ -61,7 +61,7 @@ JOB POSTING:
 ---
 
 ## 3. Resume Tailor (task: `tailor`, Brick 6)
-Model: gemini-2.0-flash · Temperature: 0.6
+Model: gemini-2.5-flash · Temperature: 0.6
 
 **SYSTEM**
 ```
@@ -97,7 +97,7 @@ TARGET JOB POSTING:
 ---
 
 ## 4. Follow-up Draft (task: `followup`, Brick 8)
-Model: gemini-2.0-flash · Temperature: 0.7
+Model: gemini-2.5-flash · Temperature: 0.7
 
 **SYSTEM**
 ```

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/health_status.dart';
 import '../services/api_client.dart';
+import 'resume_upload_screen.dart';
 
 /// FlutterFlow analogy: this is one Page. Everything Flutter renders is a
 /// Widget, and widgets nest inside widgets — the "widget tree". Scaffold is
@@ -63,6 +64,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Job-Hunt Agent')),
       body: Center(child: _buildBody()),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ResumeUploadScreen()),
+        ),
+        icon: const Icon(Icons.upload_file),
+        label: const Text('Upload Resume'),
+      ),
     );
   }
 

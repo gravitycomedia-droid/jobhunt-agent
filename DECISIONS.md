@@ -56,7 +56,20 @@
 
 ---
 
-## ADR-005: (template — copy for your next decision)
+## ADR-005: Switched from gemini-2.0-flash to gemini-2.5-flash
+**Date:** 2026-07-08 · **Status:** accepted
+
+**Context:** Brick 2's first real `/resume/parse` call against a live Gemini API key failed with `429 RESOURCE_EXHAUSTED`, `limit: 0`. Checking the project's Gemini API Rate Limit dashboard confirmed `Gemini 2 Flash` shows 0/0 RPM, TPM, and RPD on the free tier — not a temporary quota exhaustion, but zero free-tier allocation for that model on this project. `Gemini 2.5 Flash` and `Gemini 2.5 Flash Lite` both show real free-tier allowances (5–10 RPM, 250K TPM, 20 RPD).
+
+**Decision:** Standardize on `gemini-2.5-flash` for all generation tasks (parse, rerank, tailor, followup) and keep `text-embedding-004` for embeddings. Updated in `CLAUDE.md`, `.env.example`, `server/.env`, and `docs/PROMPTS.md`.
+
+**Alternatives considered:** `gemini-2.5-flash-lite` — slightly higher RPM (10 vs 5) and same RPD (20/day), but lower quality for vision-based resume extraction where accuracy matters most. Since this is a single-user app making a handful of calls per day, the RPM difference is irrelevant and quality wins.
+
+**Consequences:** No code changes needed beyond the model string — `services/llm.py` reads the model from `Settings.gemini_model`, not a hardcoded literal, so this was a one-line config change everywhere it's pinned. Worth re-checking the rate-limit dashboard if Google deprecates another model tier during the project.
+
+---
+
+## ADR-006: (template — copy for your next decision)
 **Date:** · **Status:** proposed
 **Context:**
 **Decision:**
