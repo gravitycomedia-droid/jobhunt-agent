@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/health_status.dart';
 import '../services/api_client.dart';
+import 'jobs_list_screen.dart';
 import 'resume_upload_screen.dart';
 
 /// FlutterFlow analogy: this is one Page. Everything Flutter renders is a
@@ -62,7 +63,18 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Job-Hunt Agent')),
+      appBar: AppBar(
+        title: const Text('Job-Hunt Agent'),
+        actions: [
+          IconButton(
+            tooltip: 'View Jobs',
+            icon: const Icon(Icons.work_outline),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const JobsListScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Center(child: _buildBody()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).push(

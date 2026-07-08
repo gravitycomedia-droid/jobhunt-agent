@@ -50,7 +50,7 @@ jobhunt-agent/
 ## Current status
 - [x] Brick 1: Foundations (Flutter↔FastAPI loop)
 - [x] Brick 2: Resume parser (vision LLM → structured profile)
-- [ ] Brick 3: Job ingestion (Adzuna + JSearch + dedup + Supabase)
+- [x] Brick 3: Job ingestion (Adzuna + JSearch + dedup + Supabase)
 - [ ] Brick 4: Embeddings + pgvector search
 - [ ] Brick 5: LLM re-ranker (two-stage RAG complete)
 - [ ] Brick 6: Resume tailoring + guardrail + diff view

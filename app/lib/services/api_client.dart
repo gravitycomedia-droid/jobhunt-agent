@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
 import '../models/health_status.dart';
+import '../models/job.dart';
 import '../models/resume_profile.dart';
 
 /// Golden Rule 1 (see CLAUDE.md): the phone never talks to Gemini/Supabase/etc
@@ -90,6 +91,31 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return ResumeProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Triggers a fetch+dedup+insert cycle on the server. This hits Adzuna and
+  /// JSearch for every (role, location) combo in TARGET_ROLES/TARGET_LOCATIONS,
+  /// so it can take up to a minute — a longer `.timeout()` than the other
+  /// calls reflects that, rather than a bug.
+  Future<void> refreshJobs() async {
+    final uri = Uri.parse('$_baseUrl/jobs/refresh');
+    final response = await http.post(uri).timeout(const Duration(seconds: 90));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+  }
+
+  Future<List<Job>> fetchJobs({int limit = 20, int offset = 0}) async {
+    final uri = Uri.parse('$_baseUrl/jobs?limit=$limit&offset=$offset');
+    final response = await http.get(uri);
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as List).map((j) => Job.fromJson(j as Map<String, dynamic>)).toList();
   }
 
   String _extractErrorDetail(String responseBody, int statusCode) {
