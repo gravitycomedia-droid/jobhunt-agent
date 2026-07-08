@@ -7,3 +7,6 @@ pdf2image
 pypdf
 Pillow
 supabase
+httpx
+python-slugify
+rapidfuzz
