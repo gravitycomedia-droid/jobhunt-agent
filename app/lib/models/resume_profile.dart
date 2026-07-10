@@ -90,6 +90,19 @@ class ResumeProfile {
   List<ProjectItem> projects;
   List<EducationItem> education;
 
+  /// Onboarding (frontend rebuild Phase 1) — set via PATCH
+  /// /resume/profile/target-roles, not editable through this class's own
+  /// [toJson] (that endpoint is intentionally separate; see
+  /// server/routers/resume.py).
+  List<String> targetRoles;
+  double? minSalary;
+
+  /// Phase 4 Settings screen — set via PATCH
+  /// /resume/profile/notification-prefs, same "separate endpoint, not part
+  /// of [toJson]" precedent as [targetRoles]/[minSalary] above.
+  bool notifyAlerts;
+  bool notifyFollowupNudge;
+
   ResumeProfile({
     required this.id,
     required this.name,
@@ -98,6 +111,10 @@ class ResumeProfile {
     required this.experience,
     required this.projects,
     required this.education,
+    this.targetRoles = const [],
+    this.minSalary,
+    this.notifyAlerts = true,
+    this.notifyFollowupNudge = true,
   });
 
   factory ResumeProfile.fromJson(Map<String, dynamic> json) {
@@ -115,6 +132,10 @@ class ResumeProfile {
       education: (json['education'] as List)
           .map((ed) => EducationItem.fromJson(ed as Map<String, dynamic>))
           .toList(),
+      targetRoles: (json['target_roles'] as List? ?? []).map((r) => r as String).toList(),
+      minSalary: (json['min_salary'] as num?)?.toDouble(),
+      notifyAlerts: (json['notification_prefs'] as Map<String, dynamic>?)?['alerts'] as bool? ?? true,
+      notifyFollowupNudge: (json['notification_prefs'] as Map<String, dynamic>?)?['followup_nudge'] as bool? ?? true,
     );
   }
 
