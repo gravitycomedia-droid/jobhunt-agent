@@ -1,0 +1,147 @@
+<!-- @dsCard group="Components" viewport="700x620" name="Matches & Data — MatchCard · ScoreRing · SimilarityBar · DiffRow" subtitle="Score, verdict, chips, tailoring diff, pipeline" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:24px;background:var(--color-bg);font-family:var(--font-sans);color:var(--text-primary)}
+  .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin:0 0 10px}
+  .cols{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+  section{margin-bottom:26px}
+  svg{display:block}
+  .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:16px;width:360px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+  .chead{display:flex;gap:12px;align-items:flex-start}
+  .logo{flex:none;width:42px;height:42px;border-radius:var(--radius-md);background:var(--brand-soft);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--brand-700);font-weight:700;font-size:18px}
+  .ctitle{font-size:16px;line-height:22px;font-weight:600}
+  .cco{font-size:14px;color:var(--text-secondary);font-weight:500}
+  .ring{position:relative;width:52px;height:52px;flex:none}
+  .ring .n{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:16px;color:var(--success-text)}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:13px;color:var(--text-secondary);font-weight:500}
+  .divide{border-top:1px solid var(--color-border);padding-top:12px;display:flex;flex-direction:column;gap:10px}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;border:1px solid}
+  .succ{background:var(--success-soft);color:var(--success-text);border-color:var(--success-border)}
+  .warnc{background:var(--warning-soft);color:var(--warning-text);border-color:var(--warning-border)}
+  .chiprow{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{padding:2px 9px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;border:1px solid}
+  .btn{width:100%;padding:10px 14px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-weight:700;font-size:14px;text-align:center;border:none}
+  /* similarity */
+  .simhead{display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:6px}
+  .simhead .v{font-family:var(--font-mono);color:var(--text-primary)}
+  .track{height:8px;border-radius:var(--radius-pill);background:var(--neutral-200);overflow:hidden}
+  .track>i{display:block;height:100%;border-radius:var(--radius-pill)}
+  /* diff */
+  .diff{border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface);width:360px;box-sizing:border-box}
+  .drow{display:flex;gap:8px;padding:10px 12px;font-size:14px;line-height:20px}
+  .dorig{background:var(--neutral-50);border-bottom:1px solid var(--color-border);color:var(--text-tertiary)}
+  .dorig s{text-decoration-color:var(--neutral-300)}
+  .mk{font-family:var(--font-mono);font-weight:700}
+  .hl{background:var(--guardrail-fail-highlight);color:var(--critical-text);border-radius:3px;padding:1px 3px;font-weight:500}
+  /* kanban */
+  .kcol{width:220px;background:var(--color-surface-sunken);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 8px 10px;box-sizing:border-box}
+  .khead{display:flex;align-items:center;gap:8px;padding:0 4px 8px}
+  .kn{margin-left:auto;font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-tertiary)}
+  .kcard{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--elev-1);padding:10px 12px;margin:0 0 8px}
+  .kcard .t{font-size:14px;font-weight:600}
+  .kcard .c{font-size:12px;color:var(--text-secondary)}
+  .info{background:var(--info-soft);color:var(--info-text);border-color:var(--info-border)}
+  .dot{width:6px;height:6px;border-radius:50%}
+  /* activity */
+  .act{display:flex;gap:12px;width:360px}
+  .amed{width:30px;height:30px;border-radius:var(--radius-pill);display:flex;align-items:center;justify-content:center;flex:none}
+  .arail{display:flex;flex-direction:column;align-items:center}
+  .arail .line{flex:1;width:2px;background:var(--color-border);margin-top:4px}
+  .atitle{font-size:14px;font-weight:600}
+  .adet{font-size:13px;color:var(--text-secondary);margin-top:2px}
+  .ats{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)}
+</style>
+</head>
+<body>
+  <div class="cols">
+    <!-- MatchCard -->
+    <section>
+      <p class="lbl">MatchCard (expanded)</p>
+      <div class="card">
+        <div class="chead">
+          <div class="logo">N</div>
+          <div style="flex:1 1 auto;min-width:0"><div class="ctitle">Senior Product Designer</div><div class="cco">Northwind Labs</div></div>
+          <div class="ring">
+            <svg width="52" height="52" style="transform:rotate(-90deg)"><circle cx="26" cy="26" r="23.5" fill="none" stroke="var(--neutral-200)" stroke-width="5"/><circle cx="26" cy="26" r="23.5" fill="none" stroke="var(--success-fill)" stroke-width="5" stroke-linecap="round" stroke-dasharray="147.6" stroke-dashoffset="11.8"/></svg>
+            <span class="n">92<span style="font-size:9px;margin-top:2px;margin-left:1px;opacity:.75">%</span></span>
+          </div>
+        </div>
+        <div class="meta"><span>San Francisco · Remote</span><span style="font-family:var(--font-mono);color:var(--text-primary)">$145K–$180K</span></div>
+        <div class="divide">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="pill succ"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>Apply</span>
+            <span style="margin-left:auto;font-size:13px;font-weight:600;color:var(--text-secondary)">Less ▴</span>
+          </div>
+          <div class="chiprow">
+            <span class="chip succ">Design systems</span>
+            <span class="chip succ">Fintech</span>
+            <span class="chip succ">0→1 product</span>
+            <span class="chip warnc">No Figma variables</span>
+          </div>
+          <div class="btn">Tailor resume</div>
+        </div>
+      </div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:26px">
+      <!-- ScoreRing sizes -->
+      <section style="margin:0">
+        <p class="lbl">ScoreRing — verdict thresholds</p>
+        <div style="display:flex;gap:20px;align-items:center">
+          <div class="ring" style="width:56px;height:56px"><svg width="56" height="56" style="transform:rotate(-90deg)"><circle cx="28" cy="28" r="25.5" fill="none" stroke="var(--neutral-200)" stroke-width="5"/><circle cx="28" cy="28" r="25.5" fill="none" stroke="var(--success-fill)" stroke-width="5" stroke-linecap="round" stroke-dasharray="160.2" stroke-dashoffset="14.4"/></svg><span class="n" style="color:var(--success-text)">91<span style="font-size:9px;opacity:.75">%</span></span></div>
+          <div class="ring" style="width:56px;height:56px"><svg width="56" height="56" style="transform:rotate(-90deg)"><circle cx="28" cy="28" r="25.5" fill="none" stroke="var(--neutral-200)" stroke-width="5"/><circle cx="28" cy="28" r="25.5" fill="none" stroke="var(--warning-fill)" stroke-width="5" stroke-linecap="round" stroke-dasharray="160.2" stroke-dashoffset="72.1"/></svg><span class="n" style="color:var(--warning-text)">55<span style="font-size:9px;opacity:.75">%</span></span></div>
+          <div class="ring" style="width:56px;height:56px"><svg width="56" height="56" style="transform:rotate(-90deg)"><circle cx="28" cy="28" r="25.5" fill="none" stroke="var(--neutral-200)" stroke-width="5"/><circle cx="28" cy="28" r="25.5" fill="none" stroke="var(--critical-fill)" stroke-width="5" stroke-linecap="round" stroke-dasharray="160.2" stroke-dashoffset="120.2"/></svg><span class="n" style="color:var(--critical-text)">25<span style="font-size:9px;opacity:.75">%</span></span></div>
+        </div>
+      </section>
+      <!-- SimilarityBar -->
+      <section style="margin:0;width:280px">
+        <p class="lbl">SimilarityBar</p>
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div><div class="simhead"><span>Resume ↔ job similarity</span><span class="v">88%</span></div><div class="track"><i style="width:88%;background:var(--success-fill)"></i></div></div>
+          <div><div class="simhead"><span>Keyword coverage</span><span class="v">61%</span></div><div class="track"><i style="width:61%;background:var(--warning-fill)"></i></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="cols">
+    <!-- DiffRow -->
+    <section>
+      <p class="lbl">DiffRow — tailoring change + guardrail fail</p>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="diff">
+          <div class="drow dorig"><span class="mk" style="color:var(--neutral-400)">–</span><s>Worked on the design system.</s></div>
+          <div class="drow"><span class="mk" style="color:var(--success-fill)">+</span><span style="font-weight:500">Led the design-system rollout across 6 squads, cutting UI build time 40%.</span></div>
+        </div>
+        <div class="diff">
+          <div class="drow dorig"><span class="mk" style="color:var(--neutral-400)">–</span><s>Mentored two designers.</s></div>
+          <div class="drow" style="background:var(--critical-soft)"><span class="mk" style="color:var(--critical-fill)">+</span><span><span class="hl">Managed a team of 12 designers across 3 continents.</span> <span style="font-size:11px;font-weight:600;color:var(--critical-text)">⚠ Guardrail fail</span></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Kanban + Activity -->
+    <div style="display:flex;flex-direction:column;gap:26px">
+      <section style="margin:0">
+        <p class="lbl">KanbanColumn</p>
+        <div class="kcol">
+          <div class="khead"><span class="pill info" style="padding:2px 8px"><span class="dot" style="background:var(--stage-interview)"></span>Interview</span><span class="kn">3</span></div>
+          <div class="kcard"><div class="t">Staff Designer</div><div class="c">Acme · onsite Fri</div></div>
+          <div class="kcard"><div class="t">Design Lead</div><div class="c">Globex · round 2</div></div>
+        </div>
+      </section>
+      <section style="margin:0">
+        <p class="lbl">ActivityLogItem</p>
+        <div class="act">
+          <div class="arail"><span class="amed" style="background:var(--brand-soft);color:var(--brand-700)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"/><path d="M12 4v4"/><path d="M9 13v1.5M15 13v1.5"/></svg></span><span class="line"></span></div>
+          <div style="padding-bottom:16px"><div style="display:flex"><span class="atitle">Tailored resume for 4 matches</span><span class="ats">2h ago</span></div><div class="adet">1,240 tokens · $0.038 · 4 guardrail checks passed</div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 
 /// Onboarding step 5 (frontend rebuild Phase 1, prototype `ui.isMatching`):
@@ -30,8 +31,15 @@ class _MatchingLoadingScreenState extends State<MatchingLoadingScreen> {
   @override
   void initState() {
     super.initState();
-    unawaited(_apiClient.refreshJobs());
-    unawaited(_apiClient.rerankShortlist(limit: 20));
+    // ADR-010: refresh first, then start the rerank as a tracked background
+    // task — TaskCenter keeps polling after this screen hands off, so
+    // MatchesBody refreshes itself when scoring completes.
+    unawaited(
+      _apiClient
+          .refreshJobs()
+          .catchError((_) {}) // rerank still works against the existing pool
+          .then((_) => TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20))),
+    );
     Future.delayed(const Duration(milliseconds: 1600), () {
       if (mounted) widget.onDone();
     });

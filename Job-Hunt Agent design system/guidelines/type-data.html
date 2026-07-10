@@ -1,0 +1,35 @@
+<!-- @dsCard group="Type" viewport="700x180" name="Mono-data & Label" subtitle="JetBrains Mono for scores/salary/cost · uppercase labels for chips" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:22px 24px;background:var(--color-surface);font-family:var(--font-sans);color:var(--text-primary)}
+  .wrap{display:flex;gap:40px;flex-wrap:wrap}
+  .block{display:flex;flex-direction:column;gap:10px}
+  .meta{font-family:var(--font-mono);font-size:10px;color:var(--text-tertiary)}
+  .mono{font-family:var(--font-mono);font-size:var(--mono-size);line-height:var(--mono-line);font-weight:var(--mono-weight);letter-spacing:var(--mono-tracking)}
+  .datarow{display:flex;gap:18px;align-items:center}
+  .big{font-family:var(--font-mono);font-size:26px;font-weight:700;color:var(--brand-600)}
+  .label{font-size:var(--label-size);line-height:var(--label-line);font-weight:var(--label-weight);letter-spacing:var(--label-tracking);text-transform:uppercase;color:var(--text-tertiary)}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="block">
+      <span class="meta">mono-data · JetBrains Mono</span>
+      <div class="datarow">
+        <span class="big">92%</span>
+        <div class="mono">$145K–$180K<br>1,240 tokens · $0.038</div>
+      </div>
+    </div>
+    <div class="block">
+      <span class="meta">label / overline · 11/600 · +0.04em</span>
+      <span class="label">Strengths</span>
+      <span class="label">Source · LinkedIn</span>
+      <span class="label">Guardrail</span>
+    </div>
+  </div>
+</body>
+</html>

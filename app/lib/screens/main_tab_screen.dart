@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_shell.dart';
@@ -37,7 +38,37 @@ class _MainTabScreenState extends State<MainTabScreen> {
   final ApiClient _apiClient = ApiClient();
 
   String _active = 'home';
-  bool _isRunningPipeline = false;
+
+  // ADR-010: the pipeline runs server-side as a background task; the
+  // TaskCenter poller survives tab switches, so this screen only listens
+  // for progress (spinner on the trailing icon) and completion (snackbar).
+  ValueNotifier<TrackedTask?> get _pipelineTask => TaskCenter.instance.notifierFor(TaskKind.pipeline);
+  bool get _isRunningPipeline => _pipelineTask.value?.isActive ?? false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pipelineTask.addListener(_onPipelineChanged);
+  }
+
+  @override
+  void dispose() {
+    _pipelineTask.removeListener(_onPipelineChanged);
+    super.dispose();
+  }
+
+  void _onPipelineChanged() {
+    if (!mounted) return;
+    final task = _pipelineTask.value;
+    setState(() {}); // refresh the trailing icon spinner
+    if (task?.status == TrackedTaskStatus.done) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Agent run complete — check Matches and Track for updates.')),
+      );
+    } else if (task?.status == TrackedTaskStatus.failed) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Agent run failed: ${task?.error}')));
+    }
+  }
 
   /// Manual trigger for the agent loop, scoped to this user only (Brick 9:
   /// POST /pipeline/run-mine) — same per-user work the Render cron's
@@ -45,19 +76,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
   /// cron is deployed yet. Lives on the Home tab's trailing slot since
   /// it's a global action, not scoped to any one tab's data.
   Future<void> _runPipeline() async {
-    setState(() => _isRunningPipeline = true);
-    try {
-      await _apiClient.runPipeline();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Agent run complete — check Matches and Track for updates.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Agent run failed: $e')));
-    } finally {
-      if (mounted) setState(() => _isRunningPipeline = false);
-    }
+    await TaskCenter.instance.start(TaskKind.pipeline, () => _apiClient.runPipeline());
   }
 
   @override

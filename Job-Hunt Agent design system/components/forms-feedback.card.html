@@ -1,0 +1,104 @@
+<!-- @dsCard group="Components" viewport="700x500" name="Forms & Feedback — Banner · FormField · ChipInput · EmptyState · LoadingSkeleton" subtitle="Inputs, messages, zero & loading states" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:24px;background:var(--color-bg);font-family:var(--font-sans);color:var(--text-primary)}
+  @keyframes jha-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin:0 0 10px}
+  .cols{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+  section{margin-bottom:24px}
+  svg{display:block}
+  /* banner */
+  .banner{display:flex;gap:10px;padding:12px 14px;border-radius:var(--radius-md);width:360px;box-sizing:border-box}
+  .warnb{background:var(--warning-soft);border:1px solid var(--warning-border);color:var(--warning-text)}
+  .infob{background:var(--info-soft);border:1px solid var(--info-border);color:var(--info-text)}
+  .banner .bt{font-size:14px;line-height:20px;font-weight:700}
+  .banner .bm{font-size:13px;line-height:18px;opacity:.9;margin-top:2px}
+  .banner .ba{margin-top:8px;font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+  /* form field */
+  .ff{display:flex;flex-direction:column;gap:6px;width:280px}
+  .ff label{font-size:13px;font-weight:600;color:var(--text-secondary)}
+  .ff input{box-sizing:border-box;width:100%;padding:11px 12px;border-radius:var(--radius-sm);font-family:var(--font-sans);font-size:15px;color:var(--text-primary);background:var(--color-surface);outline:none}
+  .ff .rest{border:1.5px solid var(--color-border-strong)}
+  .ff .foc{border:1.5px solid var(--brand-500);box-shadow:var(--focus-shadow)}
+  .ff .err{border:1.5px solid var(--critical-fill)}
+  .ff .hint{font-size:13px;color:var(--text-tertiary)}
+  .ff .emsg{font-size:13px;color:var(--critical-text);font-weight:500}
+  /* chip input */
+  .ci{box-sizing:border-box;width:280px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;min-height:44px;border-radius:var(--radius-sm);border:1.5px solid var(--brand-500);box-shadow:var(--focus-shadow);background:var(--color-surface)}
+  .tag{display:inline-flex;align-items:center;gap:5px;padding:3px 6px 3px 10px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-700);border:1px solid var(--brand-soft-border);font-size:13px;font-weight:600}
+  .ci input{flex:1;min-width:80px;border:none;outline:none;background:transparent;font-family:var(--font-sans);font-size:15px}
+  /* empty state */
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:32px 24px;width:300px;box-sizing:border-box}
+  .med{width:60px;height:60px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-600);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+  .empty .t{font-size:18px;line-height:24px;font-weight:700}
+  .empty .m{font-size:14px;line-height:20px;color:var(--text-secondary);margin-top:6px;max-width:260px}
+  .empty .b{margin-top:20px;padding:10px 18px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-weight:700;font-size:14px}
+  /* skeleton */
+  .sk{background:linear-gradient(100deg,var(--neutral-100) 30%,var(--neutral-200) 50%,var(--neutral-100) 70%);background-size:200% 100%;animation:jha-shimmer 1.3s ease-in-out infinite}
+  .skcard{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:16px;width:300px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}
+</style>
+</head>
+<body>
+  <div class="cols">
+    <section>
+      <p class="lbl">Banner — warning &amp; info</p>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="banner warnb">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-top:1px"><path d="M12 3 22 20H2L12 3z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>
+          <div><div class="bt">3 applications going stale</div><div class="bm">No reply in 10+ days. Send a follow-up to keep momentum.</div><div class="ba">Review stale</div></div>
+        </div>
+        <div class="banner infob">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-top:1px"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+          <div><div class="bt">New matches ready</div><div class="bm">6 jobs matched your profile overnight.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="lbl">FormField — rest · focus · error</p>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="ff"><label>Full name</label><input class="rest" value="Alex Rivera"></div>
+        <div class="ff"><label>Email</label><input class="foc" value="alex@"><span class="hint">We'll only use this for job alerts.</span></div>
+        <div class="ff"><label>Target salary</label><input class="err" value="a lot"><span class="emsg">Enter a number, e.g. 150000.</span></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="cols">
+    <section>
+      <p class="lbl">ChipInput — target roles</p>
+      <div class="ci">
+        <span class="tag">Product Designer<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6 18 18M18 6 6 18"/></svg></span>
+        <span class="tag">Design Systems<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6 18 18M18 6 6 18"/></svg></span>
+        <span class="tag">UX Lead<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6 18 18M18 6 6 18"/></svg></span>
+        <input placeholder="">
+      </div>
+    </section>
+
+    <section>
+      <p class="lbl">EmptyState</p>
+      <div class="empty">
+        <span class="med"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0"/><path d="m20 20-3.5-3.5"/></svg></span>
+        <div class="t">No matches yet</div>
+        <div class="m">Upload a resume and set your target roles so the agent can start matching.</div>
+        <div class="b">Set target roles</div>
+      </div>
+    </section>
+
+    <section>
+      <p class="lbl">LoadingSkeleton — card</p>
+      <div class="skcard">
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="sk" style="width:42px;height:42px;border-radius:var(--radius-md)"></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:7px"><div class="sk" style="width:70%;height:14px;border-radius:var(--radius-sm)"></div><div class="sk" style="width:45%;height:11px;border-radius:var(--radius-sm)"></div></div>
+        </div>
+        <div style="display:flex;gap:8px"><div class="sk" style="width:90px;height:20px;border-radius:var(--radius-pill)"></div><div class="sk" style="width:70px;height:20px;border-radius:var(--radius-pill)"></div></div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

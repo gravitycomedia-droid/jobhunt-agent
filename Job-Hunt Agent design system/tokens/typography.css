@@ -1,0 +1,63 @@
+/* ==================================================================
+   TYPOGRAPHY TOKENS — Job-Hunt Agent
+   Roles: display / heading / title / body / caption / label / mono-data
+   Base = 15px (mobile-first). Never render UI text below 12px.
+   ================================================================== */
+:root {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* weights */
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold:600;
+  --fw-bold:    700;
+  --fw-extra:   800;
+
+  /* ---- DISPLAY — big numeric / screen hero (Home greeting, big scores) */
+  --display-size:   32px;
+  --display-line:   38px;
+  --display-weight: var(--fw-bold);
+  --display-tracking: -0.02em;
+
+  /* ---- HEADING — screen & section titles */
+  --heading-size:   22px;
+  --heading-line:   28px;
+  --heading-weight: var(--fw-bold);
+  --heading-tracking: -0.01em;
+
+  --heading-sm-size: 18px;
+  --heading-sm-line: 24px;
+  --heading-sm-weight: var(--fw-semibold);
+
+  /* ---- TITLE — card titles (job title, company row) */
+  --title-size:   16px;
+  --title-line:   22px;
+  --title-weight: var(--fw-semibold);
+
+  /* ---- BODY — default paragraph / list text */
+  --body-size:   15px;
+  --body-line:   22px;
+  --body-weight: var(--fw-regular);
+  --body-strong-weight: var(--fw-semibold);
+
+  --body-sm-size: 14px;
+  --body-sm-line: 20px;
+
+  /* ---- CAPTION — secondary meta (location, posted date) */
+  --caption-size:   13px;
+  --caption-line:   18px;
+  --caption-weight: var(--fw-medium);
+
+  /* ---- LABEL / OVERLINE — chips, section labels, nav labels */
+  --label-size:   11px;
+  --label-line:   14px;
+  --label-weight: var(--fw-semibold);
+  --label-tracking: 0.04em;   /* pair with text-transform:uppercase */
+
+  /* ---- MONO-DATA — scores, %, salary, token cost, dates */
+  --mono-size:   14px;
+  --mono-line:   20px;
+  --mono-weight: var(--fw-medium);
+  --mono-tracking: -0.01em;
+}

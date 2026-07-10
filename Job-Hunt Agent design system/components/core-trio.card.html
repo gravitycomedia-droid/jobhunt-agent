@@ -1,0 +1,95 @@
+<!-- @dsCard group="Components" viewport="700x560" name="Core Trio — AppShell · StatusPill · JobCard" subtitle="The three highest-leverage components" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:24px;background:var(--color-bg);font-family:var(--font-sans);color:var(--text-primary)}
+  .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin:0 0 10px}
+  section{margin-bottom:26px}
+  .pills{display:flex;flex-wrap:wrap;gap:8px}
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;border:1px solid}
+  .dot{width:6px;height:6px;border-radius:50%}
+  .succ{background:var(--success-soft);color:var(--success-text);border-color:var(--success-border)}
+  .warn{background:var(--warning-soft);color:var(--warning-text);border-color:var(--warning-border)}
+  .crit{background:var(--critical-soft);color:var(--critical-text);border-color:var(--critical-border)}
+  .info{background:var(--info-soft);color:var(--info-text);border-color:var(--info-border)}
+  .neut{background:var(--neutral-soft);color:var(--neutral-text);border-color:var(--neutral-chip-border)}
+  svg{display:block}
+  /* job card */
+  .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:16px;max-width:360px;display:flex;flex-direction:column;gap:12px}
+  .chead{display:flex;gap:12px;align-items:flex-start}
+  .logo{flex:none;width:42px;height:42px;border-radius:var(--radius-md);background:var(--brand-soft);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--brand-700);font-weight:700;font-size:18px}
+  .ctitle{font-size:16px;line-height:22px;font-weight:600}
+  .cco{font-size:14px;color:var(--text-secondary);font-weight:500;margin-top:1px}
+  .meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13px;color:var(--text-secondary);font-weight:500}
+  .meta .m{display:inline-flex;align-items:center;gap:4px}
+  .mono{font-family:var(--font-mono);color:var(--text-primary);font-weight:500}
+  .src{margin-left:auto;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--radius-pill);background:var(--info-soft);color:var(--info-text);border:1px solid var(--info-border);font-size:11px;font-weight:600}
+  /* bottom nav */
+  .nav{display:grid;grid-template-columns:repeat(5,1fr);align-items:center;height:56px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-3);max-width:360px}
+  .ni{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--nav-inactive)}
+  .ni.on{color:var(--nav-active)}
+  .ni .ip{display:flex;align-items:center;justify-content:center;width:40px;height:24px;border-radius:var(--radius-pill)}
+  .ni.on .ip{background:var(--brand-soft)}
+  .ni span{font-size:10.5px;font-weight:600}
+  .ni.on span{font-weight:700}
+  .cols{display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start}
+</style>
+</head>
+<body>
+  <section>
+    <p class="lbl">StatusPill — verdict · guardrail · stage</p>
+    <div class="pills">
+      <span class="pill succ"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>Apply</span>
+      <span class="pill warn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>Stretch</span>
+      <span class="pill crit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6 18 18"/><path d="M18 6 6 18"/></svg>Skip</span>
+      <span style="width:14px"></span>
+      <span class="pill succ"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>Guardrail pass</span>
+      <span class="pill crit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 22 20H2L12 3z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>Guardrail fail</span>
+    </div>
+    <div class="pills" style="margin-top:10px">
+      <span class="pill neut"><span class="dot" style="background:var(--stage-new)"></span>New</span>
+      <span class="pill info"><span class="dot" style="background:var(--stage-applied)"></span>Applied</span>
+      <span class="pill info"><span class="dot" style="background:var(--stage-replied)"></span>Replied</span>
+      <span class="pill info"><span class="dot" style="background:var(--stage-interview)"></span>Interview</span>
+      <span class="pill succ"><span class="dot" style="background:var(--stage-offer)"></span>Offer</span>
+      <span class="pill crit"><span class="dot" style="background:var(--stage-rejected)"></span>Rejected</span>
+    </div>
+  </section>
+
+  <div class="cols">
+    <section style="margin-bottom:0">
+      <p class="lbl">JobCard</p>
+      <div class="card">
+        <div class="chead">
+          <div class="logo">N</div>
+          <div style="flex:1 1 auto;min-width:0">
+            <div class="ctitle">Senior Product Designer</div>
+            <div class="cco">Northwind Labs</div>
+          </div>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--brand-600)" stroke="var(--brand-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>
+        </div>
+        <div class="meta">
+          <span class="m"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 1 1 13 0C18.5 15.5 12 21 12 21z"/><path d="M12 11m-2.2 0a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0"/></svg>SF · Remote</span>
+          <span class="m"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 7v5l3.5 2"/></svg>2 days ago</span>
+          <span class="m mono">$145K–$180K</span>
+          <span class="src"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>LinkedIn</span>
+        </div>
+      </div>
+    </section>
+
+    <section style="margin-bottom:0">
+      <p class="lbl">AppShell — bottom nav</p>
+      <nav class="nav">
+        <div class="ni on"><span class="ip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span><span>Home</span></div>
+        <div class="ni"><span class="ip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5h18v11H3z"/><path d="M8 8.5V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2.5"/><path d="M3 13h18"/></svg></span><span>Jobs</span></div>
+        <div class="ni"><span class="ip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0-10 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0"/></svg></span><span>Matches</span></div>
+        <div class="ni"><span class="ip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M9.5 4v16"/><path d="M15 4v16"/></svg></span><span>Track</span></div>
+        <div class="ni"><span class="ip"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0"/><path d="M4 21c0-3.5 3.6-5.5 8-5.5s8 2 8 5.5"/></svg></span><span>Profile</span></div>
+      </nav>
+    </section>
+  </div>
+</body>
+</html>

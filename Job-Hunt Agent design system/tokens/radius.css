@@ -1,0 +1,13 @@
+/* ==================================================================
+   RADIUS TOKENS — Job-Hunt Agent
+   Soft, modern mobile feel. Cards = 16px, chips/pills = full.
+   ================================================================== */
+:root {
+  --radius-xs:  4px;   /* nested tags, tiny badges */
+  --radius-sm:  8px;   /* inputs, small buttons */
+  --radius-md:  12px;  /* buttons, inner tiles */
+  --radius-lg:  16px;  /* cards, sheets */
+  --radius-xl:  20px;  /* modal / bottom-sheet top */
+  --radius-2xl: 28px;  /* hero panels */
+  --radius-pill: 999px;/* chips, StatusPill, avatars */
+}

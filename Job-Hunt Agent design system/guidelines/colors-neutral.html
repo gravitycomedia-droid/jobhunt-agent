@@ -1,0 +1,33 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Neutral Ramp" subtitle="Grey, hue-biased toward brand (~275°) · surfaces, text, borders" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:20px;background:var(--color-bg);font-family:var(--font-sans)}
+  .row{display:flex;gap:0;border-radius:var(--radius-md);overflow:hidden;box-shadow:var(--elev-1)}
+  .sw{flex:1;height:82px;display:flex;flex-direction:column;justify-content:flex-end;padding:8px 8px;box-sizing:border-box}
+  .n{font-size:10.5px;font-weight:700}
+  .h{font-family:var(--font-mono);font-size:9px;opacity:.85;margin-top:2px}
+  .lite{color:var(--neutral-800)} .dark{color:#fff}
+  .cap{margin-top:10px;font-size:12px;color:var(--text-secondary)}
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw lite" style="background:var(--neutral-0);box-shadow:inset 0 0 0 1px var(--neutral-200)"><span class="n">0</span><span class="h">#FFFFFF</span></div>
+    <div class="sw lite" style="background:var(--neutral-50)"><span class="n">50</span><span class="h">#F7F7FB</span></div>
+    <div class="sw lite" style="background:var(--neutral-100)"><span class="n">100</span><span class="h">#EFEFF5</span></div>
+    <div class="sw lite" style="background:var(--neutral-200)"><span class="n">200</span><span class="h">#E2E2EC</span></div>
+    <div class="sw lite" style="background:var(--neutral-300)"><span class="n">300</span><span class="h">#CBCBD9</span></div>
+    <div class="sw lite" style="background:var(--neutral-400)"><span class="n">400</span><span class="h">#A0A0B4</span></div>
+    <div class="sw dark" style="background:var(--neutral-500)"><span class="n">500</span><span class="h">#75758C</span></div>
+    <div class="sw dark" style="background:var(--neutral-600)"><span class="n">600</span><span class="h">#565669</span></div>
+    <div class="sw dark" style="background:var(--neutral-700)"><span class="n">700</span><span class="h">#40404F</span></div>
+    <div class="sw dark" style="background:var(--neutral-800)"><span class="n">800</span><span class="h">#2A2A36</span></div>
+    <div class="sw dark" style="background:var(--neutral-900)"><span class="n">900</span><span class="h">#181822</span></div>
+  </div>
+  <div class="cap">bg 50 · surface 0 · border 200 · text-secondary 600 · text-primary 900</div>
+</body>
+</html>

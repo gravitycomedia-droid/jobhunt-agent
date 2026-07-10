@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../models/activity_item.dart';
 import '../models/application_item.dart';
+import '../models/background_task.dart';
 import '../models/cost_stats.dart';
 import '../models/health_status.dart';
 import '../models/job.dart';
@@ -237,18 +238,34 @@ class ApiClient {
 
   /// Stage 2 of the two-stage RAG match (Brick 5, ADR-001): triggers the LLM
   /// re-rank for the top [limit] shortlisted jobs and caches results
-  /// server-side. Each un-ranked job is one sequential Gemini call
-  /// (~20-25s), so a cold rerank of the default limit can take several
-  /// minutes — [ShortlistScreen] calls this in the background after
-  /// showing cached matches, not on the blocking first paint, so a long
-  /// timeout here is fine. Call [fetchMatches] after to read the results.
-  Future<void> rerankShortlist({int limit = 20}) async {
+  /// server-side. ADR-010: the server now answers 202 with a task id
+  /// immediately instead of holding the socket open for minutes of
+  /// sequential Gemini calls (which Android's network stack aborted) —
+  /// poll [getTaskStatus] until the task finishes, then [fetchMatches].
+  Future<String> rerankShortlist({int limit = 20}) async {
     final uri = Uri.parse('$_baseUrl/matches/rerank?limit=$limit');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(minutes: 10));
+    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 202) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as Map<String, dynamic>)['task_id'] as String;
+  }
+
+  /// Polls one background task row (ADR-010). TaskCenter owns the polling
+  /// loop; screens subscribe to it rather than calling this directly.
+  Future<BackgroundTask> getTaskStatus(String taskId) async {
+    final uri = Uri.parse('$_baseUrl/tasks/$taskId');
+    final response = await http.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
     }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return BackgroundTask.fromJson(body['data'] as Map<String, dynamic>);
   }
 
   /// Cached stage-2 results, best fit first — what [ShortlistScreen] renders
@@ -434,16 +451,18 @@ class ApiClient {
   /// Brick 9: manually triggers the agent loop for the caller's own
   /// profile only (POST /pipeline/run-mine) — distinct from the Render
   /// cron's POST /pipeline/run, which processes every beta user and is
-  /// guarded by a shared secret instead of a user session. Runs the same
-  /// sequential-Gemini-calls work as [rerankShortlist], so it gets the
-  /// same long timeout.
-  Future<void> runPipeline() async {
+  /// guarded by a shared secret instead of a user session. ADR-010: same
+  /// 202 + poll pattern as [rerankShortlist]; returns the task id.
+  Future<String> runPipeline() async {
     final uri = Uri.parse('$_baseUrl/pipeline/run-mine');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(minutes: 10));
+    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
 
-    if (response.statusCode != 200) {
+    if (response.statusCode != 202) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
     }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as Map<String, dynamic>)['task_id'] as String;
   }
 
   /// Phase 3: this calendar month's LLM cost/usage for the caller,

@@ -1,0 +1,41 @@
+<!-- @dsCard group="Spacing" viewport="700x180" name="Radius & Elevation" subtitle="Corner radii + mobile shadow ramp" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:24px;background:var(--color-bg);font-family:var(--font-sans)}
+  .wrap{display:flex;gap:40px;flex-wrap:wrap}
+  .grp{display:flex;flex-direction:column;gap:12px}
+  .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary)}
+  .row{display:flex;gap:14px;align-items:flex-end}
+  .box{width:56px;height:44px;background:var(--brand-100);border:1.5px solid var(--brand-400)}
+  .ebox{width:70px;height:44px;background:var(--color-surface);border-radius:var(--radius-md)}
+  .t{font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);margin-top:6px;display:block;text-align:center}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="grp">
+      <span class="lbl">Radius</span>
+      <div class="row">
+        <div><div class="box" style="border-radius:var(--radius-sm)"></div><span class="t">sm 8</span></div>
+        <div><div class="box" style="border-radius:var(--radius-md)"></div><span class="t">md 12</span></div>
+        <div><div class="box" style="border-radius:var(--radius-lg)"></div><span class="t">lg 16</span></div>
+        <div><div class="box" style="border-radius:var(--radius-xl)"></div><span class="t">xl 20</span></div>
+        <div><div class="box" style="width:44px;border-radius:var(--radius-pill)"></div><span class="t">pill</span></div>
+      </div>
+    </div>
+    <div class="grp">
+      <span class="lbl">Elevation</span>
+      <div class="row">
+        <div><div class="ebox" style="box-shadow:var(--elev-1)"></div><span class="t">e1 card</span></div>
+        <div><div class="ebox" style="box-shadow:var(--elev-2)"></div><span class="t">e2 raised</span></div>
+        <div><div class="ebox" style="box-shadow:var(--elev-3)"></div><span class="t">e3 nav</span></div>
+        <div><div class="ebox" style="box-shadow:var(--elev-4)"></div><span class="t">e4 sheet</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

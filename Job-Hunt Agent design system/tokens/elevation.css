@@ -1,0 +1,29 @@
+/* ==================================================================
+   ELEVATION TOKENS — Job-Hunt Agent
+   Restrained mobile shadow system. Shadow tint uses the neutral
+   hue (indigo-biased) rather than pure black, so it reads warm-cool
+   consistent with the palette.
+   ================================================================== */
+:root {
+  /* e0 — flush (no shadow), rely on border */
+  --elev-0: none;
+
+  /* e1 — resting card on canvas */
+  --elev-1: 0 1px 2px rgba(24,24,34,0.06),
+            0 1px 3px rgba(24,24,34,0.05);
+
+  /* e2 — raised / pressed card, sticky headers */
+  --elev-2: 0 2px 4px rgba(24,24,34,0.06),
+            0 4px 10px rgba(24,24,34,0.08);
+
+  /* e3 — bottom nav, floating action, dropdowns */
+  --elev-3: 0 4px 12px rgba(24,24,34,0.10),
+            0 8px 24px rgba(24,24,34,0.10);
+
+  /* e4 — bottom sheets, modals */
+  --elev-4: 0 8px 20px rgba(24,24,34,0.12),
+            0 20px 48px rgba(24,24,34,0.16);
+
+  /* focus ring (pair with outline-offset:2px) */
+  --focus-shadow: 0 0 0 3px rgba(86,71,224,0.32);
+}

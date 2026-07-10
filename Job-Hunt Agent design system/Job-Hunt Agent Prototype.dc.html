@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<template id="__bundler_thumbnail" data-bg-color="#5647E0">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#5647E0"/>
+    <circle cx="600" cy="400" r="160" fill="none" stroke="#ffffff" stroke-width="22" opacity="0.9"/>
+    <circle cx="600" cy="400" r="90" fill="none" stroke="#ffffff" stroke-width="22" opacity="0.9"/>
+    <circle cx="600" cy="400" r="20" fill="#ffffff"/>
+  </svg>
+</template>
+<link rel="stylesheet" href="styles.css">
+<style>
+  @keyframes jha-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  @keyframes jha-spin{to{transform:rotate(360deg)}}
+  @keyframes jha-toast{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+  @keyframes jha-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  *{-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:#e6e6ee}
+  a{color:var(--text-link)}a:hover{color:var(--text-link-hover)}
+  ::-webkit-scrollbar{width:0;height:0}
+</style>
+</helmet>
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:var(--font-sans);color:var(--text-primary)">
+  <div style="position:relative;width:390px;height:844px;background:var(--color-bg);border-radius:46px;box-shadow:0 34px 70px rgba(24,24,34,.34);outline:11px solid #14141b;overflow:hidden;display:flex;flex-direction:column">
+    <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:148px;height:30px;background:#14141b;border-radius:0 0 18px 18px;z-index:30"></div>
+    <div style="flex:none;height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 7px;font-size:14px;font-weight:700;z-index:10">
+      <span>9:41</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5" width="3" height="7" rx="1"/><rect x="10" y="2.5" width="3" height="9.5" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1 4.2A11 11 0 0 1 15 4.2"/><path d="M3.4 6.8A7 7 0 0 1 12.6 6.8"/><path d="M5.8 9.3A3 3 0 0 1 10.2 9.3"/></svg>
+        <span style="display:flex;align-items:center;gap:2px"><span style="display:inline-block;width:23px;height:12px;border:1.5px solid currentColor;border-radius:3px;padding:1.5px;box-sizing:border-box"><span style="display:block;width:75%;height:100%;background:currentColor;border-radius:1px"></span></span></span>
+      </span>
+    </div>
+
+    <div style="position:relative;flex:1 1 auto;overflow:hidden;display:flex;flex-direction:column;min-height:0">
+
+      <sc-if value="{{ ui.isSplash }}" hint-placeholder-val="{{ true }}">
+        <div style="height:100%;background:var(--brand-600);display:flex;flex-direction:column;align-items:center;padding:40px 32px 36px;box-sizing:border-box;text-align:center">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px">
+            <div style="width:92px;height:92px;border-radius:26px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center">
+              <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="#fff"/></svg>
+            </div>
+            <div>
+              <div style="font-size:33px;font-weight:800;color:#fff;letter-spacing:-.02em">JobHunt <span style="font-weight:400;opacity:.82">Agent</span></div>
+              <div style="font-size:15px;line-height:22px;color:rgba(255,255,255,.86);margin-top:10px;max-width:250px">Your AI job-search partner — from resume to signed offer.</div>
+            </div>
+          </div>
+          <div style="width:100%;display:flex;flex-direction:column;gap:11px">
+            <button onClick="{{ act.start }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;border-radius:var(--radius-md);background:#fff;color:var(--brand-700);font-family:var(--font-sans);font-size:16px;font-weight:700">Get started</button>
+            <button onClick="{{ act.signin }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:13px;background:transparent;color:rgba(255,255,255,.92);font-family:var(--font-sans);font-size:15px;font-weight:600">I already have an account</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isAuth }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 22px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.back }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg></button>
+          <div style="margin-top:14px;font-size:26px;font-weight:800;letter-spacing:-.01em">{{ auth.title }}</div>
+          <div style="font-size:15px;color:var(--text-secondary);margin-top:6px">{{ auth.sub }}</div>
+          <div style="display:flex;flex-direction:column;gap:15px;margin-top:26px">
+            <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:13px;font-weight:600;color:var(--text-secondary)">Email</label><input type="email" placeholder="you@email.com" style="box-sizing:border-box;width:100%;padding:13px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface);font-family:var(--font-sans);font-size:15px;color:var(--text-primary);outline:none"></div>
+            <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:13px;font-weight:600;color:var(--text-secondary)">Password</label><input type="password" placeholder="••••••••" style="box-sizing:border-box;width:100%;padding:13px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface);font-family:var(--font-sans);font-size:15px;color:var(--text-primary);outline:none"></div>
+          </div>
+          <button onClick="{{ act.submitAuth }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;margin-top:24px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:16px;font-weight:700">{{ auth.cta }}</button>
+          <div style="display:flex;align-items:center;gap:10px;margin:22px 0;color:var(--text-tertiary);font-size:13px"><span style="flex:1;height:1px;background:var(--color-border)"></span>or<span style="flex:1;height:1px;background:var(--color-border)"></span></div>
+          <button style="appearance:none;cursor:pointer;width:100%;padding:13px;border-radius:var(--radius-md);background:transparent;border:1.5px solid var(--color-border-strong);color:var(--text-primary);font-family:var(--font-sans);font-size:15px;font-weight:600">Continue with Google</button>
+          <div style="text-align:center;margin-top:auto;padding-top:22px;font-size:14px;color:var(--text-secondary)">{{ auth.switchText }} <span onClick="{{ act.toggleAuth }}" style="color:var(--brand-600);font-weight:700;cursor:pointer">{{ auth.switchCta }}</span></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isWelcome }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:24px 22px;box-sizing:border-box;display:flex;flex-direction:column;text-align:center">
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+            <div style="width:76px;height:76px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-600);display:flex;align-items:center;justify-content:center;margin-bottom:8px"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg></div>
+            <div style="font-size:24px;font-weight:800;letter-spacing:-.01em">You're all set, Alex</div>
+            <div style="font-size:15px;line-height:22px;color:var(--text-secondary);max-width:270px">Here's how the agent works. Three steps and you'll have tailored applications going out.</div>
+            <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-top:22px;text-align:left">
+              <sc-for list="{{ welcomeSteps }}" as="step" hint-placeholder-count="3">
+                <div style="display:flex;gap:12px;align-items:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px">
+                  <div style="flex:none;width:34px;height:34px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-700);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:15px">{{ step.n }}</div>
+                  <div><div style="font-size:15px;font-weight:700">{{ step.title }}</div><div style="font-size:13px;color:var(--text-secondary);margin-top:1px">{{ step.desc }}</div></div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <button onClick="{{ act.toUpload }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;margin-top:22px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:16px;font-weight:700">Upload your resume</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isUpload }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:20px 22px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <div style="font-size:24px;font-weight:800;letter-spacing:-.01em">Add your resume</div>
+          <div style="font-size:15px;line-height:22px;color:var(--text-secondary);margin-top:6px">We'll parse it into a profile and use it to match &amp; tailor. PDF or DOCX.</div>
+          <div style="margin-top:24px;border:2px dashed var(--brand-200);background:var(--brand-50);border-radius:var(--radius-xl);padding:36px 24px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px">
+            <div style="width:60px;height:60px;border-radius:var(--radius-pill);background:#fff;color:var(--brand-600);display:flex;align-items:center;justify-content:center;box-shadow:var(--elev-1)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg></div>
+            <div><div style="font-size:15px;font-weight:700">Drag &amp; drop or browse</div><div style="font-size:13px;color:var(--text-secondary);margin-top:2px">Alex_Rivera_Resume.pdf</div></div>
+          </div>
+          <sc-if value="{{ upload.on }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:20px">
+              <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-bottom:7px"><span style="color:var(--text-secondary)">Parsing resume…</span><span style="font-family:var(--font-mono);color:var(--text-primary)">{{ upload.pctLabel }}</span></div>
+              <div style="height:8px;border-radius:var(--radius-pill);background:var(--neutral-200);overflow:hidden"><div style="height:100%;border-radius:var(--radius-pill);background:var(--brand-600);width:{{ upload.pctWidth }};transition:width 120ms ease"></div></div>
+            </div>
+          </sc-if>
+          <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;padding-top:24px">
+            <button onClick="{{ act.startUpload }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:16px;font-weight:700">{{ upload.btn }}</button>
+            <button onClick="{{ act.skipUpload }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:6px;color:var(--text-tertiary);font-family:var(--font-sans);font-size:14px;font-weight:600">Skip for now</button>
+            <div style="display:flex;gap:6px;align-items:flex-start;font-size:12px;line-height:16px;color:var(--warning-text);background:var(--warning-soft);border:1px solid var(--warning-border);border-radius:var(--radius-sm);padding:8px 10px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 3 22 20H2L12 3z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg><span>Matching can't run without a resume — you can add one later in Profile.</span></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isProfileEdit }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column">
+          <div style="flex:none;padding:8px 22px 4px">
+            <button onClick="{{ act.backProfileEdit }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>{{ profileEditBackLabel }}</button>
+            <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin-top:6px">Review your profile</div>
+            <div style="font-size:14px;line-height:20px;color:var(--text-secondary);margin-top:4px">Fix anything the parser missed, or add skills, experience, projects and education.</div>
+          </div>
+          <div style="flex:1 1 auto;overflow-y:auto;padding:16px 22px 24px;display:flex;flex-direction:column;gap:24px">
+
+            <div>
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:9px">Skills</div>
+              <div onClick="{{ act.focusSkill }}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:9px 10px;min-height:48px;box-sizing:border-box;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface);cursor:text">
+                <sc-for list="{{ skillChips }}" as="chip" hint-placeholder-count="6">
+                  <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 6px 4px 11px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-700);border:1px solid var(--brand-soft-border);font-size:13px;font-weight:600">{{ chip.label }}<span onClick="{{ chip.remove }}" style="cursor:pointer;display:flex"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6 18 18M18 6 6 18"/></svg></span></span>
+                </sc-for>
+                <input id="skillInput" value="{{ skillDraft }}" onChange="{{ act.skillChange }}" onKeyDown="{{ act.skillKey }}" placeholder="Add a skill…" style="flex:1 1 90px;min-width:90px;border:none;outline:none;background:transparent;font-family:var(--font-sans);font-size:15px;color:var(--text-primary);padding:4px 0">
+              </div>
+            </div>
+
+            <div>
+              <div style="display:flex;align-items:baseline;margin-bottom:9px"><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary)">Experience</span></div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ expItems }}" as="x" hint-placeholder-count="3">
+                  <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:10px;position:relative">
+                    <button onClick="{{ x.remove }}" aria-label="Remove experience" style="position:absolute;top:10px;right:10px;appearance:none;border:none;background:transparent;cursor:pointer;color:var(--text-tertiary);padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>
+                    <div style="display:flex;flex-direction:column;gap:6px;padding-right:26px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Title</label><input value="{{ x.role }}" onChange="{{ x.onRole }}" placeholder="e.g. Senior Product Designer" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none"></div>
+                    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:8px">
+                      <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Company</label><input value="{{ x.company }}" onChange="{{ x.onCompany }}" placeholder="Company" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none"></div>
+                      <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Dates</label><input value="{{ x.dates }}" onChange="{{ x.onDates }}" placeholder="2021 — Now" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none"></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Description</label><textarea rows="2" value="{{ x.description }}" onChange="{{ x.onDesc }}" placeholder="What did you do, and what was the impact?" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:13px;line-height:18px;color:var(--text-primary);outline:none;resize:vertical"></textarea></div>
+                  </div>
+                </sc-for>
+                <button onClick="{{ act.addExperience }}" style="appearance:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px;border-radius:var(--radius-md);background:var(--color-surface);border:1.5px dashed var(--color-border-strong);color:var(--text-secondary);font-family:var(--font-sans);font-size:14px;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add experience</button>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:9px">Projects</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ projectItems }}" as="x" hint-placeholder-count="1">
+                  <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:10px;position:relative">
+                    <button onClick="{{ x.remove }}" aria-label="Remove project" style="position:absolute;top:10px;right:10px;appearance:none;border:none;background:transparent;cursor:pointer;color:var(--text-tertiary);padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>
+                    <div style="display:flex;flex-direction:column;gap:6px;padding-right:26px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Project name</label><input value="{{ x.name }}" onChange="{{ x.onName }}" placeholder="e.g. Design System Playbook" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none"></div>
+                    <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Link (optional)</label><input value="{{ x.link }}" onChange="{{ x.onLink }}" placeholder="github.com/…" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-mono);font-size:13px;color:var(--text-primary);outline:none"></div>
+                    <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Description</label><textarea rows="2" value="{{ x.description }}" onChange="{{ x.onDesc }}" placeholder="What was it, and what was the outcome?" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:13px;line-height:18px;color:var(--text-primary);outline:none;resize:vertical"></textarea></div>
+                  </div>
+                </sc-for>
+                <button onClick="{{ act.addProject }}" style="appearance:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px;border-radius:var(--radius-md);background:var(--color-surface);border:1.5px dashed var(--color-border-strong);color:var(--text-secondary);font-family:var(--font-sans);font-size:14px;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add project</button>
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:9px">Education</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <sc-for list="{{ eduItems }}" as="x" hint-placeholder-count="1">
+                  <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:10px;position:relative">
+                    <button onClick="{{ x.remove }}" aria-label="Remove education" style="position:absolute;top:10px;right:10px;appearance:none;border:none;background:transparent;cursor:pointer;color:var(--text-tertiary);padding:4px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg></button>
+                    <div style="display:flex;flex-direction:column;gap:6px;padding-right:26px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">School</label><input value="{{ x.school }}" onChange="{{ x.onSchool }}" placeholder="University name" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none"></div>
+                    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:8px">
+                      <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Degree</label><input value="{{ x.degree }}" onChange="{{ x.onDegree }}" placeholder="B.A. …" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none"></div>
+                      <div style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:600;color:var(--text-secondary)">Dates</label><input value="{{ x.dates }}" onChange="{{ x.onDates }}" placeholder="2012 — 2016" style="box-sizing:border-box;width:100%;padding:10px 11px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface-sunken);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none"></div>
+                    </div>
+                  </div>
+                </sc-for>
+                <button onClick="{{ act.addEducation }}" style="appearance:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:12px;border-radius:var(--radius-md);background:var(--color-surface);border:1.5px dashed var(--color-border-strong);color:var(--text-secondary);font-family:var(--font-sans);font-size:14px;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add education</button>
+              </div>
+            </div>
+
+          </div>
+          <div style="flex:none;padding:12px 22px 20px;border-top:1px solid var(--color-border);background:var(--color-surface)">
+            <button onClick="{{ act.finishProfileEdit }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:16px;font-weight:700">{{ profileEditCta }}</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isRoles }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:20px 22px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <div style="font-size:24px;font-weight:800;letter-spacing:-.01em">What are you looking for?</div>
+          <div style="font-size:15px;line-height:22px;color:var(--text-secondary);margin-top:6px">Add target roles. The agent matches new postings against these.</div>
+          <div style="margin-top:22px;display:flex;flex-direction:column;gap:8px">
+            <label style="font-size:13px;font-weight:600;color:var(--text-secondary)">Target roles</label>
+            <div onClick="{{ act.focusRole }}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:9px 10px;min-height:48px;box-sizing:border-box;border-radius:var(--radius-sm);border:1.5px solid var(--brand-500);box-shadow:var(--focus-shadow);background:var(--color-surface);cursor:text">
+              <sc-for list="{{ roleChips }}" as="chip" hint-placeholder-count="2">
+                <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 6px 4px 11px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-700);border:1px solid var(--brand-soft-border);font-size:13px;font-weight:600">{{ chip.label }}<span onClick="{{ chip.remove }}" style="cursor:pointer;display:flex"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6 18 18M18 6 6 18"/></svg></span></span>
+              </sc-for>
+              <input id="roleInput" value="{{ roleDraft }}" onChange="{{ act.roleChange }}" onKeyDown="{{ act.roleKey }}" placeholder="Add a role…" style="flex:1 1 90px;min-width:90px;border:none;outline:none;background:transparent;font-family:var(--font-sans);font-size:15px;color:var(--text-primary);padding:4px 0">
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:4px">
+              <sc-for list="{{ roleSuggestions }}" as="sug" hint-placeholder-count="3">
+                <button onClick="{{ sug.add }}" style="appearance:none;cursor:pointer;display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border-radius:var(--radius-pill);background:var(--color-surface);border:1px dashed var(--color-border-strong);color:var(--text-secondary);font-family:var(--font-sans);font-size:13px;font-weight:600"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>{{ sug.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="margin-top:22px;display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:13px;font-weight:600;color:var(--text-secondary)">Minimum salary (optional)</label>
+            <input placeholder="$150,000" style="box-sizing:border-box;width:100%;padding:13px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface);font-family:var(--font-mono);font-size:15px;color:var(--text-primary);outline:none">
+          </div>
+          <button onClick="{{ act.startMatching }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;margin-top:auto;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:16px;font-weight:700">Find matching jobs</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isMatching }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;background:var(--color-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;box-sizing:border-box;text-align:center;gap:24px">
+          <div style="position:relative;width:132px;height:132px">
+            <svg width="132" height="132" style="animation:jha-spin 1.3s linear infinite">
+              <circle cx="66" cy="66" r="58" fill="none" stroke="var(--neutral-200)" stroke-width="8"/>
+              <circle cx="66" cy="66" r="58" fill="none" stroke="var(--brand-600)" stroke-width="8" stroke-linecap="round" stroke-dasharray="364.4" stroke-dashoffset="255"/>
+            </svg>
+            <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:24px;color:var(--text-primary)">{{ matchingPct }}%</span>
+          </div>
+          <div>
+            <div style="font-size:20px;font-weight:800;letter-spacing:-.01em">Finding your matches</div>
+            <div style="font-size:14px;color:var(--text-secondary);margin-top:6px">{{ matchingLabel }}</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isHome }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:16px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:flex-start;gap:12px">
+            <div style="flex:1"><div style="font-size:22px;font-weight:800;letter-spacing:-.01em">Good morning, Alex</div><div style="font-size:14px;color:var(--text-secondary);margin-top:2px">6 new matches overnight</div></div>
+            <button onClick="{{ act.toActivity }}" style="appearance:none;cursor:pointer;position:relative;width:42px;height:42px;border-radius:var(--radius-pill);background:var(--color-surface);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10.5 20a1.8 1.8 0 0 0 3 0"/></svg><span style="position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--critical-fill);border:2px solid var(--color-surface)"></span></button>
+          </div>
+          <div onClick="{{ act.toMatches }}" style="display:flex;gap:10px;align-items:center;padding:12px 14px;border-radius:var(--radius-md);background:var(--info-soft);border:1px solid var(--info-border);cursor:pointer">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--info-text)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+            <div style="flex:1"><div style="font-size:14px;font-weight:700;color:var(--info-text)">New matches ready</div><div style="font-size:12px;color:var(--info-text);opacity:.85">6 jobs matched your profile.</div></div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--info-text)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6 15.5 12 9.5 18"/></svg>
+          </div>
+          <div onClick="{{ heroMatch.open }}" style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:18px;display:flex;gap:16px;align-items:center;cursor:pointer">
+            <div style="position:relative;width:100px;height:100px;flex:none">
+              <svg width="100" height="100" viewBox="0 0 100 100" style="transform:rotate(-90deg)"><circle cx="50" cy="50" r="46" fill="none" stroke="var(--neutral-200)" stroke-width="8"/><circle cx="50" cy="50" r="46" fill="none" stroke="{{ heroMatch.ring }}" stroke-width="8" stroke-linecap="round" stroke-dasharray="{{ heroMatch.circ }}" stroke-dashoffset="{{ heroMatch.dash }}" style="transition:stroke-dashoffset 500ms ease"/></svg>
+              <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:26px;color:{{ heroMatch.ringText }};letter-spacing:-.02em">{{ heroMatch.score }}</span>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary)">Best match</div>
+              <div style="font-size:16px;font-weight:700;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ heroMatch.title }}</div>
+              <div style="font-size:13px;color:var(--text-secondary)">{{ heroMatch.company }}</div>
+              <span style="display:inline-flex;align-items:center;margin-top:8px;padding:3px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;background:{{ heroMatch.verdictBg }};color:{{ heroMatch.verdictFg }};border:1px solid {{ heroMatch.verdictBd }}">{{ heroMatch.verdictLabel }}</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <sc-for list="{{ homeStats }}" as="stat" hint-placeholder-count="3">
+              <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 10px;text-align:center"><div style="font-family:var(--font-mono);font-size:22px;font-weight:700;color:{{ stat.color }};letter-spacing:-.02em">{{ stat.value }}</div><div style="font-size:11px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.03em;margin-top:2px">{{ stat.label }}</div></div>
+            </sc-for>
+          </div>
+          <div>
+            <div style="display:flex;align-items:baseline;margin-bottom:10px"><span style="font-size:17px;font-weight:700">Also matched</span><span onClick="{{ act.toMatches }}" style="margin-left:auto;font-size:13px;font-weight:600;color:var(--brand-600);cursor:pointer">See all</span></div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ homeMatches }}" as="m" hint-placeholder-count="2">
+                <div onClick="{{ m.open }}" style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:14px;display:flex;gap:12px;align-items:center;cursor:pointer">
+                  <div style="position:relative;width:48px;height:48px;flex:none"><svg width="48" height="48" viewBox="0 0 48 48" style="transform:rotate(-90deg)"><circle cx="24" cy="24" r="21" fill="none" stroke="var(--neutral-200)" stroke-width="5"/><circle cx="24" cy="24" r="21" fill="none" stroke="{{ m.ring }}" stroke-width="5" stroke-linecap="round" stroke-dasharray="{{ m.circ }}" stroke-dashoffset="{{ m.dash }}"/></svg><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:14px;color:{{ m.ringText }}">{{ m.score }}</span></div>
+                  <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.title }}</div><div style="font-size:13px;color:var(--text-secondary)">{{ m.company }}</div></div>
+                  <span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;background:{{ m.verdictBg }};color:{{ m.verdictFg }};border:1px solid {{ m.verdictBd }}">{{ m.verdictLabel }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div onClick="{{ act.toGrowth }}" style="display:flex;gap:12px;align-items:center;padding:14px;border-radius:var(--radius-lg);background:var(--brand-600);cursor:pointer">
+            <span style="flex:none;width:38px;height:38px;border-radius:var(--radius-pill);background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;color:#fff"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/></svg></span>
+            <div style="flex:1"><div style="font-size:14px;font-weight:700;color:#fff">Grow your match rate</div><div style="font-size:12px;color:rgba(255,255,255,.82);margin-top:1px">Learn {{ topGrowthSkill.name }} for +{{ topGrowthSkill.impact }}% more matches</div></div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6 15.5 12 9.5 18"/></svg>
+          </div>
+          <div>
+            <div style="display:flex;align-items:baseline;margin-bottom:10px"><span style="font-size:17px;font-weight:700">Recent activity</span><span onClick="{{ act.toActivity }}" style="margin-left:auto;font-size:13px;font-weight:600;color:var(--brand-600);cursor:pointer">View all</span></div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ homeActivity }}" as="a" hint-placeholder-count="2">
+                <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:none;width:28px;height:28px;border-radius:var(--radius-pill);background:{{ a.bg }};color:{{ a.fg }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">{{ a.glyph }}</span><div style="flex:1"><div style="font-size:13px;font-weight:600;line-height:18px">{{ a.title }}</div><div style="font-size:12px;color:var(--text-tertiary);margin-top:1px">{{ a.timestamp }}</div></div></div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isJobs }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:16px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:800;letter-spacing:-.01em">Jobs</span>
+            <button onClick="{{ act.toAddJob }}" aria-label="Add application manually" style="appearance:none;cursor:pointer;margin-left:auto;width:36px;height:36px;flex:none;border-radius:var(--radius-pill);background:var(--color-surface);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--brand-600)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+            <button onClick="{{ act.toShortlist }}" style="appearance:none;cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:var(--radius-pill);background:var(--brand-soft);border:1px solid var(--brand-soft-border);color:var(--brand-700);font-family:var(--font-sans);font-size:13px;font-weight:700"><svg width="15" height="15" viewBox="0 0 24 24" fill="var(--brand-600)" stroke="var(--brand-600)" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>Shortlist · {{ shortlistCount }}</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:11px 12px;border-radius:var(--radius-md);background:var(--color-surface);border:1px solid var(--color-border)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0"/><path d="m20 20-3.5-3.5"/></svg><span style="font-size:15px;color:var(--text-tertiary)">Search titles, companies…</span></div>
+          <div style="display:flex;gap:7px;overflow-x:auto">
+            <sc-for list="{{ jobFilters }}" as="f" hint-placeholder-count="4">
+              <span style="flex:none;padding:6px 13px;border-radius:var(--radius-pill);font-size:13px;font-weight:600;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }}">{{ f.label }}</span>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ jobs }}" as="job" hint-placeholder-count="4">
+              <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:16px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;gap:12px;align-items:flex-start">
+                  <div style="flex:none;width:42px;height:42px;border-radius:var(--radius-md);background:var(--brand-soft);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--brand-700);font-weight:700;font-size:18px">{{ job.initial }}</div>
+                  <div style="flex:1;min-width:0"><div style="font-size:16px;line-height:22px;font-weight:600">{{ job.title }}</div><div style="font-size:14px;color:var(--text-secondary);font-weight:500">{{ job.company }}</div></div>
+                  <button onClick="{{ job.toggle }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:4px;color:{{ job.saveColor }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="{{ job.saveFill }}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></button>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13px;color:var(--text-secondary);font-weight:500">
+                  <span style="display:inline-flex;align-items:center;gap:4px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 1 1 13 0C18.5 15.5 12 21 12 21z"/><path d="M12 11m-2.2 0a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0"/></svg>{{ job.location }}</span>
+                  <span style="display:inline-flex;align-items:center;gap:4px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 7v5l3.5 2"/></svg>{{ job.postedAt }}</span>
+                  <span style="font-family:var(--font-mono);color:var(--text-primary);font-weight:500">{{ job.salary }}</span>
+                  <span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--radius-pill);background:var(--info-soft);color:var(--info-text);border:1px solid var(--info-border);font-size:11px;font-weight:600"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>{{ job.source }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isMatches }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:16px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:22px;font-weight:800;letter-spacing:-.01em">Matches</span><span style="font-size:14px;color:var(--text-secondary)">ranked for you</span></div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <sc-for list="{{ matches }}" as="m" hint-placeholder-count="4">
+              <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:16px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;gap:12px;align-items:flex-start">
+                  <div style="flex:none;width:42px;height:42px;border-radius:var(--radius-md);background:var(--brand-soft);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--brand-700);font-weight:700;font-size:18px">{{ m.initial }}</div>
+                  <div style="flex:1;min-width:0"><div style="font-size:16px;line-height:21px;font-weight:600">{{ m.title }}</div><div style="font-size:13px;color:var(--text-secondary);font-weight:500">{{ m.company }} · {{ m.location }}</div></div>
+                  <div style="position:relative;width:52px;height:52px;flex:none"><svg width="52" height="52" viewBox="0 0 52 52" style="transform:rotate(-90deg)"><circle cx="26" cy="26" r="21" fill="none" stroke="var(--neutral-200)" stroke-width="5"/><circle cx="26" cy="26" r="21" fill="none" stroke="{{ m.ring }}" stroke-width="5" stroke-linecap="round" stroke-dasharray="{{ m.circ }}" stroke-dashoffset="{{ m.dash }}"/></svg><span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:15px;color:{{ m.ringText }}">{{ m.score }}</span></div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13px;color:var(--text-secondary)">
+                  <span style="font-family:var(--font-mono);color:var(--text-primary);font-weight:500">{{ m.salary }}</span>
+                  <span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--radius-pill);background:var(--info-soft);color:var(--info-text);border:1px solid var(--info-border);font-size:11px;font-weight:600">{{ m.source }}</span>
+                </div>
+                <div style="border-top:1px solid var(--color-border);padding-top:12px;display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;background:{{ m.verdictBg }};color:{{ m.verdictFg }};border:1px solid {{ m.verdictBd }}">{{ m.verdictLabel }}</span>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    <sc-for list="{{ m.strengthChips }}" as="c" hint-placeholder-count="3"><span style="padding:2px 9px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;background:var(--success-soft);color:var(--success-text);border:1px solid var(--success-border)">{{ c.label }}</span></sc-for>
+                    <sc-for list="{{ m.gapChips }}" as="c" hint-placeholder-count="1"><span style="padding:2px 9px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;background:var(--warning-soft);color:var(--warning-text);border:1px solid var(--warning-border)">{{ c.label }}</span></sc-for>
+                  </div>
+                  <button onClick="{{ m.open }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:11px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:14px;font-weight:700">Tailor resume</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isShortlist }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.toJobs }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Jobs</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 14px">Shortlist</div>
+          <sc-if value="{{ hasShortlist }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ shortlist }}" as="job" hint-placeholder-count="2">
+                <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:16px;display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;gap:12px;align-items:flex-start">
+                    <div style="flex:none;width:42px;height:42px;border-radius:var(--radius-md);background:var(--brand-soft);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--brand-700);font-weight:700;font-size:18px">{{ job.initial }}</div>
+                    <div style="flex:1;min-width:0"><div style="font-size:16px;line-height:22px;font-weight:600">{{ job.title }}</div><div style="font-size:14px;color:var(--text-secondary);font-weight:500">{{ job.company }}</div></div>
+                    <button onClick="{{ job.toggle }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:4px;color:var(--brand-600)"><svg width="20" height="20" viewBox="0 0 24 24" fill="var(--brand-600)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></button>
+                  </div>
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;font-size:13px;color:var(--text-secondary)"><span>{{ job.location }}</span><span style="font-family:var(--font-mono);color:var(--text-primary)">{{ job.salary }}</span><span style="margin-left:auto;padding:2px 8px;border-radius:var(--radius-pill);background:var(--info-soft);color:var(--info-text);border:1px solid var(--info-border);font-size:11px;font-weight:600">{{ job.source }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noShortlist }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:56px 24px">
+              <span style="width:60px;height:60px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-600);display:flex;align-items:center;justify-content:center;margin-bottom:16px"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg></span>
+              <div style="font-size:18px;font-weight:700">No saved jobs yet</div>
+              <div style="font-size:14px;color:var(--text-secondary);margin-top:6px;max-width:250px">Tap the bookmark on any job to add it to your shortlist.</div>
+              <button onClick="{{ act.toJobs }}" style="appearance:none;border:none;cursor:pointer;margin-top:20px;padding:10px 18px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:14px;font-weight:700">Browse jobs</button>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isTailoring }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column">
+          <div style="flex:none;padding:8px 16px 12px;border-bottom:1px solid var(--color-border);background:var(--color-surface)">
+            <button onClick="{{ act.backMatches }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Matches</button>
+            <div style="font-size:20px;font-weight:800;letter-spacing:-.01em;margin-top:4px">Tailor resume</div>
+            <div style="font-size:13px;color:var(--text-secondary);margin-top:2px">{{ selMatch.title }} · {{ selMatch.company }}</div>
+          </div>
+          <div style="flex:1 1 auto;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:16px;color:var(--info-text);background:var(--info-soft);border:1px solid var(--info-border);border-radius:var(--radius-md);padding:10px 12px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg><span>4 suggested edits. One was blocked by a guardrail — review before applying.</span></div>
+            <sc-for list="{{ diffRows }}" as="d" hint-placeholder-count="3">
+              <div style="border:1px solid var(--color-border);border-radius:var(--radius-md);overflow:hidden;background:var(--color-surface)">
+                <div style="display:flex;gap:8px;padding:10px 12px;background:var(--neutral-50);border-bottom:1px solid var(--color-border)"><span style="flex:none;font-family:var(--font-mono);font-weight:700;color:var(--neutral-400);line-height:20px">–</span><span style="font-size:14px;line-height:20px;color:var(--text-tertiary);text-decoration:line-through;text-decoration-color:var(--neutral-300)">{{ d.original }}</span></div>
+                <div style="display:flex;gap:8px;padding:10px 12px;background:{{ d.tailBg }}"><span style="flex:none;font-family:var(--font-mono);font-weight:700;color:{{ d.markColor }};line-height:20px">+</span><span style="flex:1;font-size:14px;line-height:20px;font-weight:500;color:{{ d.tailColor }};text-decoration:{{ d.tailDecoration }}">{{ d.tailored }}</span></div>
+                <sc-if value="{{ d.fail }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:5px;padding:7px 12px;background:var(--critical-soft);border-top:1px solid var(--critical-border);font-size:12px;font-weight:600;color:var(--critical-text)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 22 20H2L12 3z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>Guardrail fail — unverifiable claim</div></sc-if>
+                <div style="display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--color-border)">
+                  <button onClick="{{ d.reject }}" style="appearance:none;cursor:pointer;flex:1;padding:8px;border-radius:var(--radius-sm);border:1px solid {{ d.rejectBd }};background:{{ d.rejectBg }};color:{{ d.rejectFg }};font-family:var(--font-sans);font-size:13px;font-weight:600">Keep original</button>
+                  <button onClick="{{ d.accept }}" style="appearance:none;cursor:pointer;flex:1;padding:8px;border-radius:var(--radius-sm);border:1px solid {{ d.acceptBd }};background:{{ d.acceptBg }};color:{{ d.acceptFg }};font-family:var(--font-sans);font-size:13px;font-weight:600">Use tailored</button>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="flex:none;padding:12px 16px;border-top:1px solid var(--color-border);background:var(--color-surface);display:flex;gap:10px">
+            <button onClick="{{ act.acceptAll }}" style="appearance:none;cursor:pointer;flex:none;padding:14px 16px;border-radius:var(--radius-md);background:transparent;border:1.5px solid var(--color-border-strong);color:var(--text-primary);font-family:var(--font-sans);font-size:14px;font-weight:700">Accept all</button>
+            <button onClick="{{ act.generateResume }}" style="appearance:none;border:none;cursor:pointer;flex:1;padding:14px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:15px;font-weight:700">Generate tailored resume</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isResumeGenerating }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;background:var(--color-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;box-sizing:border-box;text-align:center;gap:22px">
+          <div style="width:76px;height:76px;border-radius:50%;border:5px solid var(--brand-100);border-top-color:var(--brand-600);animation:jha-spin .9s linear infinite"></div>
+          <div>
+            <div style="font-size:19px;font-weight:700">Compiling your tailored resume</div>
+            <div style="font-size:14px;color:var(--text-secondary);margin-top:6px;max-width:260px">Applying your accepted edits and formatting a clean copy for {{ selMatch.company }}.</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isResumePreview }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column;background:var(--color-surface-sunken)">
+          <div style="flex:none;padding:8px 16px 10px;background:var(--color-surface);border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:8px">
+            <button onClick="{{ act.backResumePreview }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Edits</button>
+            <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:var(--radius-pill);background:var(--success-soft);color:var(--success-text);border:1px solid var(--success-border);font-size:12px;font-weight:600"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>Updated resume ready</span>
+          </div>
+          <div style="flex:1 1 auto;overflow-y:auto;padding:18px 16px 24px">
+            <div style="background:#fff;border-radius:var(--radius-md);box-shadow:var(--elev-2);padding:24px 22px;font-family:var(--font-sans);color:#1a1a22">
+              <div style="font-size:19px;font-weight:800;letter-spacing:-.01em">{{ parsed.name }}</div>
+              <div style="font-size:12.5px;color:#5a5a68;margin-top:2px">{{ parsed.location }} · {{ parsed.email }}</div>
+              <div style="height:1px;background:#e2e2ec;margin:14px 0"></div>
+              <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#8a8a9c;margin-bottom:8px">Tailored for {{ selMatch.title }} · {{ selMatch.company }}</div>
+              <div style="margin-bottom:16px">
+                <div style="font-size:14px;font-weight:700">{{ primaryExp.role }}</div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;color:#5a5a68"><span>{{ primaryExp.company }}</span><span style="font-family:var(--font-mono)">{{ primaryExp.dates }}</span></div>
+                <ul style="margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:5px">
+                  <sc-for list="{{ resumeBullets }}" as="b" hint-placeholder-count="3">
+                    <li style="font-size:12.5px;line-height:18px;color:#2a2a36">{{ b.text }}</li>
+                  </sc-for>
+                </ul>
+              </div>
+              <sc-for list="{{ otherExp }}" as="x" hint-placeholder-count="2">
+                <div style="margin-bottom:12px">
+                  <div style="font-size:13.5px;font-weight:700">{{ x.role }}</div>
+                  <div style="display:flex;justify-content:space-between;font-size:12px;color:#5a5a68"><span>{{ x.company }}</span><span style="font-family:var(--font-mono)">{{ x.dates }}</span></div>
+                </div>
+              </sc-for>
+              <div style="height:1px;background:#e2e2ec;margin:14px 0"></div>
+              <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#8a8a9c;margin-bottom:8px">Skills</div>
+              <div style="font-size:12.5px;line-height:19px;color:#2a2a36">{{ parsed.role }} · Design Systems · Prototyping · Fintech · 0→1 · Figma · User Research · Accessibility</div>
+              <div style="height:1px;background:#e2e2ec;margin:14px 0"></div>
+              <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#8a8a9c;margin-bottom:8px">Education</div>
+              <sc-for list="{{ eduView }}" as="x" hint-placeholder-count="1">
+                <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#2a2a36"><span>{{ x.school }} — {{ x.degree }}</span><span style="font-family:var(--font-mono);color:#5a5a68">{{ x.dates }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 16px 20px;border-top:1px solid var(--color-border);background:var(--color-surface)">
+            <button onClick="{{ act.submitApp }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:16px;font-weight:700">Submit application</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isTrack }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;display:flex;flex-direction:column">
+          <div style="flex:none;padding:16px 16px 12px"><div style="font-size:22px;font-weight:800;letter-spacing:-.01em">Applications</div><div style="font-size:14px;color:var(--text-secondary);margin-top:2px">Swipe the board · tap a card to update</div></div>
+          <div style="flex:1 1 auto;overflow-x:auto;overflow-y:hidden;padding:0 16px 16px">
+            <div style="display:flex;gap:12px;height:100%;align-items:stretch">
+              <sc-for list="{{ columns }}" as="col" hint-placeholder-count="4">
+                <div style="flex:none;width:230px;display:flex;flex-direction:column;background:var(--color-surface-sunken);border:1px solid var(--color-border);border-radius:var(--radius-lg);max-height:100%">
+                  <div style="flex:none;display:flex;align-items:center;gap:8px;padding:12px 12px 8px"><span style="display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;background:{{ col.pillBg }};color:{{ col.pillFg }};border:1px solid {{ col.pillBd }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ col.dot }}"></span>{{ col.label }}</span><span style="margin-left:auto;font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-tertiary)">{{ col.count }}</span></div>
+                  <div style="flex:1 1 auto;overflow-y:auto;padding:4px 8px 10px;display:flex;flex-direction:column;gap:8px">
+                    <sc-for list="{{ col.items }}" as="app" hint-placeholder-count="2">
+                      <div onClick="{{ app.open }}" style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);box-shadow:var(--elev-1);padding:11px 12px;cursor:pointer">
+                        <div style="display:flex;gap:9px;align-items:center"><div style="flex:none;width:30px;height:30px;border-radius:var(--radius-sm);background:var(--brand-soft);color:var(--brand-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">{{ app.initial }}</div><div style="min-width:0"><div style="font-size:14px;font-weight:600;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ app.title }}</div><div style="font-size:12px;color:var(--text-secondary)">{{ app.company }}</div></div></div>
+                        <div style="font-size:12px;color:var(--text-tertiary);margin-top:8px">{{ app.note }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isAppDetail }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.backTrack }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Board</button>
+          <div style="display:flex;gap:14px;align-items:center;margin:12px 0 18px">
+            <div style="flex:none;width:56px;height:56px;border-radius:var(--radius-lg);background:var(--brand-soft);color:var(--brand-700);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:24px">{{ selApp.initial }}</div>
+            <div style="flex:1;min-width:0"><div style="font-size:19px;font-weight:700;line-height:24px">{{ selApp.title }}</div><div style="font-size:14px;color:var(--text-secondary)">{{ selApp.company }}</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px"><span style="font-size:13px;font-weight:600;color:var(--text-secondary)">Current stage</span><span style="display:inline-flex;align-items:center;padding:3px 11px;border-radius:var(--radius-pill);font-size:12px;font-weight:600;background:{{ selApp.pillBg }};color:{{ selApp.pillFg }};border:1px solid {{ selApp.pillBd }}">{{ selApp.stageLabel }}</span></div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:10px">Move to stage</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+            <sc-for list="{{ stageOptions }}" as="opt" hint-placeholder-count="6">
+              <button onClick="{{ opt.move }}" style="appearance:none;cursor:pointer;display:flex;align-items:center;gap:7px;padding:12px;border-radius:var(--radius-md);background:{{ opt.bg }};border:1.5px solid {{ opt.bd }};font-family:var(--font-sans);font-size:14px;font-weight:600;color:{{ opt.fg }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ opt.dot }}"></span>{{ opt.label }}</button>
+            </sc-for>
+          </div>
+          <div style="margin-top:22px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:16px"><div style="font-size:13px;font-weight:700;margin-bottom:6px">Notes</div><div style="font-size:14px;color:var(--text-secondary);line-height:20px">{{ selApp.note }}</div></div>
+          <button onClick="{{ act.toFollowup }}" style="appearance:none;cursor:pointer;width:100%;margin-top:14px;padding:13px;border-radius:var(--radius-md);background:transparent;border:1.5px solid var(--color-border-strong);color:var(--text-primary);font-family:var(--font-sans);font-size:14px;font-weight:600">Draft a follow-up</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isActivity }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.backHome }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Home</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 4px">Agent activity</div>
+          <div style="font-size:14px;color:var(--text-secondary);margin-bottom:18px">What the agent did on your behalf</div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ activity }}" as="a" hint-placeholder-count="5">
+              <div style="display:flex;gap:12px">
+                <div style="display:flex;flex-direction:column;align-items:center;flex:none"><span style="width:32px;height:32px;border-radius:var(--radius-pill);background:{{ a.bg }};color:{{ a.fg }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700">{{ a.glyph }}</span><span style="flex:1;width:2px;background:var(--color-border);margin-top:4px;min-height:14px"></span></div>
+                <div style="flex:1;padding-bottom:18px"><div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;font-weight:600;line-height:20px">{{ a.title }}</span><span style="margin-left:auto;flex:none;font-family:var(--font-mono);font-size:11px;color:var(--text-tertiary)">{{ a.timestamp }}</span></div><div style="font-size:13px;line-height:18px;color:var(--text-secondary);margin-top:2px">{{ a.detail }}</div></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isFollowup }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.backTrack }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Board</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 4px">Follow-ups</div>
+          <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">Approve the drafts the agent prepared for stale applications</div>
+          <sc-if value="{{ hasFollowups }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <sc-for list="{{ followups }}" as="f" hint-placeholder-count="2">
+                <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:10px;padding:14px 14px 10px"><div style="flex:1"><div style="font-size:15px;font-weight:700">{{ f.role }} · {{ f.company }}</div><div style="font-size:12px;color:var(--warning-text);font-weight:600;margin-top:2px">No reply in {{ f.days }} days</div></div><span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:var(--radius-pill);background:var(--warning-soft);color:var(--warning-text);border:1px solid var(--warning-border);font-size:11px;font-weight:600">Stale</span></div>
+                  <div style="margin:0 14px;padding:12px;background:var(--neutral-50);border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;line-height:19px;color:var(--text-secondary)">{{ f.draft }}</div>
+                  <sc-if value="{{ f.pending }}" hint-placeholder-val="{{ true }}">
+                    <div style="display:flex;gap:10px;padding:14px">
+                      <button onClick="{{ f.dismiss }}" style="appearance:none;cursor:pointer;flex:none;padding:11px 16px;border-radius:var(--radius-md);background:transparent;border:1.5px solid var(--color-border-strong);color:var(--text-secondary);font-family:var(--font-sans);font-size:14px;font-weight:600">Dismiss</button>
+                      <button onClick="{{ f.approve }}" style="appearance:none;border:none;cursor:pointer;flex:1;padding:11px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:14px;font-weight:700">Approve &amp; send</button>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ f.sent }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:6px;padding:14px;color:var(--success-text);font-size:14px;font-weight:600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>Follow-up sent</div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ noFollowups }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:56px 24px"><span style="width:60px;height:60px;border-radius:var(--radius-pill);background:var(--success-soft);color:var(--success-text);display:flex;align-items:center;justify-content:center;margin-bottom:16px"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg></span><div style="font-size:18px;font-weight:700">All caught up</div><div style="font-size:14px;color:var(--text-secondary);margin-top:6px;max-width:250px">No stale applications need a nudge right now.</div></div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isProfile }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:16px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em">Profile</div>
+          <div style="display:flex;gap:14px;align-items:center;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:16px">
+            <div style="flex:none;width:56px;height:56px;border-radius:var(--radius-pill);background:var(--brand-600);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px">AR</div>
+            <div style="flex:1"><div style="font-size:17px;font-weight:700">{{ parsed.name }}</div><div style="font-size:13px;color:var(--text-secondary)">{{ parsed.role }} · {{ parsed.years }}</div></div>
+          </div>
+          <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);overflow:hidden">
+            <div onClick="{{ act.toProfileReview }}" style="display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer;border-bottom:1px solid var(--color-border)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l5 5v13H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><path d="M8.5 13h7M8.5 16.5h7"/></svg><span style="flex:1;font-size:15px;font-weight:600">Resume &amp; parsed profile</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6 15.5 12 9.5 18"/></svg></div>
+            <div onClick="{{ act.toRoles }}" style="display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer;border-bottom:1px solid var(--color-border)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0-10 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0"/></svg><span style="flex:1;font-size:15px;font-weight:600">Target roles <span style="color:var(--text-tertiary);font-weight:500">· {{ rolesCount }}</span></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6 15.5 12 9.5 18"/></svg></div>
+            <div onClick="{{ act.toCost }}" style="display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer;border-bottom:1px solid var(--color-border)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 14l3-3 2 2 3-4"/></svg><span style="flex:1;font-size:15px;font-weight:600">LLM cost &amp; usage <span style="color:var(--text-tertiary);font-weight:500">· {{ cost.month }}</span></span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6 15.5 12 9.5 18"/></svg></div>
+            <div onClick="{{ act.toGrowth }}" style="display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer;border-bottom:1px solid var(--color-border)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/></svg><span style="flex:1;font-size:15px;font-weight:600">Skill growth</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6 15.5 12 9.5 18"/></svg></div>
+            <div onClick="{{ act.toSettings }}" style="display:flex;align-items:center;gap:12px;padding:15px 16px;cursor:pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg><span style="flex:1;font-size:15px;font-weight:600">Settings</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6 15.5 12 9.5 18"/></svg></div>
+          </div>
+          <button onClick="{{ act.signOut }}" style="appearance:none;cursor:pointer;width:100%;padding:13px;border-radius:var(--radius-md);background:transparent;border:1.5px solid var(--color-border-strong);color:var(--critical-text);font-family:var(--font-sans);font-size:15px;font-weight:600">Sign out</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isProfileReview }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.backProfile }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Profile</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 2px">Parsed profile</div>
+          <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--success-text);font-weight:600;margin-bottom:18px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9 17.5 20 6.5"/></svg>Resume parsed · Alex_Rivera_Resume.pdf</div>
+          <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:16px;margin-bottom:14px">
+            <div style="font-size:17px;font-weight:700">{{ parsed.name }}</div><div style="font-size:14px;color:var(--text-secondary)">{{ parsed.role }}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:12px;font-size:13px;color:var(--text-secondary)"><span>{{ parsed.location }}</span><span>{{ parsed.years }}</span><span style="font-family:var(--font-mono)">{{ parsed.email }}</span></div>
+          </div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:8px">Skills</div>
+          <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:20px"><sc-for list="{{ parsedSkills }}" as="k" hint-placeholder-count="6"><span style="padding:5px 11px;border-radius:var(--radius-pill);background:var(--brand-soft);color:var(--brand-700);border:1px solid var(--brand-soft-border);font-size:13px;font-weight:600">{{ k.label }}</span></sc-for></div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:8px">Experience</div>
+          <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:20px">
+            <sc-for list="{{ parsedExp }}" as="x" hint-placeholder-count="3">
+              <div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--color-border)"><div style="flex:1"><div style="font-size:15px;font-weight:600">{{ x.role }}</div><div style="font-size:13px;color:var(--text-secondary)">{{ x.co }}</div></div><div style="font-family:var(--font-mono);font-size:12px;color:var(--text-tertiary);white-space:nowrap">{{ x.dates }}</div></div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ hasProjects }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:8px">Projects</div>
+            <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:20px">
+              <sc-for list="{{ projectsView }}" as="x" hint-placeholder-count="1">
+                <div style="padding:12px 0;border-bottom:1px solid var(--color-border)"><div style="font-size:15px;font-weight:600">{{ x.name }}</div><div style="font-size:13px;color:var(--text-secondary);margin-top:2px;line-height:18px">{{ x.description }}</div></div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <sc-if value="{{ hasEdu }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:8px">Education</div>
+            <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:20px">
+              <sc-for list="{{ eduView }}" as="x" hint-placeholder-count="1">
+                <div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--color-border)"><div style="flex:1"><div style="font-size:15px;font-weight:600">{{ x.school }}</div><div style="font-size:13px;color:var(--text-secondary)">{{ x.degree }}</div></div><div style="font-family:var(--font-mono);font-size:12px;color:var(--text-tertiary);white-space:nowrap">{{ x.dates }}</div></div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <button onClick="{{ act.toProfileEdit }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:13px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:14px;font-weight:700">Edit details</button>
+            <button onClick="{{ act.toUpload }}" style="appearance:none;cursor:pointer;width:100%;padding:13px;border-radius:var(--radius-md);background:transparent;border:1.5px solid var(--color-border-strong);color:var(--text-primary);font-family:var(--font-sans);font-size:14px;font-weight:600">Re-upload resume</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isCostStats }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.backProfile }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Profile</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 18px">LLM usage</div>
+          <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--elev-1);padding:18px;margin-bottom:14px">
+            <div style="font-size:13px;color:var(--text-secondary);font-weight:600">This month</div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 12px"><span style="font-family:var(--font-mono);font-size:34px;font-weight:700;letter-spacing:-.02em">{{ cost.month }}</span><span style="font-size:14px;color:var(--text-tertiary)">of {{ cost.budget }} budget</span></div>
+            <div style="height:10px;border-radius:var(--radius-pill);background:var(--neutral-200);overflow:hidden"><div style="height:100%;border-radius:var(--radius-pill);background:var(--brand-600);width:{{ costWidth }}"></div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:14px"><div style="font-family:var(--font-mono);font-size:20px;font-weight:700">{{ cost.calls }}</div><div style="font-size:12px;color:var(--text-tertiary);font-weight:600;margin-top:2px">API calls</div></div>
+            <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:14px"><div style="font-family:var(--font-mono);font-size:20px;font-weight:700">{{ cost.tokens }}</div><div style="font-size:12px;color:var(--text-tertiary);font-weight:600;margin-top:2px">Tokens used</div></div>
+          </div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:10px">By activity</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <sc-for list="{{ costBreakdown }}" as="b" hint-placeholder-count="3">
+              <div><div style="display:flex;justify-content:space-between;font-size:14px;font-weight:600;margin-bottom:6px"><span>{{ b.label }}</span><span style="font-family:var(--font-mono)">{{ b.amt }}</span></div><div style="height:8px;border-radius:var(--radius-pill);background:var(--neutral-200);overflow:hidden"><div style="height:100%;border-radius:var(--radius-pill);background:{{ b.color }};width:{{ b.pct }}%"></div></div></div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isSettings }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.backProfile }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Profile</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 18px">Settings</div>
+          <sc-for list="{{ settingsGroups }}" as="g" hint-placeholder-count="2">
+            <div style="margin-bottom:20px">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:8px">{{ g.title }}</div>
+              <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);overflow:hidden">
+                <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--color-border)">
+                    <div style="flex:1"><div style="font-size:15px;font-weight:600">{{ it.label }}</div><div style="font-size:12px;color:var(--text-secondary);margin-top:1px">{{ it.desc }}</div></div>
+                    <button onClick="{{ it.toggle }}" style="appearance:none;border:none;cursor:pointer;flex:none;position:relative;width:44px;height:26px;border-radius:var(--radius-pill);background:{{ it.track }};transition:background 150ms ease"><span style="position:absolute;top:2px;left:{{ it.thumb }};width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.28);transition:left 150ms ease"></span></button>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isAddJob }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.toJobs }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Jobs</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 2px">Add application manually</div>
+          <div style="font-size:14px;line-height:20px;color:var(--text-secondary);margin-bottom:20px">Paste a job posting or application-form link — we'll pull in the details.</div>
+
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="font-size:13px;font-weight:600;color:var(--text-secondary)">Posting or form link</label>
+            <input value="{{ manualJob.link }}" onChange="{{ act.manualLinkChange }}" placeholder="https://forms.gle/… or job posting URL" style="box-sizing:border-box;width:100%;padding:13px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface);font-family:var(--font-mono);font-size:14px;color:var(--text-primary);outline:none">
+          </div>
+          <button onClick="{{ act.parseJobLink }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:14px;margin-top:12px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:15px;font-weight:700">{{ manualParseBtnLabel }}</button>
+
+          <sc-if value="{{ manualParsed }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:22px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:16px;color:var(--info-text);background:var(--info-soft);border:1px solid var(--info-border);border-radius:var(--radius-md);padding:10px 12px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:1px"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg><span>Auto-filled from the link — review before adding.</span></div>
+              <sc-for list="{{ manualFieldRows }}" as="f" hint-placeholder-count="4">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <label style="font-size:13px;font-weight:600;color:var(--text-secondary)">{{ f.label }}</label>
+                  <input value="{{ f.value }}" onChange="{{ f.onChange }}" style="box-sizing:border-box;width:100%;padding:12px;border-radius:var(--radius-sm);border:1.5px solid var(--color-border-strong);background:var(--color-surface);font-family:var(--font-sans);font-size:14px;color:var(--text-primary);outline:none">
+                </div>
+              </sc-for>
+              <button onClick="{{ act.submitManualJob }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:15px;margin-top:6px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:16px;font-weight:700">Add to Applications</button>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ui.isSkillGrowth }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%;overflow-y:auto;padding:8px 16px 24px;box-sizing:border-box;display:flex;flex-direction:column">
+          <button onClick="{{ act.backHome }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:8px 0;color:var(--text-secondary);display:flex;align-items:center;gap:4px;font-size:15px;font-weight:600"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12l6 6"/></svg>Home</button>
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.01em;margin:8px 0 2px">Grow your match rate</div>
+          <div style="font-size:14px;line-height:20px;color:var(--text-secondary);margin-bottom:18px">Skills, courses and projects the agent thinks would move the needle most.</div>
+
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:9px">Skills to learn</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">
+            <sc-for list="{{ growthSkills }}" as="sk" hint-placeholder-count="3">
+              <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px">
+                <div style="display:flex;align-items:center;gap:8px"><span style="font-size:15px;font-weight:700">{{ sk.name }}</span><span style="margin-left:auto;padding:2px 9px;border-radius:var(--radius-pill);background:var(--success-soft);color:var(--success-text);border:1px solid var(--success-border);font-size:12px;font-weight:700">{{ sk.impactLabel }} matches</span></div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-top:6px;line-height:18px">{{ sk.reason }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:9px">Recommended courses</div>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">
+            <sc-for list="{{ growthCourses }}" as="c" hint-placeholder-count="3">
+              <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px;display:flex;gap:12px;align-items:center">
+                <span style="flex:none;width:40px;height:40px;border-radius:var(--radius-md);background:var(--brand-soft);color:var(--brand-700);display:flex;align-items:center;justify-content:center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5 12 3l8 3.5-8 3.5-8-3.5z"/><path d="M8 9v6c0 1.5 2 3 4 3s4-1.5 4-3V9"/></svg></span>
+                <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:700">{{ c.title }}</div><div style="font-size:12px;color:var(--text-secondary);margin-top:1px">{{ c.provider }} · {{ c.duration }}</div></div>
+                <span style="flex:none;font-size:12px;font-weight:700;color:var(--success-text)">{{ c.impactLabel }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-tertiary);margin-bottom:9px">Project ideas</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ growthProjects }}" as="p" hint-placeholder-count="2">
+              <div style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:14px">
+                <div style="font-size:14px;font-weight:700">{{ p.title }}</div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;line-height:18px">{{ p.impact }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!--MORE-->
+
+    </div>
+
+    <sc-if value="{{ ui.showNav }}" hint-placeholder-val="{{ false }}">
+      <nav style="flex:none;height:var(--bottomnav-h);display:grid;grid-template-columns:repeat(5,1fr);align-items:center;background:var(--color-surface);border-top:1px solid var(--color-border);box-shadow:var(--elev-3);z-index:10">
+        <button onClick="{{ nav.home.go }}" style="appearance:none;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:{{ nav.home.color }}"><span style="display:flex;align-items:center;justify-content:center;width:40px;height:24px;border-radius:var(--radius-pill);background:{{ nav.home.pill }}"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span><span style="font-size:10.5px;font-weight:600">Home</span></button>
+        <button onClick="{{ nav.jobs.go }}" style="appearance:none;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:{{ nav.jobs.color }}"><span style="display:flex;align-items:center;justify-content:center;width:40px;height:24px;border-radius:var(--radius-pill);background:{{ nav.jobs.pill }}"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5h18v11H3z"/><path d="M8 8.5V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2.5"/><path d="M3 13h18"/></svg></span><span style="font-size:10.5px;font-weight:600">Jobs</span></button>
+        <button onClick="{{ nav.matches.go }}" style="appearance:none;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:{{ nav.matches.color }}"><span style="display:flex;align-items:center;justify-content:center;width:40px;height:24px;border-radius:var(--radius-pill);background:{{ nav.matches.pill }}"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0"/><path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0-10 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0"/></svg></span><span style="font-size:10.5px;font-weight:600">Matches</span></button>
+        <button onClick="{{ nav.track.go }}" style="appearance:none;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:{{ nav.track.color }}"><span style="display:flex;align-items:center;justify-content:center;width:40px;height:24px;border-radius:var(--radius-pill);background:{{ nav.track.pill }}"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M9.5 4v16"/><path d="M15 4v16"/></svg></span><span style="font-size:10.5px;font-weight:600">Track</span></button>
+        <button onClick="{{ nav.profile.go }}" style="appearance:none;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;color:{{ nav.profile.color }}"><span style="display:flex;align-items:center;justify-content:center;width:40px;height:24px;border-radius:var(--radius-pill);background:{{ nav.profile.pill }}"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0"/><path d="M4 21c0-3.5 3.6-5.5 8-5.5s8 2 8 5.5"/></svg></span><span style="font-size:10.5px;font-weight:600">Profile</span></button>
+      </nav>
+    </sc-if>
+
+    <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;bottom:78px;left:50%;transform:translateX(-50%);z-index:40;background:var(--neutral-900);color:#fff;padding:11px 18px;border-radius:var(--radius-pill);font-size:14px;font-weight:600;box-shadow:var(--elev-4);white-space:nowrap;animation:jha-toast .22s ease">{{ toast }}</div>
+    </sc-if>
+
+    <sc-if value="{{ showGrowthModal }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;z-index:50;background:var(--color-overlay);display:flex;align-items:center;justify-content:center;padding:28px;box-sizing:border-box">
+        <div style="width:100%;background:var(--color-surface);border-radius:var(--radius-xl);box-shadow:var(--elev-4);padding:24px 22px;text-align:center;display:flex;flex-direction:column;align-items:center;animation:jha-fade .25s ease">
+          <span style="width:60px;height:60px;border-radius:var(--radius-pill);background:var(--success-soft);color:var(--success-text);display:flex;align-items:center;justify-content:center;margin-bottom:14px"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M6 15l4-5 3 3 5-7"/></svg></span>
+          <div style="font-size:19px;font-weight:800;letter-spacing:-.01em">Boost your matches by {{ topGrowthSkill.impact }}%</div>
+          <div style="font-size:14px;line-height:20px;color:var(--text-secondary);margin-top:8px">Learning <strong style="color:var(--text-primary)">{{ topGrowthSkill.name }}</strong> would raise your match rate on roles like this — {{ topGrowthSkill.reason }}</div>
+          <button onClick="{{ act.toGrowth }}" style="appearance:none;border:none;cursor:pointer;width:100%;padding:14px;margin-top:20px;border-radius:var(--radius-md);background:var(--brand);color:#fff;font-family:var(--font-sans);font-size:15px;font-weight:700">See growth plan</button>
+          <button onClick="{{ act.dismissGrowth }}" style="appearance:none;border:none;background:transparent;cursor:pointer;padding:10px;margin-top:2px;color:var(--text-tertiary);font-family:var(--font-sans);font-size:14px;font-weight:600">Maybe later</button>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    screen: 'splash', authMode: 'signup',
+    uploading: false, uploadPct: 0, resumeUploaded: false,
+    roles: ['Product Designer', 'Design Systems'], roleDraft: '',
+    profileEditFrom: 'onboarding', skillDraft: '',
+    profileData: {
+      skills: ['Design Systems', 'Prototyping', 'Fintech', '0→1', 'Figma', 'User Research', 'Accessibility'],
+      experience: [
+        { id: 'exp1', role: 'Senior Product Designer', company: 'Fintech Startup', dates: '2021 — Now', description: 'Led design systems and 0→1 product work for the core banking app.' },
+        { id: 'exp2', role: 'Product Designer', company: 'Design Agency', dates: '2018 — 2021', description: 'Delivered client design systems and prototypes across fintech and healthcare.' },
+        { id: 'exp3', role: 'UX Designer', company: 'SaaS Co', dates: '2016 — 2018', description: 'Owned onboarding and activation flows for a B2B analytics product.' },
+      ],
+      projects: [
+        { id: 'proj1', name: 'Design System Playbook', link: 'github.com/alexrivera/design-playbook', description: 'Open-sourced token and component guidelines, adopted by 3 portfolio companies.' },
+      ],
+      education: [
+        { id: 'edu1', school: 'University of California, Berkeley', degree: 'B.A. Cognitive Science', dates: '2012 — 2016' },
+      ],
+    },
+    savedIds: { j1: true, j3: true },
+    selectedMatchId: 'm1', selectedAppId: null,
+    diff: {}, userApps: [], appStage: {}, followupsDone: {},
+    settings: { alerts: true, autoTailor: false, followupNudge: true, autoApply: false },
+    matchingPct: 0,
+    manualJob: { link: '', parsing: false, parsed: false, fields: {} },
+    showGrowthModal: false, growthShown: false,
+    toast: null,
+  };
+
+  JOBS = [
+    { id: 'j1', title: 'Senior Product Designer', company: 'Northwind Labs', location: 'SF · Remote', source: 'LinkedIn', salary: '$150–185K', postedAt: '2d ago' },
+    { id: 'j2', title: 'Staff Product Designer', company: 'Acme Cloud', location: 'New York, NY', source: 'Greenhouse', salary: '$180–220K', postedAt: '4d ago' },
+    { id: 'j3', title: 'Design Systems Lead', company: 'Globex', location: 'Remote (US)', source: 'Lever', salary: '$170–205K', postedAt: '1d ago' },
+    { id: 'j4', title: 'Product Designer, Growth', company: 'Initech', location: 'Austin · Hybrid', source: 'LinkedIn', salary: '$135–160K', postedAt: '6h ago' },
+    { id: 'j5', title: 'Principal Designer', company: 'Umbrella', location: 'Seattle, WA', source: 'Ashby', salary: '$205–250K', postedAt: '3d ago' },
+    { id: 'j6', title: 'UX Designer, Payments', company: 'Stark Fintech', location: 'Remote', source: 'Greenhouse', salary: '$140–170K', postedAt: '5d ago' },
+  ];
+
+  MATCHES = [
+    { id: 'm1', title: 'Senior Product Designer', company: 'Northwind Labs', location: 'SF · Remote', source: 'LinkedIn', salary: '$150–185K', score: 92, verdict: 'apply', strengths: ['Design systems', 'Fintech', '0→1 product'], gaps: ['No Figma variables'] },
+    { id: 'm2', title: 'Design Systems Lead', company: 'Globex', location: 'Remote (US)', source: 'Lever', salary: '$170–205K', score: 88, verdict: 'apply', strengths: ['Systems at scale', 'Tokens', 'Docs'], gaps: ['People mgmt light'] },
+    { id: 'm3', title: 'Staff Product Designer', company: 'Acme Cloud', location: 'New York, NY', source: 'Greenhouse', salary: '$180–220K', score: 64, verdict: 'stretch', strengths: ['0→1', 'Prototyping'], gaps: ['B2B enterprise', 'No SaaS depth'] },
+    { id: 'm4', title: 'Principal Designer', company: 'Umbrella', location: 'Seattle, WA', source: 'Ashby', salary: '$205–250K', score: 48, verdict: 'stretch', strengths: ['Product vision'], gaps: ['10+ yrs req', 'No mgmt'] },
+    { id: 'm5', title: 'UX Designer, Payments', company: 'Stark Fintech', location: 'Remote', source: 'Greenhouse', salary: '$140–170K', score: 31, verdict: 'skip', strengths: ['Payments'], gaps: ['Junior scope', 'Comp below target'] },
+  ];
+
+  APPLICATIONS = [
+    { id: 'a1', title: 'Product Designer', company: 'Linear', stage: 'new', note: 'Shortlisted' },
+    { id: 'a2', title: 'Sr Designer', company: 'Vercel', stage: 'applied', note: 'Applied Jul 2' },
+    { id: 'a8', title: 'UX Lead', company: 'Datadog', stage: 'applied', note: 'Applied Jul 5' },
+    { id: 'a3', title: 'Design Lead', company: 'Ramp', stage: 'replied', note: 'Recruiter replied' },
+    { id: 'a4', title: 'Staff Designer', company: 'Notion', stage: 'interview', note: 'Onsite Fri' },
+    { id: 'a5', title: 'Product Designer', company: 'Figma', stage: 'interview', note: 'Round 2' },
+    { id: 'a6', title: 'Sr Product Designer', company: 'Stripe', stage: 'offer', note: 'Verbal offer' },
+    { id: 'a7', title: 'Designer', company: 'Hooli', stage: 'rejected', note: 'No fit' },
+  ];
+
+  ACTIVITY = [
+    { kind: 'agent', title: 'Scanned 128 new postings', detail: 'Matched 6 to your profile', timestamp: '2h ago' },
+    { kind: 'match', title: 'New strong match — Northwind Labs', detail: '92% · verdict Apply', timestamp: '2h ago' },
+    { kind: 'applied', title: 'Auto-applied to Design Systems Lead', detail: 'Globex · tailored resume attached', timestamp: '5h ago' },
+    { kind: 'agent', title: 'Tailored 4 resumes', detail: '1,240 tokens · $0.038 · guardrails passed', timestamp: '6h ago' },
+    { kind: 'warning', title: '2 applications going stale', detail: 'No reply in 10+ days', timestamp: '1d ago' },
+    { kind: 'rejected', title: 'Rejected — Hooli', detail: 'Automated screening', timestamp: '2d ago' },
+  ];
+
+  FOLLOWUPS = [
+    { id: 'f1', company: 'Vercel', role: 'Sr Designer', days: 11, draft: 'Hi Jordan — following up on my Sr Designer application. I remain excited about Vercel\u2019s design-eng culture and would love to share how my design-systems work maps to your roadmap.' },
+    { id: 'f2', company: 'Datadog', role: 'UX Lead', days: 9, draft: 'Hi Sam — checking in on the UX Lead application from last week. I\u2019d welcome a chance to walk through my observability-dashboard work whenever timing suits.' },
+  ];
+
+  DIFFS = [
+    { id: 'd1', original: 'Worked on the design system.', tailored: 'Led the design-system rollout across 6 squads, cutting UI build time 40%.', fail: false },
+    { id: 'd2', original: 'Improved the onboarding flow.', tailored: 'Redesigned onboarding, lifting activation from 48% to 71% in one quarter.', fail: false },
+    { id: 'd3', original: 'Mentored two designers.', tailored: 'Managed a team of 12 designers across 3 continents.', fail: true },
+    { id: 'd4', original: 'Built prototypes for user testing.', tailored: 'Ran 30+ usability sessions and shipped 12 validated prototypes.', fail: false },
+  ];
+
+  PARSED = {
+    name: 'Alex Rivera', role: 'Senior Product Designer', years: '8 yrs exp', location: 'San Francisco, CA', email: 'alex.rivera@email.com',
+    skills: ['Design Systems', 'Prototyping', 'Fintech', '0→1', 'Figma', 'User Research', 'Accessibility'],
+    experience: [
+      { role: 'Senior Product Designer', co: 'Fintech Startup', dates: '2021 — Now' },
+      { role: 'Product Designer', co: 'Design Agency', dates: '2018 — 2021' },
+      { role: 'UX Designer', co: 'SaaS Co', dates: '2016 — 2018' },
+    ],
+  };
+
+  COST = {
+    month: '$4.82', budget: '$20.00', pct: 24, calls: '312', tokens: '184K',
+    breakdown: [
+      { label: 'Matching', amt: '$1.94', pct: 40, color: 'var(--info-fill)' },
+      { label: 'Tailoring', amt: '$2.16', pct: 45, color: 'var(--brand-600)' },
+      { label: 'Follow-ups', amt: '$0.72', pct: 15, color: 'var(--success-fill)' },
+    ],
+  };
+
+  STAGES = [['new', 'New'], ['applied', 'Applied'], ['replied', 'Replied'], ['interview', 'Interview'], ['offer', 'Offer'], ['rejected', 'Rejected']];
+
+  GROWTH_SKILLS = [
+    { id: 'sk1', name: 'Figma Variables & Tokens', impact: 20, reason: 'Shows up as a gap on 2 of your strongest matches, including Northwind Labs.' },
+    { id: 'sk2', name: 'People Management', impact: 14, reason: 'Blocking staff/principal-level roles that expect team leadership.' },
+    { id: 'sk3', name: 'B2B Enterprise UX', impact: 11, reason: 'Enterprise SaaS roles want workflow-heavy portfolio pieces.' },
+  ];
+  GROWTH_COURSES = [
+    { id: 'c1', title: 'Figma Variables & Design Tokens', provider: 'Design+Systems', duration: '3h', impact: 20 },
+    { id: 'c2', title: 'Managing Design Teams', provider: 'Coursera', duration: '6h', impact: 14 },
+    { id: 'c3', title: 'Enterprise UX Patterns', provider: 'Maven', duration: '4h', impact: 11 },
+  ];
+  GROWTH_PROJECTS = [
+    { id: 'p1', title: 'Rebuild a component library using Figma variables', impact: 'Strengthens your design-systems + tokens signal' },
+    { id: 'p2', title: 'Lead a small cross-functional pilot', impact: 'Demonstrates people-management experience' },
+  ];
+
+  componentWillUnmount() { clearInterval(this._iv); clearInterval(this._miv); clearTimeout(this._tt); }
+
+  go(screen) { this.setState({ screen }); }
+  notify(msg) { this.setState({ toast: msg }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: null }), 1800); }
+
+  startUpload() {
+    if (this.state.uploading) return;
+    this.setState({ uploading: true, uploadPct: 0 });
+    this._iv = setInterval(() => {
+      this.setState(s => {
+        let p = s.uploadPct + 8 + Math.round(Math.random() * 7);
+        if (p >= 100) { p = 100; clearInterval(this._iv); setTimeout(() => this.setState({ uploading: false, resumeUploaded: true, screen: 'profileEdit', profileEditFrom: 'onboarding' }), 450); }
+        return { uploadPct: p };
+      });
+    }, 110);
+  }
+
+  addRoleDraft() {
+    const t = (this.state.roleDraft || '').trim().replace(/,$/, '').trim();
+    if (!t) return;
+    if (this.state.roles.includes(t)) { this.setState({ roleDraft: '' }); return; }
+    this.setState(s => ({ roles: [...s.roles, t], roleDraft: '' }));
+  }
+  onRoleKey(e) {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); this.addRoleDraft(); }
+    else if (e.key === 'Backspace' && !this.state.roleDraft && this.state.roles.length) this.setState(s => ({ roles: s.roles.slice(0, -1) }));
+  }
+
+  addSkillDraft() {
+    const t = (this.state.skillDraft || '').trim().replace(/,$/, '').trim();
+    if (!t) return;
+    if (this.state.profileData.skills.includes(t)) { this.setState({ skillDraft: '' }); return; }
+    this.setState(s => ({ profileData: { ...s.profileData, skills: [...s.profileData.skills, t] }, skillDraft: '' }));
+  }
+  onSkillKey(e) {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); this.addSkillDraft(); }
+    else if (e.key === 'Backspace' && !this.state.skillDraft && this.state.profileData.skills.length) this.setState(s => ({ profileData: { ...s.profileData, skills: s.profileData.skills.slice(0, -1) } }));
+  }
+  removeSkill(skill) { this.setState(s => ({ profileData: { ...s.profileData, skills: s.profileData.skills.filter(x => x !== skill) } })); }
+
+  updateListField(listName, id, field, value) {
+    this.setState(s => ({ profileData: { ...s.profileData, [listName]: s.profileData[listName].map(it => (it.id === id ? { ...it, [field]: value } : it)) } }));
+  }
+  addListItem(listName, blank) {
+    this.setState(s => ({ profileData: { ...s.profileData, [listName]: [...s.profileData[listName], { ...blank, id: listName + '_' + Date.now() }] } }));
+  }
+  removeListItem(listName, id) {
+    this.setState(s => ({ profileData: { ...s.profileData, [listName]: s.profileData[listName].filter(x => x.id !== id) } }));
+  }
+  finishProfileEdit() {
+    if (this.state.profileEditFrom === 'onboarding') this.setState({ screen: 'roles' });
+    else { this.setState({ screen: 'profileReview' }); this.notify('Profile updated'); }
+  }
+  backProfileEdit() {
+    this.setState({ screen: this.state.profileEditFrom === 'onboarding' ? 'upload' : 'profileReview' });
+  }
+
+  startMatching() {
+    clearInterval(this._miv);
+    this.setState({ screen: 'matching', matchingPct: 0 });
+    this._miv = setInterval(() => {
+      this.setState(s => {
+        let p = s.matchingPct + 9 + Math.round(Math.random() * 8);
+        if (p >= 100) { p = 100; clearInterval(this._miv); setTimeout(() => this.setState({ screen: 'home', showGrowthModal: !this.state.growthShown, growthShown: true }), 500); }
+        return { matchingPct: p };
+      });
+    }, 130);
+  }
+
+  generateResume() {
+    this.setState({ screen: 'resumeGenerating' });
+    clearTimeout(this._gt);
+    this._gt = setTimeout(() => this.setState({ screen: 'resumePreview' }), 1000);
+  }
+
+  parseJobLink() {
+    const link = (this.state.manualJob.link || '').trim();
+    if (!link) return;
+    this.setState(s => ({ manualJob: { ...s.manualJob, parsing: true } }));
+    clearTimeout(this._pt);
+    this._pt = setTimeout(() => {
+      let company = 'Northwind Labs';
+      try {
+        const u = new URL(link.match(/^https?:\/\//) ? link : ('https://' + link));
+        const host = u.hostname.replace(/^www\./, '');
+        const seg = host.split('.')[0];
+        if (seg && seg !== 'docs' && seg !== 'forms') company = seg.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      } catch (e) {}
+      this.setState(s => ({
+        manualJob: { ...s.manualJob, parsing: false, parsed: true, fields: { title: 'Product Designer', company, location: 'Remote', salary: '$130K – $160K' } },
+      }));
+    }, 1300);
+  }
+  updateManualLink(v) { this.setState(s => ({ manualJob: { ...s.manualJob, link: v } })); }
+  updateManualField(field, value) { this.setState(s => ({ manualJob: { ...s.manualJob, fields: { ...s.manualJob.fields, [field]: value } } })); }
+  submitManualJob() {
+    const f = this.state.manualJob.fields;
+    const id = 'man_' + Date.now();
+    this.setState(s => ({
+      userApps: [...s.userApps, { id, title: f.title, company: f.company, stage: 'applied', note: 'Added manually' }],
+      screen: 'track',
+      manualJob: { link: '', parsing: false, parsed: false, fields: {} },
+    }));
+    this.notify('Application added');
+  }
+
+  toggleSave(id) {
+    const wasSaved = !!this.state.savedIds[id];
+    this.setState(s => { const n = { ...s.savedIds }; if (n[id]) delete n[id]; else n[id] = true; return { savedIds: n }; });
+    this.notify(wasSaved ? 'Removed from shortlist' : 'Saved to shortlist');
+  }
+
+  decideDiff(id, dec) { this.setState(s => ({ diff: { ...s.diff, [id]: dec } })); }
+  acceptAll() { const d = {}; this.DIFFS.forEach(x => (d[x.id] = 'accepted')); this.setState({ diff: d }); this.notify('All changes accepted'); }
+  submitApplication() {
+    const m = this.MATCHES.find(x => x.id === this.state.selectedMatchId) || {};
+    const id = 'u' + Date.now();
+    this.setState(s => ({ userApps: [...s.userApps, { id, title: m.title, company: m.company, stage: 'applied', note: 'Applied just now' }], screen: 'track' }));
+    this.notify('Application submitted');
+  }
+
+  openApp(id) { this.setState({ selectedAppId: id, screen: 'appDetail' }); }
+  moveApp(stage) { const id = this.state.selectedAppId; this.setState(s => ({ appStage: { ...s.appStage, [id]: stage } })); const lbl = (this.STAGES.find(x => x[0] === stage) || [])[1] || stage; this.notify('Moved to ' + lbl); }
+
+  approveFollowup(id) { this.setState(s => ({ followupsDone: { ...s.followupsDone, [id]: 'sent' } })); this.notify('Follow-up sent'); }
+  dismissFollowup(id) { this.setState(s => ({ followupsDone: { ...s.followupsDone, [id]: 'dismissed' } })); }
+  setSetting(k) { this.setState(s => ({ settings: { ...s.settings, [k]: !s.settings[k] } })); }
+
+  _allApps() {
+    const st = this.state;
+    return [...this.APPLICATIONS, ...st.userApps].map(a => ({ ...a, stage: st.appStage[a.id] || a.stage }));
+  }
+
+  renderVals() {
+    const s = this.state, scr = s.screen, self = this;
+    const is = x => scr === x;
+    const navScreens = ['home', 'jobs', 'matches', 'track', 'profile'];
+    const C = 2 * Math.PI * 21; // r=21
+    const ringColor = v => v >= 75 ? 'var(--success-fill)' : v >= 50 ? 'var(--warning-fill)' : 'var(--critical-fill)';
+    const ringText = v => v >= 75 ? 'var(--success-text)' : v >= 50 ? 'var(--warning-text)' : 'var(--critical-text)';
+    const vtone = { apply: ['--success-soft', '--success-text', '--success-border'], stretch: ['--warning-soft', '--warning-text', '--warning-border'], skip: ['--critical-soft', '--critical-text', '--critical-border'] };
+    const vlabel = { apply: 'Apply', stretch: 'Stretch', skip: 'Skip' };
+    const actGlyph = { agent: '\u25C6', match: '\u25CE', applied: '\u2713', warning: '!', rejected: '\u2715', info: 'i' };
+    const actTone = { agent: ['--brand-soft', '--brand-700'], match: ['--info-soft', '--info-text'], applied: ['--success-soft', '--success-text'], warning: ['--warning-soft', '--warning-text'], rejected: ['--critical-soft', '--critical-text'], info: ['--neutral-soft', '--neutral-text'] };
+
+    const ui = {
+      isSplash: is('splash'), isAuth: is('auth'), isWelcome: is('welcome'), isUpload: is('upload'), isRoles: is('roles'),
+      isHome: is('home'), isJobs: is('jobs'), isShortlist: is('shortlist'), isMatches: is('matches'), isTailoring: is('tailoring'),
+      isTrack: is('track'), isAppDetail: is('appDetail'), isActivity: is('activity'), isFollowup: is('followup'),
+      isProfile: is('profile'), isProfileReview: is('profileReview'), isProfileEdit: is('profileEdit'), isCostStats: is('costStats'), isSettings: is('settings'),
+      isMatching: is('matching'), isResumeGenerating: is('resumeGenerating'), isResumePreview: is('resumePreview'),
+      isAddJob: is('addJob'), isSkillGrowth: is('skillGrowth'),
+      showNav: navScreens.includes(scr),
+    };
+
+    const mkMatch = m => ({
+      ...m, initial: (m.company || '?').charAt(0).toUpperCase(), circ: C, dash: C * (1 - m.score / 100), ring: ringColor(m.score), ringText: ringText(m.score),
+      verdictLabel: vlabel[m.verdict], verdictBg: `var(${vtone[m.verdict][0]})`, verdictFg: `var(${vtone[m.verdict][1]})`, verdictBd: `var(${vtone[m.verdict][2]})`,
+      strengthChips: m.strengths.map((t, i) => ({ label: t, key: 's' + i })),
+      gapChips: m.gaps.map((t, i) => ({ label: t, key: 'g' + i })),
+      open: () => self.openTailor ? self.openTailor(m.id) : self.setState({ selectedMatchId: m.id, screen: 'tailoring' }),
+    });
+    const matches = this.MATCHES.map(mkMatch);
+
+    const jobs = this.JOBS.map(j => {
+      const saved = !!s.savedIds[j.id];
+      return { ...j, initial: (j.company || '?').charAt(0).toUpperCase(), saved,
+        saveColor: saved ? 'var(--brand-600)' : 'var(--neutral-400)', saveFill: saved ? 'var(--brand-600)' : 'none',
+        toggle: () => self.toggleSave(j.id) };
+    });
+    const shortlist = jobs.filter(j => j.saved);
+
+    const jobFilters = ['All', 'LinkedIn', 'Greenhouse', 'Lever', 'Ashby'].map((f, i) => ({
+      label: f, bg: i === 0 ? 'var(--brand-600)' : 'var(--color-surface)', fg: i === 0 ? '#fff' : 'var(--text-secondary)', bd: i === 0 ? 'var(--brand-600)' : 'var(--color-border)',
+    }));
+
+    const allApps = this._allApps();
+    const stageColor = { new: '--stage-new', applied: '--stage-applied', replied: '--stage-replied', interview: '--stage-interview', offer: '--stage-offer', rejected: '--stage-rejected' };
+    const stageTone = { new: ['--neutral-soft', '--neutral-text', '--neutral-chip-border'], applied: ['--info-soft', '--info-text', '--info-border'], replied: ['--info-soft', '--info-text', '--info-border'], interview: ['--info-soft', '--info-text', '--info-border'], offer: ['--success-soft', '--success-text', '--success-border'], rejected: ['--critical-soft', '--critical-text', '--critical-border'] };
+    const columns = this.STAGES.map(([key, label]) => {
+      const items = allApps.filter(a => a.stage === key).map(a => ({ ...a, initial: (a.company || '?').charAt(0).toUpperCase(), open: () => self.openApp(a.id) }));
+      return { key, label, count: items.length, dot: `var(${stageColor[key]})`, pillBg: `var(${stageTone[key][0]})`, pillFg: `var(${stageTone[key][1]})`, pillBd: `var(${stageTone[key][2]})`, items };
+    });
+
+    const countStage = k => allApps.filter(a => a.stage === k).length;
+    const activeApps = allApps.filter(a => a.stage !== 'rejected' && a.stage !== 'new').length;
+    const homeStats = [
+      { label: 'Top match', value: matches[0].score + '%', color: 'var(--success-text)' },
+      { label: 'Active', value: activeApps, color: 'var(--text-primary)' },
+      { label: 'Interviews', value: countStage('interview'), color: 'var(--info-text)' },
+    ];
+    const pipeline = this.STAGES.map(([key, label]) => ({ key, label, count: countStage(key), dot: `var(${stageColor[key]})` }));
+
+    const activity = this.ACTIVITY.map((a, i) => ({ ...a, glyph: actGlyph[a.kind], bg: `var(${actTone[a.kind][0]})`, fg: `var(${actTone[a.kind][1]})`, last: i === this.ACTIVITY.length - 1 }));
+    const homeActivity = activity.slice(0, 3);
+    const homeMatches = matches.slice(1, 3);
+
+    const heroRaw = matches[0];
+    const heroR = 46, heroCirc = 2 * Math.PI * heroR;
+    const heroMatch = { ...heroRaw, circ: heroCirc, dash: heroCirc * (1 - heroRaw.score / 100) };
+
+    const matchingLabel = s.matchingPct < 30 ? 'Scanning live postings…' : s.matchingPct < 65 ? 'Scoring against your profile…' : s.matchingPct < 95 ? 'Ranking your matches…' : 'Almost there…';
+
+    const followups = this.FOLLOWUPS.map(f => {
+      const st = s.followupsDone[f.id];
+      return { ...f, sent: st === 'sent', dismissed: st === 'dismissed', pending: !st,
+        approve: () => self.approveFollowup(f.id), dismiss: () => self.dismissFollowup(f.id) };
+    }).filter(f => !f.dismissed);
+
+    const selMatch = mkMatch(this.MATCHES.find(m => m.id === s.selectedMatchId) || this.MATCHES[0]);
+    const diffRows = this.DIFFS.map(d => {
+      const dec = s.diff[d.id];
+      return { ...d, accepted: dec === 'accepted', rejected: dec === 'rejected', decided: !!dec,
+        markColor: d.fail ? 'var(--critical-fill)' : 'var(--success-fill)',
+        tailBg: d.fail ? 'var(--critical-soft)' : (dec === 'rejected' ? 'var(--neutral-50)' : 'transparent'),
+        tailColor: dec === 'rejected' ? 'var(--text-tertiary)' : (d.fail ? 'var(--critical-text)' : 'var(--text-primary)'),
+        tailDecoration: dec === 'rejected' ? 'line-through' : 'none',
+        acceptBg: dec === 'accepted' ? 'var(--success-fill)' : 'var(--color-surface)', acceptFg: dec === 'accepted' ? '#fff' : 'var(--success-text)', acceptBd: dec === 'accepted' ? 'var(--success-fill)' : 'var(--success-border)',
+        rejectBg: dec === 'rejected' ? 'var(--neutral-600)' : 'var(--color-surface)', rejectFg: dec === 'rejected' ? '#fff' : 'var(--text-secondary)', rejectBd: dec === 'rejected' ? 'var(--neutral-600)' : 'var(--color-border-strong)',
+        accept: () => self.decideDiff(d.id, 'accepted'), reject: () => self.decideDiff(d.id, 'rejected') };
+    });
+
+    const resumeBullets = this.DIFFS.map(d => {
+      const dec = s.diff[d.id];
+      const text = d.fail ? (dec === 'accepted' ? d.tailored : d.original) : (dec === 'rejected' ? d.original : d.tailored);
+      return { text, key: d.id };
+    });
+
+    const growthSkills = this.GROWTH_SKILLS.map(g => ({ ...g, impactLabel: '+' + g.impact + '%' }));
+    const growthCourses = this.GROWTH_COURSES.map(c => ({ ...c, impactLabel: '+' + c.impact + '%' }));
+    const growthProjects = this.GROWTH_PROJECTS;
+    const topGrowthSkill = this.GROWTH_SKILLS[0];
+
+    const mj = s.manualJob;
+    const manualFieldRows = mj.parsed ? [
+      { key: 'title', label: 'Job title', value: mj.fields.title, mono: false, onChange: e => self.updateManualField('title', e.target.value) },
+      { key: 'company', label: 'Company', value: mj.fields.company, mono: false, onChange: e => self.updateManualField('company', e.target.value) },
+      { key: 'location', label: 'Location', value: mj.fields.location, mono: false, onChange: e => self.updateManualField('location', e.target.value) },
+      { key: 'salary', label: 'Salary', value: mj.fields.salary, mono: true, onChange: e => self.updateManualField('salary', e.target.value) },
+    ] : [];
+
+    const selApp = (() => { const a = allApps.find(x => x.id === s.selectedAppId) || allApps[0]; const meta = stageTone[a.stage]; return { ...a, initial: (a.company || '?').charAt(0).toUpperCase(), stageLabel: (this.STAGES.find(x => x[0] === a.stage) || [])[1], pillBg: `var(${meta[0]})`, pillFg: `var(${meta[1]})`, pillBd: `var(${meta[2]})` }; })();
+    const stageOptions = this.STAGES.map(([key, label]) => {
+      const active = key === selApp.stage;
+      const tone = stageTone[key];
+      return {
+        key, label, active, dot: `var(${stageColor[key]})`,
+        bg: active ? `var(${tone[0]})` : 'var(--color-surface)',
+        fg: active ? `var(${tone[1]})` : 'var(--text-secondary)',
+        bd: active ? `var(${tone[2]})` : 'var(--color-border-strong)',
+        move: () => self.moveApp(key),
+      };
+    });
+
+    const roleChips = s.roles.map(r => ({ label: r, remove: () => self.setState(st => ({ roles: st.roles.filter(x => x !== r) })) }));
+    const roleSuggestions = ['UX Lead', 'Design Manager', 'Principal Designer', 'Brand Designer', 'Design Director', 'Product Designer', 'UI Designer', 'Head of Design', 'Interaction Designer', 'Growth Designer'].filter(r => !s.roles.includes(r)).slice(0, 6).map(r => ({ label: r, add: () => self.setState(st => (st.roles.includes(r) ? {} : { roles: [...st.roles, r] })) }));
+
+    const pd = s.profileData;
+    const skillChips = pd.skills.map(sk => ({ label: sk, remove: () => self.removeSkill(sk) }));
+    const expItems = pd.experience.map(x => ({
+      ...x,
+      onRole: e => self.updateListField('experience', x.id, 'role', e.target.value),
+      onCompany: e => self.updateListField('experience', x.id, 'company', e.target.value),
+      onDates: e => self.updateListField('experience', x.id, 'dates', e.target.value),
+      onDesc: e => self.updateListField('experience', x.id, 'description', e.target.value),
+      remove: () => self.removeListItem('experience', x.id),
+    }));
+    const projectItems = pd.projects.map(x => ({
+      ...x,
+      onName: e => self.updateListField('projects', x.id, 'name', e.target.value),
+      onLink: e => self.updateListField('projects', x.id, 'link', e.target.value),
+      onDesc: e => self.updateListField('projects', x.id, 'description', e.target.value),
+      remove: () => self.removeListItem('projects', x.id),
+    }));
+    const eduItems = pd.education.map(x => ({
+      ...x,
+      onSchool: e => self.updateListField('education', x.id, 'school', e.target.value),
+      onDegree: e => self.updateListField('education', x.id, 'degree', e.target.value),
+      onDates: e => self.updateListField('education', x.id, 'dates', e.target.value),
+      remove: () => self.removeListItem('education', x.id),
+    }));
+    const projectsView = pd.projects.filter(x => x.name || x.description);
+    const eduView = pd.education.filter(x => x.school || x.degree);
+
+    const navItem = key => ({ color: scr === key ? 'var(--nav-active)' : 'var(--nav-inactive)', pill: scr === key ? 'var(--brand-soft)' : 'transparent', go: () => self.setState({ screen: key }) });
+
+    const settingsGroups = [
+      { title: 'Agent', items: [
+        { key: 'autoTailor', label: 'Auto-tailor resume', desc: 'Tailor bullets for each strong match', on: s.settings.autoTailor },
+        { key: 'autoApply', label: 'Auto-apply to strong matches', desc: 'Submit after guardrails pass (score ≥ 85)', on: s.settings.autoApply },
+        { key: 'followupNudge', label: 'Follow-up nudges', desc: 'Draft follow-ups for stale applications', on: s.settings.followupNudge },
+      ]},
+      { title: 'Notifications', items: [
+        { key: 'alerts', label: 'New-match alerts', desc: 'Push when new matches arrive', on: s.settings.alerts },
+      ]},
+    ].map(g => ({ ...g, items: g.items.map(it => ({ ...it, thumb: it.on ? '18px' : '2px', track: it.on ? 'var(--brand-600)' : 'var(--neutral-300)', toggle: () => self.setSetting(it.key) })) }));
+
+    return {
+      ui, toast: s.toast,
+      auth: {
+        title: s.authMode === 'signup' ? 'Create your account' : 'Welcome back',
+        sub: s.authMode === 'signup' ? 'Start matching in under two minutes.' : 'Sign in to pick up where you left off.',
+        cta: s.authMode === 'signup' ? 'Create account' : 'Sign in',
+        switchText: s.authMode === 'signup' ? 'Already have an account?' : 'New here?',
+        switchCta: s.authMode === 'signup' ? 'Sign in' : 'Create one',
+      },
+      upload: { on: s.uploading, pctLabel: s.uploadPct + '%', pctWidth: s.uploadPct + '%', btn: s.uploading ? 'Parsing…' : 'Upload resume' },
+      welcomeSteps: [
+        { n: '1', title: 'Match', desc: 'We score live postings against your resume.' },
+        { n: '2', title: 'Tailor', desc: 'Per-application bullets, with guardrails.' },
+        { n: '3', title: 'Track', desc: 'From applied to offer, in one board.' },
+      ],
+      roleChips, roleSuggestions, roleDraft: s.roleDraft, rolesCount: s.roles.length,
+      jobs, jobFilters, shortlist, shortlistCount: shortlist.length,
+      hasShortlist: shortlist.length > 0, noShortlist: shortlist.length === 0,
+      hasFollowups: followups.length > 0, noFollowups: followups.length === 0,
+      matches, homeMatches, homeStats, pipeline,
+      activity, homeActivity,
+      columns, followups, diffRows, selMatch, selApp, stageOptions,
+      parsed: this.PARSED,
+      parsedSkills: pd.skills.map((x, i) => ({ label: x, key: 'k' + i })),
+      parsedExp: pd.experience.map(x => ({ role: x.role, co: x.company, dates: x.dates })),
+      projectsView, eduView, hasProjects: projectsView.length > 0, hasEdu: eduView.length > 0,
+      skillChips, skillDraft: s.skillDraft, expItems, projectItems, eduItems,
+      profileEditCta: s.profileEditFrom === 'onboarding' ? 'Continue to target roles' : 'Save changes',
+      profileEditBackLabel: s.profileEditFrom === 'onboarding' ? 'Resume upload' : 'Profile',
+      cost: this.COST, costBreakdown: this.COST.breakdown, costWidth: this.COST.pct + '%',
+      settingsGroups,
+      heroMatch, matchingPct: s.matchingPct, matchingLabel,
+      resumeBullets, primaryExp: pd.experience[0], otherExp: pd.experience.slice(1),
+      growthSkills, growthCourses, growthProjects, topGrowthSkill, showGrowthModal: s.showGrowthModal,
+      manualJob: mj, manualFieldRows, manualParsed: mj.parsed, manualParsing: mj.parsing, manualLinkEmpty: !mj.link,
+      manualParseBtnLabel: mj.parsing ? 'Reading form…' : 'Auto-fill from link',
+      nav: { home: navItem('home'), jobs: navItem('jobs'), matches: navItem('matches'), track: navItem('track'), profile: navItem('profile') },
+      act: {
+        start: () => self.setState({ authMode: 'signup', screen: 'auth' }),
+        signin: () => self.setState({ authMode: 'signin', screen: 'auth' }),
+        toggleAuth: () => self.setState(st => ({ authMode: st.authMode === 'signup' ? 'signin' : 'signup' })),
+        submitAuth: () => self.setState(st => ({ screen: st.authMode === 'signup' ? 'welcome' : 'home' })),
+        back: () => self.go('splash'),
+        toUpload: () => self.go('upload'),
+        startUpload: () => self.startUpload(),
+        skipUpload: () => self.go('roles'),
+        finishRoles: () => self.go('home'),
+        startMatching: () => self.startMatching(),
+        focusRole: () => { const el = document.getElementById('roleInput'); if (el) el.focus(); },
+        roleChange: (e) => self.setState({ roleDraft: e.target.value }),
+        roleKey: (e) => self.onRoleKey(e),
+        focusSkill: () => { const el = document.getElementById('skillInput'); if (el) el.focus(); },
+        skillChange: (e) => self.setState({ skillDraft: e.target.value }),
+        skillKey: (e) => self.onSkillKey(e),
+        addExperience: () => self.addListItem('experience', { role: '', company: '', dates: '', description: '' }),
+        addProject: () => self.addListItem('projects', { name: '', link: '', description: '' }),
+        addEducation: () => self.addListItem('education', { school: '', degree: '', dates: '' }),
+        finishProfileEdit: () => self.finishProfileEdit(),
+        backProfileEdit: () => self.backProfileEdit(),
+        toProfileEdit: () => self.setState({ profileEditFrom: 'review', screen: 'profileEdit' }),
+        toMatches: () => self.go('matches'), toActivity: () => self.go('activity'), toShortlist: () => self.go('shortlist'),
+        toTrack: () => self.go('track'), toJobs: () => self.go('jobs'), toHome: () => self.go('home'),
+        toProfile: () => self.go('profile'), toProfileReview: () => self.go('profileReview'), toCost: () => self.go('costStats'), toSettings: () => self.go('settings'), toRoles: () => self.go('roles'),
+        toFollowup: () => self.go('followup'),
+        backHome: () => self.go('home'), backProfile: () => self.go('profile'), backTrack: () => self.go('track'), backMatches: () => self.go('matches'),
+        acceptAll: () => self.acceptAll(), submitApp: () => self.submitApplication(),
+        generateResume: () => self.generateResume(),
+        backResumePreview: () => self.go('tailoring'),
+        toAddJob: () => self.setState({ screen: 'addJob', manualJob: { link: '', parsing: false, parsed: false, fields: {} } }),
+        manualLinkChange: (e) => self.updateManualLink(e.target.value),
+        parseJobLink: () => self.parseJobLink(),
+        submitManualJob: () => self.submitManualJob(),
+        toGrowth: () => self.setState({ screen: 'skillGrowth', showGrowthModal: false }),
+        dismissGrowth: () => self.setState({ showGrowthModal: false }),
+        signOut: () => self.setState({ screen: 'splash' }),
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

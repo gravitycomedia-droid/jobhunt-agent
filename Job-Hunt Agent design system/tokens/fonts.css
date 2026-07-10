@@ -1,0 +1,8 @@
+/* ------------------------------------------------------------------
+   Fonts — Job-Hunt Agent
+   Text/UI:  Plus Jakarta Sans  (display, heading, body, caption)
+   Data:     JetBrains Mono     (scores, salary, cost, code-like data)
+   NOTE: Google-hosted for now. If you want self-hosted binaries for the
+   Flutter build, ship the same two families (weights 400/500/600/700).
+------------------------------------------------------------------ */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');

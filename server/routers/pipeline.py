@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 
 from config import settings
 from jobs.daily_pipeline import run_daily_pipeline_for_all, run_daily_pipeline_for_profile
 from services.auth import get_current_profile
+from services.background_tasks import create_task, run_task
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -21,11 +22,17 @@ async def run_pipeline_for_all(x_pipeline_secret: str | None = Header(default=No
     return {"data": summary, "error": None}
 
 
-@router.post("/run-mine")
-async def run_pipeline_for_me(profile: dict = Depends(get_current_profile)):
+@router.post("/run-mine", status_code=202)
+async def run_pipeline_for_me(background: BackgroundTasks, profile: dict = Depends(get_current_profile)):
     """The authenticated "Run agent now" trigger from the Flutter app —
     refreshes the shared job pool and processes only the caller's own
     profile, not every beta user's (that's POST /pipeline/run, cron-only).
+
+    ADR-010: same async job pattern as POST /matches/rerank — the full loop
+    (fetch + embed + rerank) runs for minutes, so return a task id and let
+    the client poll GET /tasks/{id}. The cron path above stays synchronous:
+    Render's cron runner has no socket-timeout problem.
     """
-    summary = await run_daily_pipeline_for_profile(profile)
-    return {"data": summary, "error": None}
+    task = create_task(profile["id"], "pipeline")
+    background.add_task(run_task, task["id"], lambda: run_daily_pipeline_for_profile(profile))
+    return {"data": {"task_id": task["id"]}, "error": None}

@@ -1,0 +1,41 @@
+<!-- @dsCard group="Colors" viewport="700x220" name="Semantic Status" subtitle="Success · Warning · Critical · Informational — fill + soft" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;padding:20px;background:var(--color-bg);font-family:var(--font-sans)}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .col{display:flex;flex-direction:column;gap:6px}
+  .fill{height:52px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px}
+  .soft{height:34px;border-radius:var(--radius-sm);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:600}
+  .lbl{font-size:11px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em}
+  .hex{font-family:var(--font-mono);font-size:10px;opacity:.85}
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="col">
+      <span class="lbl">Success</span>
+      <div class="fill" style="background:var(--success-fill)">apply · offer · pass</div>
+      <div class="soft" style="background:var(--success-soft);color:var(--success-text);border:1px solid var(--success-border)">soft <span class="hex" style="margin-left:auto">#E7F6EE</span></div>
+    </div>
+    <div class="col">
+      <span class="lbl">Warning</span>
+      <div class="fill" style="background:var(--warning-fill)">stretch · stale · gap</div>
+      <div class="soft" style="background:var(--warning-soft);color:var(--warning-text);border:1px solid var(--warning-border)">soft <span class="hex" style="margin-left:auto">#FEF4E6</span></div>
+    </div>
+    <div class="col">
+      <span class="lbl">Critical</span>
+      <div class="fill" style="background:var(--critical-fill)">skip · fail · reject</div>
+      <div class="soft" style="background:var(--critical-soft);color:var(--critical-text);border:1px solid var(--critical-border)">soft <span class="hex" style="margin-left:auto">#FDECEC</span></div>
+    </div>
+    <div class="col">
+      <span class="lbl">Informational</span>
+      <div class="fill" style="background:var(--info-fill)">applied · interview</div>
+      <div class="soft" style="background:var(--info-soft);color:var(--info-text);border:1px solid var(--info-border)">soft <span class="hex" style="margin-left:auto">#E7F1FC</span></div>
+    </div>
+  </div>
+</body>
+</html>

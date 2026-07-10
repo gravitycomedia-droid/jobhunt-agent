@@ -1,0 +1,25 @@
+/* ==================================================================
+   SPACING TOKENS — Job-Hunt Agent
+   Base grid: 4px. Core scale per brief: 4 / 8 / 12 / 16 / 24 / 32.
+   Extended with 2 / 20 / 40 / 48 / 64 for edge cases.
+   ================================================================== */
+:root {
+  --space-0:  0;
+  --space-05: 2px;   /* hairline nudges */
+  --space-1:  4px;   /* icon↔label, chip inner */
+  --space-2:  8px;   /* tight stack */
+  --space-3:  12px;  /* card inner padding (compact) */
+  --space-4:  16px;  /* default gutter / card padding */
+  --space-5:  20px;
+  --space-6:  24px;  /* section gap */
+  --space-8:  32px;  /* screen block gap */
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;  /* empty-state vertical breathing room */
+
+  /* Layout constants (portrait mobile) */
+  --screen-pad-x:   16px;  /* left/right safe gutter */
+  --bottomnav-h:    56px;  /* AppShell bottom bar height */
+  --touch-min:      44px;  /* minimum hit target */
+  --header-h:       52px;  /* top app-bar height */
+}

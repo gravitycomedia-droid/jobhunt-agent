@@ -1,0 +1,143 @@
+/* ==================================================================
+   COLOR TOKENS — Job-Hunt Agent
+   Base ramps (50→900) + semantic aliases.
+   Consumers should reach for the SEMANTIC names, not the raw ramps.
+   ================================================================== */
+:root {
+  /* ---------- BRAND / ACCENT (indigo-violet) --------------------
+     Primary buttons, active nav, links, focus rings.
+     Deliberately violet-leaning so it never collides with the
+     Informational blue used for pipeline stages & source chips. */
+  --brand-50:  #EFEEFC;
+  --brand-100: #E1DEFB;
+  --brand-200: #C7C1F8;
+  --brand-300: #A79EF3;
+  --brand-400: #8676EC;
+  --brand-500: #6B58E6;
+  --brand-600: #5647E0;   /* primary */
+  --brand-700: #4536C4;   /* hover / press */
+  --brand-800: #382C9C;
+  --brand-900: #2E2679;
+
+  /* ---------- SUCCESS (green) -----------------------------------
+     Strength chips · "apply" verdict · offer stage · guardrail-pass */
+  --success-50:  #E7F6EE;
+  --success-100: #CDEDDB;
+  --success-200: #A0DDBB;
+  --success-300: #6BC894;
+  --success-400: #3EAE72;
+  --success-500: #1F9459;
+  --success-600: #157A49;
+  --success-700: #10633C;
+  --success-800: #0D4E30;
+  --success-900: #0A3D26;
+
+  /* ---------- WARNING (amber) -----------------------------------
+     Gap chips · "stretch" verdict · stale-application banner */
+  --warning-50:  #FEF4E6;
+  --warning-100: #FCE6C2;
+  --warning-200: #F8CE86;
+  --warning-300: #F2B24C;
+  --warning-400: #E9971F;
+  --warning-500: #D07E0A;
+  --warning-600: #A9640A;
+  --warning-700: #85500C;
+  --warning-800: #6A400C;
+  --warning-900: #55340B;
+
+  /* ---------- CRITICAL (red) ------------------------------------
+     "skip" verdict · guardrail-fail highlight · rejected stage */
+  --critical-50:  #FDECEC;
+  --critical-100: #FAD5D5;
+  --critical-200: #F4AEAE;
+  --critical-300: #EC8080;
+  --critical-400: #E15656;
+  --critical-500: #D23A3A;
+  --critical-600: #B62B2B;
+  --critical-700: #96201F;
+  --critical-800: #7A1D1C;
+  --critical-900: #611A19;
+
+  /* ---------- INFORMATIONAL (blue) ------------------------------
+     Applied / replied / interview stages · source chips.
+     Pure blue — visually separated from the violet brand. */
+  --info-50:  #E7F1FC;
+  --info-100: #C9E1F9;
+  --info-200: #97C6F3;
+  --info-300: #5EA6EB;
+  --info-400: #2E88E0;
+  --info-500: #146FCB;
+  --info-600: #0E5AAA;
+  --info-700: #0C4A8C;
+  --info-800: #0B3D73;
+  --info-900: #0A325E;
+
+  /* ---------- NEUTRAL (grey, hue-biased toward brand ~275°) ------
+     Primary UI ramp. White & black bookends included. */
+  --neutral-0:   #FFFFFF;
+  --neutral-50:  #F7F7FB;
+  --neutral-100: #EFEFF5;
+  --neutral-200: #E2E2EC;
+  --neutral-300: #CBCBD9;
+  --neutral-400: #A0A0B4;
+  --neutral-500: #75758C;
+  --neutral-600: #565669;
+  --neutral-700: #40404F;
+  --neutral-800: #2A2A36;
+  --neutral-900: #181822;
+
+  /* ==============================================================
+     SEMANTIC ALIASES  —  use these in components
+     ============================================================== */
+
+  /* Surfaces & structure */
+  --color-bg:            var(--neutral-50);   /* app canvas */
+  --color-surface:       var(--neutral-0);    /* cards, sheets */
+  --color-surface-sunken:var(--neutral-100);  /* wells, inputs bg */
+  --color-border:        var(--neutral-200);  /* hairlines, card edge */
+  --color-border-strong: var(--neutral-300);  /* input outline */
+  --color-overlay:       rgba(24,24,34,0.48); /* scrim behind sheets */
+
+  /* Text */
+  --text-primary:   var(--neutral-900);
+  --text-secondary: var(--neutral-600);
+  --text-tertiary:  var(--neutral-500);
+  --text-disabled:  var(--neutral-400);
+  --text-on-brand:  var(--neutral-0);
+  --text-link:      var(--brand-600);
+  --text-link-hover:var(--brand-700);
+
+  /* Brand roles */
+  --brand:            var(--brand-600);
+  --brand-hover:      var(--brand-700);
+  --brand-soft:       var(--brand-50);   /* tinted bg */
+  --brand-soft-border:var(--brand-100);
+  --nav-active:       var(--brand-600);
+  --nav-inactive:     var(--neutral-400);
+  --focus-ring:       var(--brand-400);
+
+  /* Status: fill (solid), text (on soft bg), soft (tinted bg), border */
+  --success-fill: var(--success-600); --success-text: var(--success-700); --success-soft: var(--success-50); --success-border: var(--success-200);
+  --warning-fill: var(--warning-500); --warning-text: var(--warning-700); --warning-soft: var(--warning-50); --warning-border: var(--warning-200);
+  --critical-fill:var(--critical-600);--critical-text:var(--critical-700);--critical-soft:var(--critical-50);--critical-border:var(--critical-200);
+  --info-fill:    var(--info-600);    --info-text:    var(--info-700);    --info-soft:    var(--info-50);    --info-border:    var(--info-200);
+  --neutral-fill: var(--neutral-600); --neutral-text: var(--neutral-700); --neutral-soft: var(--neutral-100);--neutral-chip-border: var(--neutral-200);
+
+  /* ---- Verdict (apply / stretch / skip) ---- */
+  --verdict-apply:   var(--success-600);
+  --verdict-stretch: var(--warning-500);
+  --verdict-skip:    var(--critical-600);
+
+  /* ---- Guardrail (pass / fail) ---- */
+  --guardrail-pass:  var(--success-600);
+  --guardrail-fail:  var(--critical-600);
+  --guardrail-fail-highlight: var(--critical-100); /* diff text bg */
+
+  /* ---- Kanban stage (6 states) ---- */
+  --stage-new:       var(--neutral-500);
+  --stage-applied:   var(--info-600);
+  --stage-replied:   var(--info-500);
+  --stage-interview: var(--info-700);
+  --stage-offer:     var(--success-600);
+  --stage-rejected:  var(--critical-600);
+}

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/match_item.dart';
 import '../services/api_client.dart';
+import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
@@ -35,15 +36,47 @@ class _MatchesBodyState extends State<MatchesBody> {
   final ApiClient _apiClient = ApiClient();
 
   bool _isLoading = true;
-  bool _isReranking = false;
   String? _errorMessage;
-  String? _rerankError;
   List<MatchItem> _items = [];
+
+  // ADR-010: the rerank runs server-side as a background task; TaskCenter
+  // owns the polling loop (it survives tab switches — this State stays
+  // alive in the IndexedStack but couldn't own a cross-tab poller). We
+  // just listen and refetch when it lands.
+  ValueNotifier<TrackedTask?> get _rerankTask => TaskCenter.instance.notifierFor(TaskKind.rerank);
 
   @override
   void initState() {
     super.initState();
+    _rerankTask.addListener(_onRerankChanged);
     _loadCached();
+  }
+
+  @override
+  void dispose() {
+    _rerankTask.removeListener(_onRerankChanged);
+    super.dispose();
+  }
+
+  void _onRerankChanged() {
+    if (!mounted) return;
+    final task = _rerankTask.value;
+    if (task?.status == TrackedTaskStatus.done) {
+      // New scores just landed server-side — refresh the list.
+      unawaited(_refetch());
+    } else {
+      setState(() {}); // banner state changed (queued/running/failed)
+    }
+  }
+
+  Future<void> _refetch() async {
+    try {
+      final items = await _apiClient.fetchMatches(limit: 50);
+      if (!mounted) return;
+      setState(() => _items = items);
+    } catch (_) {
+      // Keep showing what we have; the banner already covers task errors.
+    }
   }
 
   Future<void> _loadCached() async {
@@ -59,7 +92,7 @@ class _MatchesBodyState extends State<MatchesBody> {
       });
       // Fire-and-forget: the UI already has something to show, so the
       // re-rank runs underneath rather than blocking the first paint.
-      unawaited(_rerankThenReload());
+      unawaited(_startRerank());
     } catch (e) {
       setState(() {
         _errorMessage = e.toString();
@@ -68,27 +101,18 @@ class _MatchesBodyState extends State<MatchesBody> {
     }
   }
 
-  Future<void> _rerankThenReload() async {
-    setState(() {
-      _isReranking = true;
-      _rerankError = null;
-    });
-    try {
-      await _apiClient.rerankShortlist(limit: 20);
-      final items = await _apiClient.fetchMatches(limit: 50);
-      if (!mounted) return;
-      setState(() {
-        _items = items;
-        _isReranking = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isReranking = false;
-        _rerankError = e.toString();
-      });
-    }
+  Future<void> _startRerank() async {
+    await TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20));
   }
+
+  Future<void> _rerankThenReload() async {
+    await _startRerank();
+    await _refetch();
+  }
+
+  bool get _isReranking => _rerankTask.value?.isActive ?? false;
+  String? get _rerankError =>
+      _rerankTask.value?.status == TrackedTaskStatus.failed ? _rerankTask.value?.error : null;
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +184,7 @@ class _MatchesBodyState extends State<MatchesBody> {
         message: _rerankError,
         actionLabel: 'Retry',
         onAction: _rerankThenReload,
-        onDismiss: () => setState(() => _rerankError = null),
+        onDismiss: () => TaskCenter.instance.clearIfFinished(TaskKind.rerank),
       );
     }
     return const SizedBox.shrink();
