@@ -19,3 +19,17 @@ class JobIn(BaseModel):
     salary_max: Optional[float] = None
     redirect_url: Optional[str] = None
     posted_at: Optional[datetime] = None
+
+
+class JobExtraction(BaseModel):
+    """Frontend rebuild Phase 2 (Add Job, task: `extract_job`): Gemini's
+    best-effort read of a single pasted-URL posting's page text — see
+    docs/PROMPTS.md section 6. Only `title` is required; everything else
+    is null when the page doesn't clearly state it, never guessed."""
+
+    title: str
+    company: Optional[str] = None
+    location: Optional[str] = None
+    description: Optional[str] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None

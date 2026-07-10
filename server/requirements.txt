@@ -10,3 +10,6 @@ supabase
 httpx
 python-slugify
 rapidfuzz
+firebase-admin
+beautifulsoup4
+resend

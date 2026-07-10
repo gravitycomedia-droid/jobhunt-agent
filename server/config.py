@@ -3,8 +3,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     gemini_api_key: str
-    gemini_model: str = "gemini-2.0-flash"
-    gemini_embed_model: str = "text-embedding-004"
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_embed_model: str = "gemini-embedding-001"
 
     supabase_url: str
     supabase_service_key: str
@@ -18,10 +18,23 @@ class Settings(BaseSettings):
 
     fcm_service_account_path: str = "./firebase-service-account.json"
 
+    # Phase 4: real follow-up email sending. Optional so the app still
+    # boots without it (services/email.py raises a clear error on send
+    # attempts, rather than the whole server failing to start) — same
+    # posture as adzuna/rapidapi above.
+    resend_api_key: str = ""
+    resend_from_email: str = "onboarding@resend.dev"
+
     daily_pipeline_hour: int = 7
     target_roles: str = ""
     target_locations: str = ""
     environment: str = "development"
+
+    # Brick 9: shared secret the Render cron job sends in X-Pipeline-Secret
+    # to trigger the all-users batch run (POST /pipeline/run) — distinct
+    # from the per-user POST /pipeline/run-mine, which uses the caller's
+    # own Supabase session instead.
+    pipeline_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 
