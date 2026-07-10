@@ -1,0 +1,291 @@
+import 'dart:async' show unawaited;
+
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
+
+import '../models/resume_profile.dart';
+import '../services/api_client.dart';
+import '../theme/app_tokens.dart';
+import '../widgets/app_icon.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/loading_skeleton.dart';
+import 'cost_stats_screen.dart';
+import 'profile_review_screen.dart';
+import 'resume_upload_screen.dart';
+import 'settings_screen.dart';
+import 'skill_growth_screen.dart';
+import 'target_roles_screen.dart';
+
+/// The Profile tab's content (Brick 9 polish) — the account-level home
+/// that was previously missing entirely: shows who's signed in, lets the
+/// user revisit/edit their resume profile at any time (not just right
+/// after upload, which was [ProfileReviewScreen]'s only entry point
+/// before this existed), and signs out.
+class ProfileBody extends StatefulWidget {
+  const ProfileBody({super.key});
+
+  @override
+  State<ProfileBody> createState() => _ProfileBodyState();
+}
+
+class _ProfileBodyState extends State<ProfileBody> {
+  final ApiClient _apiClient = ApiClient();
+
+  bool _isLoading = true;
+  String? _errorMessage;
+  ResumeProfile? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final profile = await _apiClient.fetchCurrentProfile();
+      setState(() {
+        _profile = profile;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _editProfile() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ProfileReviewScreen(profile: profile)),
+    );
+    // ProfileReviewScreen pops after a successful save — refresh so the
+    // account card reflects any edits (name/headline) immediately.
+    if (mounted) unawaited(_load());
+  }
+
+  Future<void> _editTargetRoles() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (rolesContext) => TargetRolesScreen(
+          initialRoles: profile.targetRoles,
+          initialMinSalary: profile.minSalary,
+          // Revisiting from Profile (not onboarding) — TargetRolesScreen
+          // has already saved via PATCH by the time onDone fires, so this
+          // just needs to pop back rather than chain into matching.
+          onDone: (_) => Navigator.of(rolesContext).pop(),
+        ),
+      ),
+    );
+    if (mounted) unawaited(_load());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final email = Supabase.instance.client.auth.currentUser?.email;
+
+    return ListView(
+      children: [
+        _accountCard(email),
+        const SizedBox(height: AppSpacing.space4),
+        _resumeSection(),
+        if (_profile != null) ...[
+          const SizedBox(height: AppSpacing.space4),
+          _navRows(),
+        ],
+      ],
+    );
+  }
+
+  Widget _navRows() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: AppRadius.lgRadius,
+        boxShadow: AppElevation.e1,
+      ),
+      child: Column(
+        children: [
+          _navRow(
+            icon: AppIconName.target,
+            label: 'Target roles',
+            trailing: '${_profile!.targetRoles.length}',
+            onTap: _editTargetRoles,
+            showDivider: true,
+          ),
+          _navRow(
+            icon: AppIconName.dollarSign,
+            label: 'LLM cost & usage',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CostStatsScreen()),
+            ),
+            showDivider: true,
+          ),
+          _navRow(
+            icon: AppIconName.trendingUp,
+            label: 'Skill growth',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SkillGrowthScreen()),
+            ),
+            showDivider: true,
+          ),
+          _navRow(
+            icon: AppIconName.settings,
+            label: 'Settings',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SettingsScreen(
+                  initialAlerts: _profile!.notifyAlerts,
+                  initialFollowupNudge: _profile!.notifyFollowupNudge,
+                ),
+              ),
+            ),
+            showDivider: false,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _navRow({
+    required AppIconName icon,
+    required String label,
+    String? trailing,
+    required VoidCallback onTap,
+    required bool showDivider,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3 + 3),
+        decoration: BoxDecoration(border: showDivider ? const Border(bottom: BorderSide(color: AppColors.border)) : null),
+        child: Row(
+          children: [
+            AppIcon(icon, size: 20, color: AppColors.brand600),
+            const SizedBox(width: AppSpacing.space3),
+            Expanded(
+              child: Row(
+                children: [
+                  Text(label, style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 4),
+                    Text('· $trailing', style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary)),
+                  ],
+                ],
+              ),
+            ),
+            const AppIcon(AppIconName.chevronRight, size: 18, color: AppColors.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _accountCard(String? email) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.space4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: AppRadius.lgRadius,
+        boxShadow: AppElevation.e1,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
+            child: const AppIcon(AppIconName.user, size: 22, color: AppColors.brand600),
+          ),
+          const SizedBox(width: AppSpacing.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Signed in', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+                Text(email ?? 'Unknown account', style: AppTypography.title, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => Supabase.instance.client.auth.signOut(),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resumeSection() {
+    if (_isLoading) {
+      return const LoadingSkeleton(variant: SkeletonVariant.card);
+    }
+
+    if (_errorMessage != null) {
+      return EmptyState(
+        icon: AppIconName.alertTriangle,
+        title: 'Could not load your profile',
+        message: _errorMessage,
+        actionLabel: 'Retry',
+        onAction: _load,
+      );
+    }
+
+    final profile = _profile;
+    if (profile == null) {
+      return EmptyState(
+        icon: AppIconName.fileText,
+        title: 'No resume uploaded yet',
+        message: 'Upload a resume to start matching and tailoring against jobs.',
+        actionLabel: 'Upload Resume',
+        onAction: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const ResumeUploadScreen()),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.space4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: AppRadius.lgRadius,
+        boxShadow: AppElevation.e1,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(profile.name, style: AppTypography.title, overflow: TextOverflow.ellipsis),
+                if (profile.headline != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    profile.headline!,
+                    style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.space3),
+          OutlinedButton(onPressed: _editProfile, child: const Text('Edit')),
+        ],
+      ),
+    );
+  }
+}

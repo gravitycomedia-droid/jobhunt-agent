@@ -1,8 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
-import 'screens/home_screen.dart';
+import 'config/supabase_config.dart';
+import 'screens/auth_gate.dart';
+import 'theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
+  // Brick 9: Supabase must be initialized before AuthGate reads
+  // currentSession or listens to onAuthStateChange, so this has to
+  // complete before runApp — unlike PushService's Firebase init (fired
+  // from AuthGate after sign-in instead), auth is on the critical path to
+  // first paint since every screen depends on knowing sign-in state.
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
   runApp(const JobHuntAgentApp());
 }
 
@@ -17,8 +27,8 @@ class JobHuntAgentApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Job-Hunt Agent',
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
-      home: const HomeScreen(),
+      theme: AppTheme.light,
+      home: const AuthGate(),
     );
   }
 }

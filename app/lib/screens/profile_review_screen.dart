@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
+import '../theme/app_tokens.dart';
+import '../widgets/app_form_field.dart';
+import '../widgets/app_icon.dart';
 
 /// Small controller bundles so each list item (one experience entry, one
 /// project, one education entry) owns its own TextEditingControllers instead
@@ -86,7 +89,13 @@ class _EducationControllers {
 class ProfileReviewScreen extends StatefulWidget {
   final ResumeProfile profile;
 
-  const ProfileReviewScreen({super.key, required this.profile});
+  /// Onboarding (frontend rebuild Phase 1): called instead of popping when
+  /// provided, so the onboarding chain can continue to Target Roles. Null
+  /// (the default) when reached from the Profile tab, where popping back
+  /// to the caller is correct.
+  final VoidCallback? onSaved;
+
+  const ProfileReviewScreen({super.key, required this.profile, this.onSaved});
 
   @override
   State<ProfileReviewScreen> createState() => _ProfileReviewScreenState();
@@ -153,10 +162,14 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
     try {
       await _apiClient.updateProfile(edited);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile saved.')),
-      );
-      Navigator.of(context).pop();
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile saved.')),
+        );
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
@@ -169,168 +182,150 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Review Profile')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [
           _sectionLabel('Basics'),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
-          const SizedBox(height: 12),
-          TextField(controller: _headline, decoration: const InputDecoration(labelText: 'Headline')),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _skills,
-            decoration: const InputDecoration(labelText: 'Skills (comma-separated)'),
-            maxLines: 2,
-          ),
-          const SizedBox(height: 24),
+          AppFormField(label: 'Name', controller: _name, required: true),
+          const SizedBox(height: AppSpacing.space3),
+          AppFormField(label: 'Headline', controller: _headline),
+          const SizedBox(height: AppSpacing.space3),
+          AppFormField(label: 'Skills', hint: 'Comma-separated', controller: _skills, multiline: true, rows: 2),
+          const SizedBox(height: AppSpacing.space6),
           _sectionLabel('Experience'),
           ..._experience.asMap().entries.map((entry) => _experienceCard(entry.key, entry.value)),
-          OutlinedButton.icon(
-            onPressed: () => setState(() => _experience.add(
-                  _ExperienceControllers.fromItem(
-                    ExperienceItem(role: '', company: '', duration: '', bullets: []),
-                  ),
-                )),
-            icon: const Icon(Icons.add),
-            label: const Text('Add experience'),
-          ),
-          const SizedBox(height: 24),
+          _addButton('Add experience', () => setState(() => _experience.add(
+                _ExperienceControllers.fromItem(
+                  ExperienceItem(role: '', company: '', duration: '', bullets: []),
+                ),
+              ))),
+          const SizedBox(height: AppSpacing.space6),
           _sectionLabel('Projects'),
           ..._projects.asMap().entries.map((entry) => _projectCard(entry.key, entry.value)),
-          OutlinedButton.icon(
-            onPressed: () => setState(() => _projects.add(
-                  _ProjectControllers.fromItem(ProjectItem(name: '', tech: [], description: '')),
-                )),
-            icon: const Icon(Icons.add),
-            label: const Text('Add project'),
+          _addButton(
+            'Add project',
+            () => setState(() => _projects.add(_ProjectControllers.fromItem(ProjectItem(name: '', tech: [], description: '')))),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.space6),
           _sectionLabel('Education'),
           ..._education.asMap().entries.map((entry) => _educationCard(entry.key, entry.value)),
-          OutlinedButton.icon(
-            onPressed: () => setState(() => _education.add(
-                  _EducationControllers.fromItem(
-                    EducationItem(degree: '', institution: '', year: ''),
-                  ),
+          _addButton(
+            'Add education',
+            () => setState(() => _education.add(
+                  _EducationControllers.fromItem(EducationItem(degree: '', institution: '', year: '')),
                 )),
-            icon: const Icon(Icons.add),
-            label: const Text('Add education'),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.space6),
           if (_errorMessage != null)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+              padding: const EdgeInsets.only(bottom: AppSpacing.space3),
+              child: Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
             ),
-          FilledButton(
+          ElevatedButton(
             onPressed: _isSaving ? null : _confirm,
             child: _isSaving
                 ? const SizedBox(
                     height: 20,
                     width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textOnBrand),
                   )
                 : const Text('Confirm'),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: AppSpacing.space8),
         ],
       ),
     );
   }
 
   Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text, style: Theme.of(context).textTheme.titleMedium),
+        padding: const EdgeInsets.only(bottom: AppSpacing.space2),
+        child: Text(text, style: AppTypography.headingSm),
       );
 
-  Widget _experienceCard(int index, _ExperienceControllers c) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(child: TextField(controller: c.role, decoration: const InputDecoration(labelText: 'Role'))),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => setState(() {
-                    c.dispose();
-                    _experience.removeAt(index);
-                  }),
-                ),
-              ],
-            ),
-            TextField(controller: c.company, decoration: const InputDecoration(labelText: 'Company')),
-            TextField(controller: c.duration, decoration: const InputDecoration(labelText: 'Duration')),
-            TextField(
-              controller: c.bullets,
-              decoration: const InputDecoration(labelText: 'Bullets (one per line)'),
-              maxLines: null,
-              minLines: 2,
-            ),
-          ],
-        ),
+  Widget _addButton(String label, VoidCallback onPressed) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: const AppIcon(AppIconName.plus, size: 16, color: AppColors.brand),
+      label: Text(label),
+    );
+  }
+
+  Widget _itemCard({required List<Widget> children, required VoidCallback onDelete}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.space3),
+      padding: const EdgeInsets.all(AppSpacing.space4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: AppRadius.lgRadius,
+        boxShadow: AppElevation.e1,
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: InkWell(
+              onTap: onDelete,
+              borderRadius: AppRadius.smRadius,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: AppIcon(AppIconName.x, size: 16, color: AppColors.textTertiary),
+              ),
+            ),
+          ),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _experienceCard(int index, _ExperienceControllers c) {
+    return _itemCard(
+      onDelete: () => setState(() {
+        c.dispose();
+        _experience.removeAt(index);
+      }),
+      children: [
+        AppFormField(label: 'Role', controller: c.role),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(label: 'Company', controller: c.company),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(label: 'Duration', controller: c.duration),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(label: 'Bullets', hint: 'One per line', controller: c.bullets, multiline: true, rows: 3),
+      ],
     );
   }
 
   Widget _projectCard(int index, _ProjectControllers c) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(child: TextField(controller: c.name, decoration: const InputDecoration(labelText: 'Project name'))),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => setState(() {
-                    c.dispose();
-                    _projects.removeAt(index);
-                  }),
-                ),
-              ],
-            ),
-            TextField(controller: c.tech, decoration: const InputDecoration(labelText: 'Tech (comma-separated)')),
-            TextField(
-              controller: c.description,
-              decoration: const InputDecoration(labelText: 'Description'),
-              maxLines: null,
-              minLines: 2,
-            ),
-          ],
-        ),
-      ),
+    return _itemCard(
+      onDelete: () => setState(() {
+        c.dispose();
+        _projects.removeAt(index);
+      }),
+      children: [
+        AppFormField(label: 'Project name', controller: c.name),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(label: 'Tech', hint: 'Comma-separated', controller: c.tech),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(label: 'Description', controller: c.description, multiline: true, rows: 3),
+      ],
     );
   }
 
   Widget _educationCard(int index, _EducationControllers c) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(child: TextField(controller: c.degree, decoration: const InputDecoration(labelText: 'Degree'))),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => setState(() {
-                    c.dispose();
-                    _education.removeAt(index);
-                  }),
-                ),
-              ],
-            ),
-            TextField(controller: c.institution, decoration: const InputDecoration(labelText: 'Institution')),
-            TextField(controller: c.year, decoration: const InputDecoration(labelText: 'Year')),
-          ],
-        ),
-      ),
+    return _itemCard(
+      onDelete: () => setState(() {
+        c.dispose();
+        _education.removeAt(index);
+      }),
+      children: [
+        AppFormField(label: 'Degree', controller: c.degree),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(label: 'Institution', controller: c.institution),
+        const SizedBox(height: AppSpacing.space3),
+        AppFormField(label: 'Year', controller: c.year),
+      ],
     );
   }
 }
