@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
@@ -5,6 +7,7 @@ import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_shell.dart';
+import '../widgets/background_task_dialog.dart';
 import 'applications_body.dart';
 import 'home_body.dart';
 import 'jobs_list_body.dart';
@@ -58,16 +61,9 @@ class _MainTabScreenState extends State<MainTabScreen> {
   }
 
   void _onPipelineChanged() {
-    if (!mounted) return;
-    final task = _pipelineTask.value;
-    setState(() {}); // refresh the trailing icon spinner
-    if (task?.status == TrackedTaskStatus.done) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Agent run complete — check Matches and Track for updates.')),
-      );
-    } else if (task?.status == TrackedTaskStatus.failed) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Agent run failed: ${task?.error}')));
-    }
+    // Completion/failure toasts come from TaskCenter's global toast (Phase
+    // 2) — this listener only keeps the trailing icon's spinner honest.
+    if (mounted) setState(() {});
   }
 
   /// Manual trigger for the agent loop, scoped to this user only (Brick 9:
@@ -76,6 +72,13 @@ class _MainTabScreenState extends State<MainTabScreen> {
   /// cron is deployed yet. Lives on the Home tab's trailing slot since
   /// it's a global action, not scoped to any one tab's data.
   Future<void> _runPipeline() async {
+    unawaited(showBackgroundTaskDialog(
+      context,
+      'Agent run started',
+      'Fetching fresh jobs and scoring them against your profile. This runs '
+          'in the background and usually takes 2–3 minutes — keep using the '
+          "app, we'll notify you when it's done.",
+    ));
     await TaskCenter.instance.start(TaskKind.pipeline, () => _apiClient.runPipeline());
   }
 

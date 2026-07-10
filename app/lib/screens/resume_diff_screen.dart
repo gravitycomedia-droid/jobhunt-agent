@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../models/tailored_resume.dart';
 import '../services/api_client.dart';
+import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/background_task_dialog.dart';
 import '../widgets/diff_row.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
-import 'resume_generating_screen.dart';
+import 'resume_preview_screen.dart';
 
 /// Brick 6, extended in the frontend rebuild's Phase 2: shows a tailored
 /// resume as a bullet-by-bullet diff against the stored original, with
@@ -17,7 +19,7 @@ import 'resume_generating_screen.dart';
 /// bullet now has its own keep-original/use-tailored toggle (prototype
 /// `ui.isTailoring`) instead of one global approve — "Generate tailored
 /// resume" persists those per-bullet choices (PATCH /tailor/{id}/approve)
-/// and hands off to [ResumeGeneratingScreen]. This screen never submits
+/// and hands off to [ResumePreviewScreen]. This screen never submits
 /// anything on its own (golden rule: no auto-submitting anywhere).
 class ResumeDiffScreen extends StatefulWidget {
   const ResumeDiffScreen({super.key, required this.jobId, required this.jobTitle});
@@ -38,10 +40,53 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
   TailoredResume? _resume;
   List<bool> _accepted = [];
 
+  // ADR-010: tailoring is a 202-style background task now — TaskCenter
+  // owns the poll loop, so tailoring keeps running (and completes with a
+  // toast) even if the user backs out of this screen mid-generation.
+  ValueNotifier<TrackedTask?> get _tailorTask => TaskCenter.instance.notifierFor(TaskKind.tailor);
+
   @override
   void initState() {
     super.initState();
+    _tailorTask.addListener(_onTailorChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tailorTask.removeListener(_onTailorChanged);
+    super.dispose();
+  }
+
+  void _onTailorChanged() {
+    if (!mounted) return;
+    final task = _tailorTask.value;
+    if (task?.status == TrackedTaskStatus.done) {
+      _fetchExisting(); // the tailored row is stored server-side — read it back
+    } else if (task?.status == TrackedTaskStatus.failed) {
+      setState(() {
+        _errorMessage = task?.error ?? 'Tailoring failed';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchExisting() async {
+    try {
+      final resume = await _apiClient.fetchTailoredResume(widget.jobId);
+      if (!mounted || resume == null) return;
+      setState(() {
+        _resume = resume;
+        _accepted = resume.bullets.map((b) => b.accepted ?? b.guardrailPass).toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -51,12 +96,27 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
     });
     try {
       final existing = await _apiClient.fetchTailoredResume(widget.jobId);
-      final resume = existing ?? await _apiClient.tailorResume(widget.jobId);
-      setState(() {
-        _resume = resume;
-        _accepted = resume.bullets.map((b) => b.accepted ?? b.guardrailPass).toList();
-        _isLoading = false;
-      });
+      if (existing != null) {
+        setState(() {
+          _resume = existing;
+          _accepted = existing.bullets.map((b) => b.accepted ?? b.guardrailPass).toList();
+          _isLoading = false;
+        });
+        return;
+      }
+      // No cached tailoring for this job — kick off the background task.
+      // The skeleton stays up while we wait, but the screen (and the whole
+      // app) remains navigable; _onTailorChanged picks up the result.
+      if (mounted) {
+        await showBackgroundTaskDialog(
+          context,
+          'Tailoring your resume',
+          'Rewriting your experience bullets toward ${widget.jobTitle} and '
+              'verifying every claim against your real resume. This runs in '
+              'the background and usually takes under a minute.',
+        );
+      }
+      await TaskCenter.instance.start(TaskKind.tailor, () => _apiClient.tailorResume(widget.jobId));
     } catch (e) {
       setState(() {
         _errorMessage = e.toString();
@@ -70,11 +130,14 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
     if (resume == null) return;
     setState(() => _isGenerating = true);
     try {
+      // The approve PATCH is a fast row update (~1s) — the tailoring LLM
+      // work already happened. No fake "compiling" pause (Phase 2): go
+      // straight to the compiled preview.
       await _apiClient.approveTailoredResume(resume.id, accepted: _accepted);
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ResumeGeneratingScreen(jobId: widget.jobId, jobTitle: widget.jobTitle),
+          builder: (_) => ResumePreviewScreen(jobId: widget.jobId, jobTitle: widget.jobTitle),
         ),
       );
       if (mounted) Navigator.of(context).pop();

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'config/supabase_config.dart';
 import 'screens/auth_gate.dart';
 import 'theme/app_theme.dart';
+import 'widgets/task_toast.dart';
 
 Future<void> main() async {
   // Brick 9: Supabase must be initialized before AuthGate reads
@@ -28,6 +29,10 @@ class JobHuntAgentApp extends StatelessWidget {
     return MaterialApp(
       title: 'Job-Hunt Agent',
       theme: AppTheme.light,
+      // Phase 2: TaskCenter's completion toasts fire through this global
+      // key so they show on whatever screen/tab the user is on when a
+      // background task finishes.
+      scaffoldMessengerKey: appScaffoldMessengerKey,
       home: const AuthGate(),
     );
   }

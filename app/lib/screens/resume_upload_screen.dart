@@ -96,9 +96,17 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                 style: AppTypography.body.copyWith(color: AppColors.textSecondary),
               ),
               const SizedBox(height: AppSpacing.space6),
-              if (_isUploading)
-                const CircularProgressIndicator(color: AppColors.brand)
-              else
+              if (_isUploading) ...[
+                const CircularProgressIndicator(color: AppColors.brand),
+                const SizedBox(height: AppSpacing.space3),
+                // Phase 2 honest copy: parsing is a real vision-LLM call.
+                Text(
+                  'Reading your resume with AI — this usually takes 30–60 seconds. '
+                  'Keep the app open.',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                ),
+              ] else
                 ElevatedButton.icon(
                   onPressed: _pickAndUpload,
                   icon: const AppIcon(AppIconName.upload, size: 18, color: AppColors.textOnBrand),

@@ -37,7 +37,7 @@ class _MatchingLoadingScreenState extends State<MatchingLoadingScreen> {
     unawaited(
       _apiClient
           .refreshJobs()
-          .catchError((_) {}) // rerank still works against the existing pool
+          .catchError((_) => <String, dynamic>{}) // rerank still works against the existing pool
           .then((_) => TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20))),
     );
     Future.delayed(const Duration(milliseconds: 1600), () {

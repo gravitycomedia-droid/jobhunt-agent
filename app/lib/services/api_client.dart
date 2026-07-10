@@ -166,13 +166,18 @@ class ApiClient {
   /// JSearch for every (role, location) combo in TARGET_ROLES/TARGET_LOCATIONS,
   /// so it can take up to a minute — a longer `.timeout()` than the other
   /// calls reflects that, rather than a bug.
-  Future<void> refreshJobs() async {
+  /// Returns the server's `{fetched, inserted}` counts so the completion
+  /// toast (Phase 2) can say what actually happened.
+  Future<Map<String, dynamic>> refreshJobs() async {
     final uri = Uri.parse('$_baseUrl/jobs/refresh');
     final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 90));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
     }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as Map<String, dynamic>?) ?? const {};
   }
 
   Future<List<Job>> fetchJobs({int limit = 20, int offset = 0}) async {
@@ -283,18 +288,19 @@ class ApiClient {
   }
 
   /// Brick 6: tailors the stored resume toward one job and runs the
-  /// anti-fabrication guardrail (ADR-004) over the result. One Gemini call,
-  /// same ballpark latency as [rerankShortlist]'s per-job call.
-  Future<TailoredResume> tailorResume(String jobId) async {
+  /// anti-fabrication guardrail (ADR-004) over the result. ADR-010: one
+  /// Gemini call takes 20-60s, so the server answers 202 + a task id —
+  /// poll [getTaskStatus], then read the row via [fetchTailoredResume].
+  Future<String> tailorResume(String jobId) async {
     final uri = Uri.parse('$_baseUrl/tailor/$jobId');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 60));
+    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
 
-    if (response.statusCode != 200) {
+    if (response.statusCode != 202) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return TailoredResume.fromJson(body['data'] as Map<String, dynamic>);
+    return (body['data'] as Map<String, dynamic>)['task_id'] as String;
   }
 
   /// Reads back the most recent tailored resume for a job, if one exists —

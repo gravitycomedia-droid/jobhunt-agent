@@ -10,6 +10,7 @@ import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/task_toast.dart';
 import 'add_job_screen.dart';
 import 'shortlist_screen.dart';
 
@@ -63,13 +64,17 @@ class _JobsListBodyState extends State<JobsListBody> {
   }
 
   Future<void> _refresh() async {
+    // Pull-to-refresh keeps its own indicator; the toast confirms the
+    // outcome even if the user has tabbed away by the time it finishes
+    // (Phase 2 — refreshes can take up to a minute).
     try {
-      await _apiClient.refreshJobs();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Refresh failed: $e')),
+      final result = await _apiClient.refreshJobs();
+      showTaskToast(
+        success: true,
+        message: 'Jobs refreshed — ${result['inserted'] ?? 0} new of ${result['fetched'] ?? 0} fetched',
       );
+    } catch (e) {
+      showTaskToast(success: false, message: 'Job refresh failed — $e', onRetry: _refresh);
     }
     await _loadJobs();
   }

@@ -11,7 +11,7 @@ import inspect
 import logging
 import traceback
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Awaitable, Callable
 
 from db.supabase_client import supabase
 
@@ -69,4 +69,7 @@ async def run_task(task_id: str, fn: TaskFn) -> None:
         _set_status(task_id, "done", result=result)
     except Exception as e:  # noqa: BLE001 — must catch everything; the error goes to the row
         logger.error("background task %s failed: %s\n%s", task_id, e, traceback.format_exc())
-        _set_status(task_id, "failed", error=str(e))
+        # Task functions reuse router helpers that raise HTTPException —
+        # its .detail is the human-readable message; str() would include
+        # the status code noise.
+        _set_status(task_id, "failed", error=str(getattr(e, "detail", None) or e))

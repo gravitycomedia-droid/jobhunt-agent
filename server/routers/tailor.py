@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from db.supabase_client import supabase
 from services.auth import get_current_profile
+from services.background_tasks import create_task, run_task
 from services.guardrail import verify_bullets
 from services.llm import LlmApiError, TailorError, tailor_resume
 
@@ -26,14 +27,12 @@ def _flatten_bullets(profile: dict) -> list[str]:
     return bullets
 
 
-@router.post("/{job_id}")
-async def tailor(job_id: str, profile: dict = Depends(get_current_profile)):
-    """Brick 6: tailors the stored resume's bullets toward one job, runs
-    every bullet through the anti-fabrication guardrail (ADR-004), and
-    stores the result — unapproved — for the diff view. Nothing here
-    submits an application; that's a separate, explicit human action
-    (Golden Rule: no auto-submitting anywhere).
-    """
+def tailor_and_store(profile: dict, job_id: str) -> dict:
+    """Brick 6 core: tailor the stored resume's bullets toward one job, run
+    every bullet through the anti-fabrication guardrail (ADR-004), store the
+    result — unapproved — for the diff view. Raises HTTPException with a
+    human-readable detail; run_task() surfaces that detail when this runs
+    as a background task."""
     job_rows = supabase.table("jobs").select("*").eq("id", job_id).limit(1).execute().data
     if not job_rows:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -67,7 +66,21 @@ async def tailor(job_id: str, profile: dict = Depends(get_current_profile)):
         .execute()
         .data[0]
     )
-    return {"data": row, "error": None}
+    return row
+
+
+@router.post("/{job_id}", status_code=202)
+async def tailor(job_id: str, background: BackgroundTasks, profile: dict = Depends(get_current_profile)):
+    """Brick 6 endpoint, now ADR-010-shaped: one Gemini tailoring call runs
+    20-60s — too long to hold a mobile connection — so this returns 202 +
+    a task id and the client polls GET /tasks/{id}, then reads the stored
+    result back via GET /tailor/{job_id}. Nothing here submits an
+    application; that's a separate, explicit human action (Golden Rule:
+    no auto-submitting anywhere).
+    """
+    task = create_task(profile["id"], "tailor")
+    background.add_task(run_task, task["id"], lambda: tailor_and_store(profile, job_id))
+    return {"data": {"task_id": task["id"]}, "error": None}
 
 
 @router.get("/{job_id}")

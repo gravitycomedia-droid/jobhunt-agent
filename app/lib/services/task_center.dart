@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/background_task.dart';
+import '../widgets/task_toast.dart';
 import 'api_client.dart';
 
 /// Which long-running server task a [TrackedTask] represents. One active
 /// task per kind at a time — starting a rerank while one is already
 /// running just keeps following the existing one.
-enum TaskKind { rerank, pipeline }
+enum TaskKind { rerank, pipeline, tailor }
 
 /// Client-side lifecycle of one background task. `queued` covers the gap
 /// between tapping the button and the server answering 202 with a task id.
@@ -45,10 +46,13 @@ class TaskCenter {
   final ApiClient _api = ApiClient();
 
   final Map<TaskKind, ValueNotifier<TrackedTask?>> _notifiers = {
-    TaskKind.rerank: ValueNotifier<TrackedTask?>(null),
-    TaskKind.pipeline: ValueNotifier<TrackedTask?>(null),
+    for (final kind in TaskKind.values) kind: ValueNotifier<TrackedTask?>(null),
   };
   final Map<TaskKind, Timer> _timers = {};
+
+  // Remembered per kind so a failure toast's Retry can re-run the exact
+  // same start call without the originating screen still being around.
+  final Map<TaskKind, Future<String> Function()> _starters = {};
 
   // Poll every 5s, back off to 10s after 1 minute, give up at 10 minutes
   // (master-prompt Phase 1A contract).
@@ -68,6 +72,7 @@ class TaskCenter {
   /// No-op if a task of this kind is already active.
   Future<void> start(TaskKind kind, Future<String> Function() starter) async {
     if (isActive(kind)) return;
+    _starters[kind] = starter;
     _publish(TrackedTask(kind, TrackedTaskStatus.queued));
     final String taskId;
     try {
@@ -80,7 +85,45 @@ class TaskCenter {
     _poll(kind, taskId, startedAt: DateTime.now());
   }
 
-  void _publish(TrackedTask task) => _notifiers[task.kind]!.value = task;
+  /// Re-runs the last start call for this kind — wired to failure toasts'
+  /// Retry action.
+  void retry(TaskKind kind) {
+    final starter = _starters[kind];
+    if (starter != null) start(kind, starter);
+  }
+
+  void _publish(TrackedTask task) {
+    _notifiers[task.kind]!.value = task;
+    // Phase 2 completion feedback: fire the global toast from here so it
+    // lands wherever the user is now, not just on the tab that started it.
+    if (task.status == TrackedTaskStatus.done) {
+      showTaskToast(success: true, message: _doneMessage(task));
+    } else if (task.status == TrackedTaskStatus.failed) {
+      showTaskToast(
+        success: false,
+        message: '${_label(task.kind)} failed — ${task.error ?? 'unknown error'}',
+        onRetry: () => retry(task.kind),
+      );
+    }
+  }
+
+  String _label(TaskKind kind) => switch (kind) {
+        TaskKind.rerank => 'Re-rank',
+        TaskKind.pipeline => 'Agent run',
+        TaskKind.tailor => 'Resume tailoring',
+      };
+
+  String _doneMessage(TrackedTask task) {
+    final r = task.result ?? const {};
+    return switch (task.kind) {
+      // Counts come straight from the server's task result (Golden Rule 2:
+      // arithmetic in code, and here not even ours — just display).
+      TaskKind.rerank => 'Re-rank complete — ${r['reranked'] ?? 0} new, ${r['skipped'] ?? 0} skipped',
+      TaskKind.pipeline =>
+        'Agent run complete — ${r['jobs_inserted'] ?? 0} jobs added, ${r['matches_reranked'] ?? 0} scored, ${r['followups_drafted'] ?? 0} follow-up(s)',
+      TaskKind.tailor => 'Resume tailored — review the diff',
+    };
+  }
 
   void _poll(TaskKind kind, String taskId, {required DateTime startedAt}) {
     _timers[kind]?.cancel();
