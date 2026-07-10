@@ -115,6 +115,103 @@ One line about the candidate: {headline}
 
 ---
 
+## 5. Embeddings (task: `embed`, Brick 4)
+Model: text-embedding-004 · task_type: SEMANTIC_SIMILARITY
+
+Not a generation prompt — no system/user split, no JSON schema. This is the
+text template flattened into a single string before it's sent to the
+embedding model. Kept here anyway per this file's own rule ("single source
+of truth for every prompt"), since it's the one other place model input
+shape is decided.
+
+**Profile** (`services/embeddings.profile_embedding_text`)
+```
+{headline}
+{skills, comma-joined}
+{for each experience: "{role} at {company}: {bullets, semicolon-joined}"}
+{for each project: "{name}: {description}"}
+```
+
+**Job** (`services/embeddings.job_embedding_text`)
+```
+{title}
+{company}
+{description}
+```
+
+> Both sides use the same `SEMANTIC_SIMILARITY` task_type (not the
+> query/document split embedding models often use for retrieval) because
+> stage 1 is a direct symmetric cosine comparison between the two vectors,
+> not a search-query-against-corpus lookup.
+
+---
+
+## 6. Add Job extraction (task: `extract_job`, frontend rebuild Phase 2)
+Model: gemini-2.5-flash · Temperature: 0.1
+
+**SYSTEM**
+```
+You extract job posting details from a web page's raw text. Extract information
+EXACTLY as stated. Never infer, embellish, or guess a field that isn't
+clearly present — use null instead.
+Return ONLY valid JSON matching this schema:
+{
+  "title": str, "company": str | null, "location": str | null,
+  "description": str | null, "salary_min": number | null, "salary_max": number | null
+}
+If the page doesn't look like a job posting at all, still return your best
+guess for "title" from the page's main heading — the caller decides
+whether to accept it. No markdown fences, no commentary.
+```
+**USER**
+```
+PAGE TEXT:
+{page_text, truncated to 12000 chars}
+```
+> The page itself is fetched server-side by `routers/jobs.py` (httpx, one
+> user-supplied URL at a time — see DECISIONS.md ADR-009 on why this is
+> judged distinct from ADR-003's no-scraping stance) and stripped to plain
+> text with BeautifulSoup before reaching this prompt; the LLM never sees
+> raw HTML or touches the network itself.
+
+---
+
+## 7. Skill Growth (task: `skill_growth`, frontend rebuild Phase 4)
+Model: gemini-2.5-flash · Temperature: 0.4
+
+**SYSTEM**
+```
+You help a job seeker close skill gaps found across their job matches.
+You will receive a numbered list of gap notes (one per match, may repeat
+similar skills in different words). Group them into distinct skills, and
+for each skill suggest realistic courses and small project ideas.
+Do NOT invent or estimate any percentage, score, or "impact" number —
+only the caller computes real statistics from your gap_indices.
+Return ONLY JSON:
+{
+  "items": [
+    {
+      "skill": str,
+      "reason": str,                 // one sentence, grounded in the gap notes for this skill
+      "gap_indices": [int],          // indices (0-based) into the input list that this skill covers
+      "courses": [{"title": str, "provider": str, "duration": str}],   // max 2
+      "projects": [{"title": str, "impact": str}]                      // max 2
+    }
+  ]
+}
+```
+**USER**
+```
+GAP NOTES:
+{numbered list of raw gap strings from the caller's cached matches.gaps}
+```
+> The prototype's `growthSkills` shows a fabricated `+12% matches` per
+> skill; that number doesn't ship. `services/skill_growth.py` uses
+> `gap_indices` to compute a real "N of M matches" frequency in Python and
+> sorts by it — the model never produces a number the UI displays.
+
+---
+
 ## Prompt engineering working rules
 1. Temperature: 0–0.2 extraction/evaluation · 0.5–0.7 writing tasks
 2. Schema in the prompt AND Pydantic validation in code — belt and suspenders

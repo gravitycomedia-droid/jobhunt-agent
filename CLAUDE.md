@@ -34,7 +34,7 @@ jobhunt-agent/
 - **Mobile:** Flutter (Dart), Riverpod for state (introduce only from Brick 5+), `http` package for API calls
 - **Backend:** FastAPI + Pydantic v2, Python 3.11+
 - **DB:** Supabase Postgres with pgvector extension. Access via `supabase-py` from the server ONLY.
-- **LLM:** Google Gemini — `gemini-2.5-flash` for all generation, `text-embedding-004` for embeddings
+- **LLM:** Google Gemini — `gemini-2.5-flash` for all generation, `gemini-embedding-001` (768-dim output) for embeddings
 - **Jobs data:** Adzuna API (primary) + JSearch via RapidAPI (secondary). NO scraping — legal APIs only.
 - **Push:** Firebase Cloud Messaging
 - **Hosting:** Render (web service + cron job)
@@ -51,12 +51,12 @@ jobhunt-agent/
 - [x] Brick 1: Foundations (Flutter↔FastAPI loop)
 - [x] Brick 2: Resume parser (vision LLM → structured profile)
 - [x] Brick 3: Job ingestion (Adzuna + JSearch + dedup + Supabase)
-- [ ] Brick 4: Embeddings + pgvector search
-- [ ] Brick 5: LLM re-ranker (two-stage RAG complete)
-- [ ] Brick 6: Resume tailoring + guardrail + diff view
-- [ ] Brick 7: Application tracker (Kanban)
-- [ ] Brick 8: Agent loop (cron + FCM push + follow-up drafts)
-- [ ] Brick 9: Auth + polish + beta users
+- [x] Brick 4: Embeddings + pgvector search
+- [x] Brick 5: LLM re-ranker (two-stage RAG complete)
+- [x] Brick 6: Resume tailoring + guardrail + diff view
+- [x] Brick 7: Application tracker (Kanban)
+- [x] Brick 8: Agent loop (cron + FCM push + follow-up drafts) — Android push unverified on-device, see DECISIONS.md ADR-007
+- [x] Brick 9: Auth + polish + beta users — Google OAuth + multi-tenant RLS/scoping + AppShell bottom-nav adoption + Profile screen + empty/loading state audit, all chain-verified (see DECISIONS.md ADR-008); sign-in/push flows unverified on-device (no Android SDK in this environment)
 - [ ] Brick 10: Play Store launch + README + demo video
 
 **UPDATE the checkbox above when a brick's definition-of-done is met.**
