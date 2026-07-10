@@ -5,7 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthChangeEvent, AuthState, Session, Supabase;
 
 import '../services/api_client.dart';
+import '../services/match_feed.dart';
 import '../services/push_service.dart';
+import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import 'auth_screen.dart';
 import 'main_tab_screen.dart';
@@ -63,6 +65,12 @@ class _AuthGateState extends State<AuthGate> {
       if (data.event == AuthChangeEvent.signedIn) {
         unawaited(PushService.initAndRegister());
         unawaited(_checkProfile());
+      }
+      // Sign-out hygiene: stop pollers and drop per-user in-memory state so
+      // the next account never sees the previous user's tasks or matches.
+      if (data.event == AuthChangeEvent.signedOut) {
+        TaskCenter.instance.reset();
+        MatchFeed.instance.reset();
       }
     });
   }

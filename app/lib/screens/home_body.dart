@@ -5,6 +5,7 @@ import '../models/activity_item.dart';
 import '../models/application_item.dart';
 import '../models/match_item.dart';
 import '../services/api_client.dart';
+import '../services/match_feed.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
@@ -41,14 +42,30 @@ class _HomeBodyState extends State<HomeBody> {
   bool _isLoading = true;
   String? _errorMessage;
   bool _hasProfile = true;
-  List<MatchItem> _matches = [];
   List<ApplicationItem> _applications = [];
   List<ActivityItem> _activity = [];
+
+  // Phase 1C: Home's match count is literally the `.length` of the same
+  // MatchFeed list the Matches tab renders — one source of truth, so the
+  // "10 on Home, 2 on Matches" drift can't happen. The listener repaints
+  // this (IndexedStack-kept-alive) body whenever a rerank lands.
+  List<MatchItem> get _matches => MatchFeed.instance.matches.value ?? const [];
 
   @override
   void initState() {
     super.initState();
+    MatchFeed.instance.matches.addListener(_repaint);
     _load();
+  }
+
+  @override
+  void dispose() {
+    MatchFeed.instance.matches.removeListener(_repaint);
+    super.dispose();
+  }
+
+  void _repaint() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
@@ -66,13 +83,12 @@ class _HomeBodyState extends State<HomeBody> {
         return;
       }
       final results = await Future.wait([
-        _apiClient.fetchMatches(limit: 50),
+        MatchFeed.instance.refresh(),
         _apiClient.fetchApplications(),
         _apiClient.fetchActivity(limit: 3),
       ]);
       setState(() {
         _hasProfile = true;
-        _matches = results[0] as List<MatchItem>;
         _applications = results[1] as List<ApplicationItem>;
         _activity = results[2] as List<ActivityItem>;
         _isLoading = false;

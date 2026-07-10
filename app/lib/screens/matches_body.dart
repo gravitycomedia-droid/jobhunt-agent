@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/match_item.dart';
 import '../services/api_client.dart';
+import '../services/match_feed.dart';
 import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
@@ -37,46 +38,35 @@ class _MatchesBodyState extends State<MatchesBody> {
 
   bool _isLoading = true;
   String? _errorMessage;
-  List<MatchItem> _items = [];
+
+  // Phase 1C: the list itself lives in MatchFeed — the same object Home's
+  // stat counts — so the two surfaces can never disagree. This State only
+  // owns loading/error presentation.
+  List<MatchItem> get _items => MatchFeed.instance.matches.value ?? const [];
 
   // ADR-010: the rerank runs server-side as a background task; TaskCenter
   // owns the polling loop (it survives tab switches — this State stays
-  // alive in the IndexedStack but couldn't own a cross-tab poller). We
-  // just listen and refetch when it lands.
+  // alive in the IndexedStack but couldn't own a cross-tab poller).
+  // MatchFeed refetches on completion; we just repaint on either signal.
   ValueNotifier<TrackedTask?> get _rerankTask => TaskCenter.instance.notifierFor(TaskKind.rerank);
 
   @override
   void initState() {
     super.initState();
-    _rerankTask.addListener(_onRerankChanged);
+    _rerankTask.addListener(_repaint);
+    MatchFeed.instance.matches.addListener(_repaint);
     _loadCached();
   }
 
   @override
   void dispose() {
-    _rerankTask.removeListener(_onRerankChanged);
+    _rerankTask.removeListener(_repaint);
+    MatchFeed.instance.matches.removeListener(_repaint);
     super.dispose();
   }
 
-  void _onRerankChanged() {
-    if (!mounted) return;
-    final task = _rerankTask.value;
-    if (task?.status == TrackedTaskStatus.done) {
-      // New scores just landed server-side — refresh the list.
-      unawaited(_refetch());
-    } else {
-      setState(() {}); // banner state changed (queued/running/failed)
-    }
-  }
-
-  Future<void> _refetch() async {
-    try {
-      final items = await _apiClient.fetchMatches(limit: 50);
-      if (!mounted) return;
-      setState(() => _items = items);
-    } catch (_) {
-      // Keep showing what we have; the banner already covers task errors.
-    }
+  void _repaint() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadCached() async {
@@ -85,11 +75,8 @@ class _MatchesBodyState extends State<MatchesBody> {
       _errorMessage = null;
     });
     try {
-      final items = await _apiClient.fetchMatches(limit: 50);
-      setState(() {
-        _items = items;
-        _isLoading = false;
-      });
+      await MatchFeed.instance.refresh();
+      setState(() => _isLoading = false);
       // Fire-and-forget: the UI already has something to show, so the
       // re-rank runs underneath rather than blocking the first paint.
       unawaited(_startRerank());
@@ -107,7 +94,11 @@ class _MatchesBodyState extends State<MatchesBody> {
 
   Future<void> _rerankThenReload() async {
     await _startRerank();
-    await _refetch();
+    try {
+      await MatchFeed.instance.refresh();
+    } catch (_) {
+      // Keep showing what we have; the banner already covers task errors.
+    }
   }
 
   bool get _isReranking => _rerankTask.value?.isActive ?? false;

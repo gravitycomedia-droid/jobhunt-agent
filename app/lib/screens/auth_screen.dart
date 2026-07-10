@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
-    show AuthException, GoTrueClientSignInProvider, OAuthProvider, Supabase;
+    show AuthException, GoTrueClientSignInProvider, LaunchMode, OAuthProvider, Supabase;
 
 import '../config/supabase_config.dart';
 import '../theme/app_tokens.dart';
@@ -71,9 +71,16 @@ class _AuthScreenState extends State<AuthScreen> {
       _errorMessage = null;
     });
     try {
+      // Phase 1B: externalApplication forces a real browser (not an in-app
+      // custom tab some OEMs break) so the com.jobhuntagent.jobhunt_agent://
+      // deep link reliably routes back into the app. The Supabase project's
+      // URL Configuration must allow-list SupabaseConfig.redirectUrl — see
+      // MANUAL_STEPS.md — otherwise Supabase falls back to the project Site
+      // URL (which was the localhost:5173 bug).
       await Supabase.instance.client.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: SupabaseConfig.redirectUrl,
+        authScreenLaunchMode: LaunchMode.externalApplication,
       );
     } on AuthException catch (e) {
       if (!mounted) return;
