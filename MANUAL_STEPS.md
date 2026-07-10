@@ -10,6 +10,9 @@ Dashboard → SQL Editor → paste and run, in order (each is `if not exists`-sa
 - [ ] `server/db/migrations/009_background_tasks.sql` — required by Phase 1A
       (async rerank / "Run agent now"). Until applied, POST /matches/rerank
       and POST /pipeline/run-mine will 500.
+- [ ] `server/db/migrations/010_salary_currency.sql` — Phase 1D. Adds
+      `jobs.salary_currency`, backfills INR on existing salaried rows, and
+      deletes stale (> 60 days) postings that no application references.
 
 ## 2. Supabase — fix Google OAuth redirect (Phase 1B)
 

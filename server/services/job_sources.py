@@ -10,6 +10,33 @@ logger = logging.getLogger(__name__)
 ADZUNA_BASE = "https://api.adzuna.com/v1/api/jobs"
 JSEARCH_URL = "https://jsearch.p.rapidapi.com/search-v2"
 
+# Phase 1D: Adzuna reports salary_min/max in the search country's currency
+# but doesn't echo the currency back — map the country code we queried
+# with. Unknown country → None, and the app renders no symbol rather than
+# guessing "$".
+ADZUNA_COUNTRY_CURRENCY = {
+    "in": "INR",
+    "us": "USD",
+    "gb": "GBP",
+    "au": "AUD",
+    "ca": "CAD",
+    "de": "EUR",
+    "fr": "EUR",
+    "es": "EUR",
+    "it": "EUR",
+    "nl": "EUR",
+    "at": "EUR",
+    "be": "EUR",
+    "ie": "EUR",
+    "pl": "PLN",
+    "br": "BRL",
+    "sg": "SGD",
+    "za": "ZAR",
+    "mx": "MXN",
+    "nz": "NZD",
+    "ch": "CHF",
+}
+
 
 def _roles() -> list[str]:
     return [r.strip() for r in settings.target_roles.split(",") if r.strip()]
@@ -51,6 +78,7 @@ async def fetch_adzuna() -> list[JobIn]:
                             description=r.get("description"),
                             salary_min=r.get("salary_min"),
                             salary_max=r.get("salary_max"),
+                            salary_currency=ADZUNA_COUNTRY_CURRENCY.get(settings.adzuna_country),
                             redirect_url=r.get("redirect_url"),
                             posted_at=r.get("created"),
                         )
@@ -90,6 +118,7 @@ async def fetch_jsearch() -> list[JobIn]:
                             description=j.get("job_description"),
                             salary_min=j.get("job_min_salary"),
                             salary_max=j.get("job_max_salary"),
+                            salary_currency=j.get("job_salary_currency"),
                             redirect_url=j.get("job_apply_link"),
                             posted_at=j.get("job_posted_at_datetime_utc"),
                         )

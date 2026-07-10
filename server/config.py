@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = "onboarding@resend.dev"
 
+    # Phase 1D: postings older than this are skipped at ingestion — a job
+    # board occasionally returns years-old rows ("2591d ago" bug), which
+    # are useless to rank and pollute the shortlist.
+    max_job_age_days: int = 60
+
     daily_pipeline_hour: int = 7
     target_roles: str = ""
     target_locations: str = ""

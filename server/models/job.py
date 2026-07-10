@@ -17,6 +17,10 @@ class JobIn(BaseModel):
     description: Optional[str] = None
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
+    # Phase 1D: ISO 4217 code ("INR", "USD"). Adzuna reports salaries in the
+    # search country's currency; JSearch sends an explicit field. Without
+    # this the app assumed "$" for Hyderabad postings.
+    salary_currency: Optional[str] = None
     redirect_url: Optional[str] = None
     posted_at: Optional[datetime] = None
 

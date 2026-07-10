@@ -1,14 +1,29 @@
 import asyncio
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from bs4 import BeautifulSoup
 
+from config import settings
 from db.supabase_client import supabase
-from models.job import JobExtraction
+from models.job import JobExtraction, JobIn
 from services.dedup import is_duplicate, make_dedup_key
 from services.embeddings import embed_text, embed_texts, job_embedding_text
 from services.job_sources import fetch_adzuna, fetch_jsearch
+
+
+def is_fresh(job: JobIn, now: datetime | None = None) -> bool:
+    """Phase 1D freshness gate: False for postings older than
+    settings.max_job_age_days (job boards occasionally return years-old
+    rows — the "2591d ago" bug). Unknown posted_at passes: the app renders
+    it as "date unknown" rather than us dropping possibly-fresh jobs.
+    """
+    if job.posted_at is None:
+        return True
+    now = now or datetime.now(timezone.utc)
+    posted = job.posted_at if job.posted_at.tzinfo else job.posted_at.replace(tzinfo=timezone.utc)
+    return now - posted <= timedelta(days=settings.max_job_age_days)
 
 
 class ManualJobFetchError(Exception):
@@ -87,6 +102,9 @@ async def refresh_job_pool() -> dict:
     """
     adzuna_jobs, jsearch_jobs = await asyncio.gather(fetch_adzuna(), fetch_jsearch())
     fetched = adzuna_jobs + jsearch_jobs
+    # Phase 1D: drop stale postings before dedup/embedding — one gate for
+    # both sources.
+    fetched = [job for job in fetched if is_fresh(job)]
 
     existing = (
         supabase.table("jobs")
