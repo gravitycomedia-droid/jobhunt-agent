@@ -1,4 +1,4 @@
-/// Mirrors the server's `background_tasks` row (migration 009, ADR-010):
+/// Mirrors the server's `background_tasks` row (migration 009, ADR-011):
 /// long-running endpoints return 202 + a task id, and the client polls
 /// GET /tasks/{id} until [isFinished].
 class BackgroundTask {

@@ -74,7 +74,7 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
 
 @router.post("/{job_id}", status_code=202)
 async def tailor(job_id: str, background: BackgroundTasks, profile: dict = Depends(get_current_profile)):
-    """Brick 6 endpoint, now ADR-010-shaped: one Gemini tailoring call runs
+    """Brick 6 endpoint, now ADR-011-shaped: one Gemini tailoring call runs
     20-60s — too long to hold a mobile connection — so this returns 202 +
     a task id and the client polls GET /tasks/{id}, then reads the stored
     result back via GET /tailor/{job_id}. Nothing here submits an

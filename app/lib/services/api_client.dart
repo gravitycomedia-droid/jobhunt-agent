@@ -245,7 +245,7 @@ class ApiClient {
 
   /// Stage 2 of the two-stage RAG match (Brick 5, ADR-001): triggers the LLM
   /// re-rank for the top [limit] shortlisted jobs and caches results
-  /// server-side. ADR-010: the server now answers 202 with a task id
+  /// server-side. ADR-011: the server now answers 202 with a task id
   /// immediately instead of holding the socket open for minutes of
   /// sequential Gemini calls (which Android's network stack aborted) —
   /// poll [getTaskStatus] until the task finishes, then [fetchMatches].
@@ -261,7 +261,7 @@ class ApiClient {
     return (body['data'] as Map<String, dynamic>)['task_id'] as String;
   }
 
-  /// Polls one background task row (ADR-010). TaskCenter owns the polling
+  /// Polls one background task row (ADR-011). TaskCenter owns the polling
   /// loop; screens subscribe to it rather than calling this directly.
   Future<BackgroundTask> getTaskStatus(String taskId) async {
     final uri = Uri.parse('$_baseUrl/tasks/$taskId');
@@ -290,7 +290,7 @@ class ApiClient {
   }
 
   /// Brick 6: tailors the stored resume toward one job and runs the
-  /// anti-fabrication guardrail (ADR-004) over the result. ADR-010: one
+  /// anti-fabrication guardrail (ADR-004) over the result. ADR-011: one
   /// Gemini call takes 20-60s, so the server answers 202 + a task id —
   /// poll [getTaskStatus], then read the row via [fetchTailoredResume].
   Future<String> tailorResume(String jobId) async {
@@ -459,7 +459,7 @@ class ApiClient {
   /// Brick 9: manually triggers the agent loop for the caller's own
   /// profile only (POST /pipeline/run-mine) — distinct from the Render
   /// cron's POST /pipeline/run, which processes every beta user and is
-  /// guarded by a shared secret instead of a user session. ADR-010: same
+  /// guarded by a shared secret instead of a user session. ADR-011: same
   /// 202 + poll pattern as [rerankShortlist]; returns the task id.
   Future<String> runPipeline() async {
     final uri = Uri.parse('$_baseUrl/pipeline/run-mine');

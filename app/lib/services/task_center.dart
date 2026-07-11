@@ -29,7 +29,7 @@ class TrackedTask {
   bool get isActive => status == TrackedTaskStatus.queued || status == TrackedTaskStatus.running;
 }
 
-/// ADR-010 client half: owns the polling loops for 202-style background
+/// ADR-011 client half: owns the polling loops for 202-style background
 /// tasks (rerank, agent pipeline) so they survive tab switches — a poller
 /// held inside one tab's State would keep running in the IndexedStack, but
 /// its completion callback couldn't reach the rest of the app, and a

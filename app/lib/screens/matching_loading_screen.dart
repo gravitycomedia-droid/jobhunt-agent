@@ -31,7 +31,7 @@ class _MatchingLoadingScreenState extends State<MatchingLoadingScreen> {
   @override
   void initState() {
     super.initState();
-    // ADR-010: refresh first, then start the rerank as a tracked background
+    // ADR-011: refresh first, then start the rerank as a tracked background
     // task — TaskCenter keeps polling after this screen hands off, so
     // MatchesBody refreshes itself when scoring completes.
     unawaited(

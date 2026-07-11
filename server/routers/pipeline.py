@@ -28,7 +28,7 @@ async def run_pipeline_for_me(background: BackgroundTasks, profile: dict = Depen
     refreshes the shared job pool and processes only the caller's own
     profile, not every beta user's (that's POST /pipeline/run, cron-only).
 
-    ADR-010: same async job pattern as POST /matches/rerank — the full loop
+    ADR-011: same async job pattern as POST /matches/rerank — the full loop
     (fetch + embed + rerank) runs for minutes, so return a task id and let
     the client poll GET /tasks/{id}. The cron path above stays synchronous:
     Render's cron runner has no socket-timeout problem.

@@ -47,7 +47,7 @@ class _MatchesBodyState extends State<MatchesBody> {
   // owns loading/error presentation.
   List<MatchItem> get _items => MatchFeed.instance.matches.value ?? const [];
 
-  // ADR-010: the rerank runs server-side as a background task; TaskCenter
+  // ADR-011: the rerank runs server-side as a background task; TaskCenter
   // owns the polling loop (it survives tab switches — this State stays
   // alive in the IndexedStack but couldn't own a cross-tab poller).
   // MatchFeed refetches on completion; we just repaint on either signal.

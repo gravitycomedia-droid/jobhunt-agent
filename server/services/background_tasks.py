@@ -1,4 +1,4 @@
-"""Async job pattern (ADR-010): long-running work runs in a FastAPI
+"""Async job pattern (ADR-011): long-running work runs in a FastAPI
 background task while the endpoint returns 202 + a task id immediately.
 Progress lives in the `background_tasks` table (migration 009); the client
 polls GET /tasks/{id}.

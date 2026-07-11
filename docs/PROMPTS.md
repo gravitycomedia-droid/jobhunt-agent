@@ -116,7 +116,9 @@ One line about the candidate: {headline}
 ---
 
 ## 5. Embeddings (task: `embed`, Brick 4)
-Model: text-embedding-004 · task_type: SEMANTIC_SIMILARITY
+Model: gemini-embedding-001 (768-dim output) · task_type: SEMANTIC_SIMILARITY
+<!-- Phase 7 housekeeping: was stale "text-embedding-004"; config.py has
+     used gemini-embedding-001 since the Brick 10 deploy. -->
 
 Not a generation prompt — no system/user split, no JSON schema. This is the
 text template flattened into a single string before it's sent to the
@@ -209,6 +211,84 @@ GAP NOTES:
 > skill; that number doesn't ship. `services/skill_growth.py` uses
 > `gap_indices` to compute a real "N of M matches" frequency in Python and
 > sorts by it — the model never produces a number the UI displays.
+
+---
+
+## 8. Form extraction (task: `extract_form`, Phase 6 — non-Google forms only)
+Model: gemini-2.5-flash · Temperature: 0.1
+
+Google Forms never touch this prompt — they're parsed deterministically
+from `FB_PUBLIC_LOAD_DATA_` (`services/form_parser.py`, zero LLM). This is
+the fallback for other application pages, flagged `source="llm_extracted"`
+and shown in the app as best-effort.
+
+**SYSTEM**
+```
+You extract application-form questions from a web page's raw text.
+Extract EXACTLY what is present — never invent a question or an option.
+Question types: "short", "paragraph", "choice", "checkbox", "dropdown",
+"date", "time", "file_upload", "unknown".
+Return ONLY valid JSON:
+{
+  "title": str,
+  "description": str | null,
+  "questions": [
+    {"text": str, "type": str, "options": [str], "required": bool}
+  ]
+}
+No markdown fences, no commentary.
+```
+**USER**
+```
+PAGE TEXT:
+{BeautifulSoup-stripped page text, first 12000 chars}
+```
+
+---
+
+## 9. Form fill mapping (task: `form_fill`, Phase 6)
+Model: gemini-2.5-flash · Temperature: 0.2
+
+The anti-fabrication rule is the whole prompt: null beats a guess. A
+deterministic post-check (`services/form_parser.verify_choice_answers`)
+re-verifies in Python that every choice/checkbox/dropdown answer is an
+exact member of the question's options — mismatches are flagged
+`guardrail_pass=false`, never silently accepted. Nothing downstream ever
+submits: the output becomes a prefill URL the human opens and submits
+themselves.
+
+**SYSTEM**
+```
+You fill job-application form answers using ONLY information present in the
+candidate profile provided. Rules:
+- If the profile does not contain the answer, return null for that question.
+- NEVER invent phone numbers, emails, dates, IDs, addresses, or credentials.
+- For choice/checkbox/dropdown questions, pick strictly from the provided
+  options — copy the option text EXACTLY, character for character.
+- confidence is 0.0-1.0: how directly the profile states the answer.
+- source_field names the profile field the answer came from (or null).
+Return ONLY valid JSON:
+{
+  "answers": [
+    {
+      "entry_id": str,
+      "question": str,
+      "answer": str | [str] | null,
+      "confidence": float,
+      "source_field": str | null
+    }
+  ]
+}
+Include one entry per question, in order. No markdown fences, no commentary.
+```
+**USER**
+```
+CANDIDATE PROFILE:
+{ResumeProfile JSON}
+
+FORM QUESTIONS:
+{FormSchema JSON: title, description, questions}
+```
 
 ---
 

@@ -44,7 +44,7 @@ async def rerank(
     `matches`. Safe to call repeatedly — already-ranked (profile, job)
     pairs are skipped, not re-scored.
 
-    ADR-010: up to `limit` sequential Gemini calls take minutes — far too
+    ADR-011: up to `limit` sequential Gemini calls take minutes — far too
     long to hold a mobile HTTP connection open — so this returns 202 with a
     task id immediately and the client polls GET /tasks/{id}.
     """

@@ -41,7 +41,7 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
   TailoredResume? _resume;
   List<bool> _accepted = [];
 
-  // ADR-010: tailoring is a 202-style background task now — TaskCenter
+  // ADR-011: tailoring is a 202-style background task now — TaskCenter
   // owns the poll loop, so tailoring keeps running (and completes with a
   // toast) even if the user backs out of this screen mid-generation.
   ValueNotifier<TrackedTask?> get _tailorTask => TaskCenter.instance.notifierFor(TaskKind.tailor);

@@ -8,7 +8,7 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 @router.get("/{task_id}")
 async def task_status(task_id: str, profile: dict = Depends(get_current_profile)):
-    """Polling endpoint for the async job pattern (ADR-010). Ownership is
+    """Polling endpoint for the async job pattern (ADR-011). Ownership is
     enforced in the query itself — someone else's task id 404s exactly like
     a nonexistent one."""
     task = get_task(task_id, profile["id"])

@@ -163,3 +163,34 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Alternatives considered:** LAN IP or ngrok tunnel — both rejected by the user in favor of Render (see recommendation given: permanent URL, matches existing hosting decision, works from any network). Render free-tier's cold-start spin-down after inactivity is an accepted tradeoff for now, same posture as accepting Render generally in CLAUDE.md.
 
 **Consequences:** First release APK built successfully — `app-release.apk`, 53.5MB, `minSdkVersion 24`/`targetSdkVersion 36`, `INTERNET` permission present, verified signed (debug cert). Verified server-side only via `curl`: `/health` returns 200, an authenticated-only route (`/jobs`) correctly 401s rather than 500ing, confirming the full Brick 4-9 router set imports and boots cleanly on Render. **Not verified**: the actual on-device login flow, resume upload, matching, or any other screen — no physical Android device or emulator was available in this environment to install and click through the APK. Google Sign-In's redirect URL (`com.jobhuntagent.jobhunt_agent://login-callback/`) being registered in Supabase's Auth dashboard is also unverified from code — if Google sign-in fails on-device but email/password works, that dashboard setting is the first thing to check. This is the same category of gap ADR-008/009 already flagged repeatedly: code-level and server-level verification happened, human-in-hand device verification did not.
+
+## ADR-011: Async background-task pattern for long LLM endpoints (202 + poll)
+
+**Context:** `POST /matches/rerank` ran up to 20 sequential Gemini calls (~20-25s each) while the phone held one HTTP connection open for minutes. Android's network stack / Render's free tier dropped the socket — the observed `ClientException: Software caused connection abort`. The client's 10-minute timeout was masking the symptom, not fixing the cause. `POST /pipeline/run-mine` (full agent loop) and `POST /tailor/{job_id}` (single 20-60s call) had the same shape.
+
+**Decision:** Standard async-job pattern, kept deliberately boring: migration `009_background_tasks.sql` adds a `background_tasks` table (`pending → running → done|failed`, enforced by a CHECK constraint — Golden Rule 2, states in code/SQL, never LLM). The three endpoints now create a row, schedule the unchanged work via FastAPI `BackgroundTasks`, and return `202 {"task_id"}` immediately; `GET /tasks/{id}` is the ownership-checked poll endpoint. Client-side, a `TaskCenter` singleton (plain `ValueNotifier`s, no new packages) owns the poll loops — 5s interval backing off to 10s after a minute, giving up at 10 — so polling survives tab switches in the `IndexedStack` and completion toasts fire wherever the user is. The cron path `POST /pipeline/run` stays synchronous: Render's cron runner has no socket-timeout problem.
+
+**Alternatives considered:** WebSockets/SSE (new infra for three endpoints; polling every 5s is fine at this scale), Celery/RQ (a real queue is overkill for a single-instance free-tier deploy; FastAPI BackgroundTasks runs in-process). Known tradeoff: an in-process background task dies with the dyno — the row stays `running` forever; the client's 10-minute give-up covers that honestly.
+
+**Consequences:** Re-rank/agent-run/tailor return instantly; normal 30s client timeouts everywhere; the aborted-connection failure mode is gone by construction. The stuck-`running` case surfaces as a client-side timeout message with Retry.
+
+## ADR-012: ATS resume PDF via ReportLab (deterministic, server-side)
+
+**Context:** Phase 4B needs "Create Resume PDF" — compiling the human-approved tailored bullets + stored profile into a file recruiters' ATS parsers can actually read.
+
+**Decision:** ReportLab on the server (`services/resume_pdf.py` + `GET /tailor/{id}/pdf`). Pure-Python (no new Dockerfile packages), deterministic assembly of already-guardrailed, human-accepted content — no LLM call anywhere in the step (Golden Rule 2/4). ATS constraints hard-coded: single column, Helvetica, standard UPPERCASE headings, no tables/images, real text layer (tests round-trip the PDF through pypdf and assert accepted text appears and rejected tailored text never leaks). The endpoint returns raw `application/pdf` — the one documented exception to the `{"data": ...}` envelope. Client downloads bytes → temp file → native share sheet (`share_plus` + `path_provider`).
+
+**Alternatives considered:** client-side Dart `pdf` package (would duplicate the accepted-bullets compilation logic client-side and drift from the server's single source of truth); HTML→PDF via headless Chrome (heavy system dependency on Render); LaTeX (ditto).
+
+## ADR-013: Form autofill = prefill URL + human submit, deterministic Google Forms parse
+
+**Context:** Phase 6's "the agent fills, the human reviews and taps submit". Two design questions: how to read a form, and how to hand the user a filled one without ever submitting on their behalf.
+
+**Decision:**
+- **Parsing:** public Google Forms embed their full structure as `FB_PUBLIC_LOAD_DATA_` JSON in the viewform HTML — parsed deterministically in `services/form_parser.py`, zero LLM. Non-Google pages fall back to BeautifulSoup text + a new `extract_form` LLM task, flagged `source="llm_extracted"` and presented as best-effort. Sign-in-gated forms return a typed `form_auth_required` error the app maps to an open-in-browser fallback.
+- **Filling:** new `form_fill` LLM task maps profile facts to questions — null where the profile has no answer, never an invented phone/email/ID. A deterministic mini-guardrail (`verify_choice_answers`) then checks every choice/checkbox/dropdown answer is an exact option member; mismatches are flagged, never silently accepted (ADR-004's posture, applied to forms).
+- **Submission model:** the deliverable is a Google prefill URL (`?usp=pp_url&entry.<id>=...`, built in pure Python) opened in the user's own external browser, signed into whatever Google account they pick. File-upload questions are listed as "attach manually" (Google forbids programmatic file answers). Neither app nor server ever POSTs to `formResponse` — grep-provably absent.
+
+**Alternatives considered:** WebView JS-injection fill (v2 candidate for sign-in-gated forms; more capable but fragile and much closer to "acting as the user" than v1 should be); server-side submission (violates the golden rule outright, rejected).
+
+**Consequences:** Fills persist to `form_fills` (migration 012) for history. The whole flow degrades honestly: unparseable → clear error; sign-in-required → browser fallback; unanswerable questions → visibly empty rows the user completes themselves.
