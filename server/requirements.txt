@@ -13,3 +13,4 @@ rapidfuzz
 firebase-admin
 beautifulsoup4
 resend
+reportlab

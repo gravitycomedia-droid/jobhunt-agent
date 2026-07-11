@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data' show Uint8List;
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -518,6 +519,19 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (body['data'] as List).map((s) => SkillGrowthItem.fromJson(s as Map<String, dynamic>)).toList();
+  }
+
+  /// Phase 4B: downloads the compiled ATS-friendly PDF for an approved
+  /// tailored resume. The one endpoint that skips the JSON envelope —
+  /// binary body (documented exception in server/routers/tailor.py).
+  Future<Uint8List> downloadResumePdf(String tailoredResumeId) async {
+    final uri = Uri.parse('$_baseUrl/tailor/$tailoredResumeId/pdf');
+    final response = await http.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+    return response.bodyBytes;
   }
 
   /// Phase 3B: explicit onboarding-step advance for skip buttons

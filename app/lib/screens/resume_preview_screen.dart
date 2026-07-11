@@ -1,4 +1,8 @@
+import 'dart:io' show File;
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/resume_profile.dart';
 import '../models/tailored_resume.dart';
@@ -32,6 +36,7 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
 
   bool _isLoading = true;
   bool _isSubmitting = false;
+  bool _isDownloadingPdf = false;
   bool _submitted = false;
   String? _errorMessage;
   ResumeProfile? _profile;
@@ -87,6 +92,33 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save: $e')));
+    }
+  }
+
+  /// Phase 4B: downloads the ATS PDF (compiled server-side from the
+  /// accepted bullets — deterministic, no LLM), writes it to a temp file,
+  /// and opens the native share/save sheet so the user can save it to
+  /// Files, attach it to an email, etc.
+  Future<void> _createPdf() async {
+    final resume = _resume;
+    if (resume == null) return;
+    setState(() => _isDownloadingPdf = true);
+    try {
+      final bytes = await _apiClient.downloadResumePdf(resume.id);
+      // Share sheets need a real file path, not bytes in memory — the temp
+      // dir is app-private and the OS cleans it up.
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/tailored-resume.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/pdf')],
+        subject: 'Resume — ${widget.jobTitle}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create PDF: $e')));
+    } finally {
+      if (mounted) setState(() => _isDownloadingPdf = false);
     }
   }
 
@@ -197,12 +229,28 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.screenPadX),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _submitted || _isSubmitting ? null : _submit,
-                child: Text(_submitted ? 'In tracker' : (_isSubmitting ? 'Saving…' : 'Submit application')),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Phase 4B: the prominent PDF action — ATS-friendly,
+                // compiled from exactly the bullets accepted on the diff.
+                ElevatedButton.icon(
+                  onPressed: _isDownloadingPdf ? null : _createPdf,
+                  icon: _isDownloadingPdf
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textOnBrand),
+                        )
+                      : const AppIcon(AppIconName.fileText, size: 18, color: AppColors.textOnBrand),
+                  label: Text(_isDownloadingPdf ? 'Creating PDF…' : 'Create Resume PDF'),
+                ),
+                const SizedBox(height: AppSpacing.space2),
+                OutlinedButton(
+                  onPressed: _submitted || _isSubmitting ? null : _submit,
+                  child: Text(_submitted ? 'In tracker' : (_isSubmitting ? 'Saving…' : 'Submit application')),
+                ),
+              ],
             ),
           ),
         ),

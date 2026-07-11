@@ -43,8 +43,10 @@ dependencies:
   supabase_flutter: ^2.8.0
   # Phase 4A: open the job's original posting in the external browser.
   url_launcher: ^6.3.0
-  # Phase 4B: native share/save sheet for the generated resume PDF.
+  # Phase 4B: native share/save sheet for the generated resume PDF, plus a
+  # temp directory to hand the bytes to the share sheet as a real file.
   share_plus: ^10.1.0
+  path_provider: ^2.1.4
   # Phase 5: stale-while-revalidate cache (was wrongly in dev_dependencies —
   # runtime code can't import dev deps in a release build).
   shared_preferences: ^2.3.2

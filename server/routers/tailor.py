@@ -1,11 +1,14 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
+from slugify import slugify
 
 from db.supabase_client import supabase
 from services.auth import get_current_profile
 from services.background_tasks import create_task, run_task
 from services.guardrail import verify_bullets
 from services.llm import LlmApiError, TailorError, tailor_resume
+from services.resume_pdf import compile_ats_pdf
 
 router = APIRouter(prefix="/tailor", tags=["tailor"])
 
@@ -97,6 +100,30 @@ async def get_tailored(job_id: str, profile: dict = Depends(get_current_profile)
         .data
     )
     return {"data": rows[0] if rows else None, "error": None}
+
+
+@router.get("/{tailored_resume_id}/pdf")
+async def tailored_resume_pdf(tailored_resume_id: str, profile: dict = Depends(get_current_profile)):
+    """Phase 4B: compiles the accepted bullets + stored profile into a
+    single-column, ATS-friendly PDF (services/resume_pdf.py — deterministic
+    Python, no LLM call).
+
+    Envelope exception: this endpoint returns raw `application/pdf` bytes,
+    not the usual `{"data": ..., "error": null}` JSON — a binary body can't
+    carry the envelope. Errors still raise HTTPException (JSON) as normal.
+    """
+    rows = supabase.table("tailored_resumes").select("*").eq("id", tailored_resume_id).limit(1).execute().data
+    # Same ownership-as-404 posture as the approve endpoint below.
+    if not rows or rows[0]["profile_id"] != profile["id"]:
+        raise HTTPException(status_code=404, detail="Tailored resume not found")
+
+    pdf_bytes = compile_ats_pdf(profile, rows[0]["bullets"])
+    filename = f"{slugify(profile.get('name') or 'resume')}-resume.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/{tailored_resume_id}/approve")
