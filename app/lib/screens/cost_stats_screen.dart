@@ -6,6 +6,7 @@ import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 
 const List<Color> _breakdownColors = [
   AppColors.brand600,
@@ -65,7 +66,7 @@ class _CostStatsScreenState extends State<CostStatsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('LLM usage')),
+      appBar: const PageHeader(title: 'LLM usage', showBack: true),
       body: RefreshIndicator(onRefresh: _load, child: _body()),
     );
   }

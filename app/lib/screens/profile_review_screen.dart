@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/page_header.dart';
 
 /// Small controller bundles so each list item (one experience entry, one
 /// project, one education entry) owns its own TextEditingControllers instead
@@ -180,7 +181,7 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Review Profile')),
+      appBar: const PageHeader(title: 'Review Profile', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [

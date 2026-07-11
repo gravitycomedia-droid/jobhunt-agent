@@ -6,6 +6,7 @@ import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 
 /// Phase 4 (prototype `ui.isSkillGrowth`): skills-to-learn derived from
 /// real match gaps, with LLM-suggested courses/project ideas. The
@@ -54,7 +55,7 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Grow your match rate')),
+      appBar: const PageHeader(title: 'Grow your match rate', showBack: true),
       body: RefreshIndicator(onRefresh: _load, child: _body()),
     );
   }

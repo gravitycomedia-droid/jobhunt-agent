@@ -9,6 +9,7 @@ import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 import 'cost_stats_screen.dart';
 import 'profile_review_screen.dart';
 import 'resume_upload_screen.dart';
@@ -93,6 +94,38 @@ class _ProfileBodyState extends State<ProfileBody> {
   Widget build(BuildContext context) {
     final email = Supabase.instance.client.auth.currentUser?.email;
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PageHeader(
+          embedded: true,
+          title: 'Profile',
+          actions: [
+            HeaderActionButton(
+              icon: AppIconName.settings,
+              tooltip: 'Settings',
+              // Settings needs the loaded profile's notification prefs —
+              // disabled until the profile fetch lands (same data the nav
+              // row below relies on).
+              onPressed: _profile == null
+                  ? null
+                  : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(
+                            initialAlerts: _profile!.notifyAlerts,
+                            initialFollowupNudge: _profile!.notifyFollowupNudge,
+                          ),
+                        ),
+                      ),
+            ),
+          ],
+        ),
+        Expanded(child: _buildContent(email)),
+      ],
+    );
+  }
+
+  Widget _buildContent(String? email) {
     return ListView(
       children: [
         _accountCard(email),

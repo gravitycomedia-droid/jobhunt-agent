@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_form_field.dart';
+import '../widgets/page_header.dart';
 
 /// "Add application manually" (frontend rebuild Phase 2, prototype
 /// `ui.isAddJob`) — paste a posting URL, let Gemini extract fields
@@ -98,7 +99,7 @@ class _AddJobScreenState extends State<AddJobScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add application manually')),
+      appBar: const PageHeader(title: 'Add application manually', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [

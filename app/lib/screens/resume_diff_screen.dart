@@ -10,6 +10,7 @@ import '../widgets/background_task_dialog.dart';
 import '../widgets/diff_row.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 import 'resume_preview_screen.dart';
 
 /// Brick 6, extended in the frontend rebuild's Phase 2: shows a tailored
@@ -152,7 +153,7 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Tailored resume')),
+      appBar: const PageHeader(title: 'Tailored resume', showBack: true),
       body: _buildBody(),
     );
   }

@@ -10,8 +10,10 @@ import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/background_task_dialog.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/match_card.dart';
+import '../widgets/page_header.dart';
 import 'resume_diff_screen.dart';
 
 /// The Matches tab's content (Brick 9 polish: chrome comes from
@@ -105,8 +107,44 @@ class _MatchesBodyState extends State<MatchesBody> {
   String? get _rerankError =>
       _rerankTask.value?.status == TrackedTaskStatus.failed ? _rerankTask.value?.error : null;
 
+  /// Header re-rank trigger (Phase 3A) — the explicit, user-initiated
+  /// variant, so it gets the Phase 2 start dialog (the automatic rerank on
+  /// tab load stays silent apart from the banner).
+  Future<void> _rerankFromHeader() async {
+    unawaited(showBackgroundTaskDialog(
+      context,
+      'Re-ranking your matches',
+      'Scoring shortlisted jobs against your profile. This runs in the '
+          "background and usually takes 2–3 minutes — keep using the app, "
+          "we'll notify you when it's done.",
+    ));
+    await _startRerank();
+  }
+
   @override
   Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PageHeader(
+          embedded: true,
+          title: 'Matches',
+          subtitle: _isLoading ? null : '${_items.length} ranked for you',
+          actions: [
+            HeaderActionButton(
+              icon: AppIconName.refresh,
+              tooltip: 'Re-rank matches',
+              busy: _isReranking,
+              onPressed: _rerankFromHeader,
+            ),
+          ],
+        ),
+        Expanded(child: _buildContent()),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
     if (_isLoading) {
       return ListView.separated(
         padding: EdgeInsets.zero,

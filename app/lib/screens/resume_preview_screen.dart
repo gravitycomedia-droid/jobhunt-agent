@@ -8,6 +8,7 @@ import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 
 /// The compiled tailored-resume preview (frontend rebuild Phase 2,
 /// prototype `ui.isResumePreview`) — profile header + the final bullet
@@ -92,7 +93,7 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Resume preview')),
+      appBar: const PageHeader(title: 'Resume preview', showBack: true),
       body: _buildBody(),
     );
   }

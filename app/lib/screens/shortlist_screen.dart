@@ -5,6 +5,7 @@ import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';
+import '../widgets/page_header.dart';
 
 /// Reached from the Jobs tab's "Shortlist · N" pill (frontend rebuild
 /// Phase 1, prototype `ui.isShortlist`). Zero new backend: just the
@@ -21,7 +22,7 @@ class ShortlistScreen extends StatelessWidget {
     final shortlist = applications.where((a) => a.state == 'saved').toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Shortlist')),
+      appBar: const PageHeader(title: 'Shortlist', showBack: true),
       body: Padding(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         child: shortlist.isEmpty

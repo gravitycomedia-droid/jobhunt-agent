@@ -4,11 +4,15 @@ import 'package:flutter/material.dart';
 import '../models/activity_item.dart';
 import '../models/application_item.dart';
 import '../models/match_item.dart';
+import 'dart:async' show unawaited;
+
 import '../services/api_client.dart';
 import '../services/match_feed.dart';
+import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/background_task_dialog.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/score_ring.dart';
@@ -51,17 +55,35 @@ class _HomeBodyState extends State<HomeBody> {
   // this (IndexedStack-kept-alive) body whenever a rerank lands.
   List<MatchItem> get _matches => MatchFeed.instance.matches.value ?? const [];
 
+  // Phase 3A: the run-agent-now trigger moved here from the deleted
+  // branded title bar — Home's greeting row is its new permanent home.
+  ValueNotifier<TrackedTask?> get _pipelineTask => TaskCenter.instance.notifierFor(TaskKind.pipeline);
+  bool get _isRunningPipeline => _pipelineTask.value?.isActive ?? false;
+
   @override
   void initState() {
     super.initState();
     MatchFeed.instance.matches.addListener(_repaint);
+    _pipelineTask.addListener(_repaint);
     _load();
   }
 
   @override
   void dispose() {
     MatchFeed.instance.matches.removeListener(_repaint);
+    _pipelineTask.removeListener(_repaint);
     super.dispose();
+  }
+
+  Future<void> _runPipeline() async {
+    unawaited(showBackgroundTaskDialog(
+      context,
+      'Agent run started',
+      'Fetching fresh jobs and scoring them against your profile. This runs '
+          'in the background and usually takes 2–3 minutes — keep using the '
+          "app, we'll notify you when it's done.",
+    ));
+    await TaskCenter.instance.start(TaskKind.pipeline, () => _apiClient.runPipeline());
   }
 
   void _repaint() {
@@ -184,6 +206,8 @@ class _HomeBodyState extends State<HomeBody> {
                   ],
                 ),
               ),
+              _runAgentButton(),
+              const SizedBox(width: AppSpacing.space2),
               _activityBellButton(),
             ],
           ),
@@ -220,6 +244,21 @@ class _HomeBodyState extends State<HomeBody> {
             _recentActivitySection(),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _runAgentButton() {
+    return GestureDetector(
+      onTap: _isRunningPipeline ? null : _runPipeline,
+      child: Container(
+        width: 42,
+        height: 42,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), shape: BoxShape.circle),
+        child: _isRunningPipeline
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brand))
+            : const AppIcon(AppIconName.bot, size: 20, color: AppColors.textSecondary),
       ),
     );
   }

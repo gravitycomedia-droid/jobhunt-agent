@@ -8,6 +8,7 @@ import '../widgets/application_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/kanban_column.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 import 'app_detail_screen.dart';
 
 /// The Track tab's content (chrome comes from [MainTabScreen] /
@@ -71,6 +72,27 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PageHeader(
+          embedded: true,
+          title: 'Track',
+          subtitle: _isLoading ? null : '${_items.length} application${_items.length == 1 ? '' : 's'} in the pipeline',
+          actions: [
+            HeaderActionButton(
+              icon: AppIconName.refresh,
+              tooltip: 'Reload board',
+              onPressed: _load,
+            ),
+          ],
+        ),
+        Expanded(child: _buildContent()),
+      ],
+    );
+  }
+
+  Widget _buildContent() {
     if (_isLoading) {
       return ListView.separated(
         scrollDirection: Axis.horizontal,

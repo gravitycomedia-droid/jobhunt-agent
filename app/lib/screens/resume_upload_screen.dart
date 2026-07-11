@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/page_header.dart';
 import 'profile_review_screen.dart';
 
 /// Roughly the FlutterFlow "Upload File" action + a button, hand-written.
@@ -75,7 +76,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Upload Resume')),
+      appBar: const PageHeader(title: 'Upload Resume', showBack: true),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6),

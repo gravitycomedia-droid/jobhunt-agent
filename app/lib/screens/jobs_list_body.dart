@@ -10,6 +10,7 @@ import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 import '../widgets/task_toast.dart';
 import 'add_job_screen.dart';
 import 'shortlist_screen.dart';
@@ -32,6 +33,7 @@ class _JobsListBodyState extends State<JobsListBody> {
   final ApiClient _apiClient = ApiClient();
 
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorMessage;
   List<Job> _jobs = [];
   List<ApplicationItem> _applications = [];
@@ -67,6 +69,7 @@ class _JobsListBodyState extends State<JobsListBody> {
     // Pull-to-refresh keeps its own indicator; the toast confirms the
     // outcome even if the user has tabbed away by the time it finishes
     // (Phase 2 — refreshes can take up to a minute).
+    setState(() => _isRefreshing = true);
     try {
       final result = await _apiClient.refreshJobs();
       showTaskToast(
@@ -76,6 +79,7 @@ class _JobsListBodyState extends State<JobsListBody> {
     } catch (e) {
       showTaskToast(success: false, message: 'Job refresh failed — $e', onRetry: _refresh);
     }
+    if (mounted) setState(() => _isRefreshing = false);
     await _loadJobs();
   }
 
@@ -99,6 +103,40 @@ class _JobsListBodyState extends State<JobsListBody> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredJobs = _sourceFilter == null ? _jobs : _jobs.where((j) => j.source == _sourceFilter).toList();
+
+    // Phase 3A: the header stays up in every state (loading, error,
+    // loaded) — only the content region below it changes.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PageHeader(
+          embedded: true,
+          title: 'Jobs',
+          subtitle: _isLoading ? null : '${filteredJobs.length} posting${filteredJobs.length == 1 ? '' : 's'}',
+          actions: [
+            HeaderActionButton(
+              icon: AppIconName.plus,
+              tooltip: 'Add a job manually',
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddJobScreen()));
+                if (mounted) unawaited(_loadJobs());
+              },
+            ),
+            HeaderActionButton(
+              icon: AppIconName.refresh,
+              tooltip: 'Refresh jobs',
+              busy: _isRefreshing,
+              onPressed: _refresh,
+            ),
+          ],
+        ),
+        Expanded(child: _buildContent(filteredJobs)),
+      ],
+    );
+  }
+
+  Widget _buildContent(List<Job> filteredJobs) {
     if (_isLoading) {
       return ListView.separated(
         padding: EdgeInsets.zero,
@@ -122,26 +160,12 @@ class _JobsListBodyState extends State<JobsListBody> {
 
     final shortlistCount = _applications.where((a) => a.state == 'saved').length;
     final sources = _jobs.map((j) => j.source).toSet().toList()..sort();
-    final filteredJobs = _sourceFilter == null ? _jobs : _jobs.where((j) => j.source == _sourceFilter).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            IconButton(
-              tooltip: 'Add application manually',
-              onPressed: () async {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddJobScreen()));
-                if (mounted) unawaited(_loadJobs());
-              },
-              icon: const AppIcon(AppIconName.plus, size: 18, color: AppColors.brand600),
-              style: IconButton.styleFrom(
-                backgroundColor: AppColors.surface,
-                side: const BorderSide(color: AppColors.border),
-                shape: const CircleBorder(),
-              ),
-            ),
             const Spacer(),
             TextButton.icon(
               onPressed: () => Navigator.of(context).push(

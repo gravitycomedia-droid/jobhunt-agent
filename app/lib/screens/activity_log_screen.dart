@@ -7,6 +7,7 @@ import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/loading_skeleton.dart';
+import '../widgets/page_header.dart';
 
 /// Frontend rebuild Phase 3 (prototype `ui.isActivity`): "what the agent
 /// did on your behalf" — every application stage change, drafted
@@ -55,7 +56,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Agent activity')),
+      appBar: const PageHeader(title: 'Agent activity', showBack: true),
       body: RefreshIndicator(onRefresh: _load, child: _body()),
     );
   }

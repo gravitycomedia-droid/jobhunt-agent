@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
+import '../widgets/page_header.dart';
 
 /// Phase 4 (prototype `ui.isSettings`, "Notifications" group only — the
 /// prototype's "Agent" group is dropped: autoApply conflicts with
@@ -66,7 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: const PageHeader(title: 'Settings', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [

@@ -31,6 +31,8 @@ enum AppIconName {
   // ---- Structure / interaction ----
   chevronDown,
   chevronRight,
+  chevronLeft,
+  refresh,
   plus,
   clock,
   bot,
@@ -61,6 +63,8 @@ const Map<AppIconName, IconData> _iconMap = {
   AppIconName.info: Icons.info_outline,
   AppIconName.chevronDown: Icons.keyboard_arrow_down,
   AppIconName.chevronRight: Icons.chevron_right,
+  AppIconName.chevronLeft: Icons.chevron_left,
+  AppIconName.refresh: Icons.refresh,
   AppIconName.plus: Icons.add,
   AppIconName.clock: Icons.access_time,
   AppIconName.bot: Icons.smart_toy_outlined,

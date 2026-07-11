@@ -5,6 +5,7 @@ import '../models/application_item.dart';
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_form_field.dart';
+import '../widgets/page_header.dart';
 import '../widgets/status_pill.dart';
 
 /// The application detail screen (frontend rebuild Phase 2, prototype
@@ -135,7 +136,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
   Widget build(BuildContext context) {
     final job = _application.job;
     return Scaffold(
-      appBar: AppBar(title: const Text('Application')),
+      appBar: const PageHeader(title: 'Application', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [
