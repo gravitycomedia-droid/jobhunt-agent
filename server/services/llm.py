@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from config import settings
 from db.supabase_client import supabase
 from models.followup import FollowupDraft
+from models.form import FormFillResponse, LlmFormExtraction
 from models.job import JobExtraction
 from models.match import MatchResult
 from models.resume import ResumeProfile
@@ -118,6 +119,53 @@ Return ONLY JSON:
 
 SKILL_GROWTH_RETRY_SUFFIX = PARSE_RETRY_SUFFIX
 
+# Mirrors docs/PROMPTS.md section 8 (Form extraction, Phase 6). Only used
+# for NON-Google forms — Google Forms are parsed deterministically from
+# FB_PUBLIC_LOAD_DATA_ (services/form_parser.py), no LLM involved.
+FORM_EXTRACT_SYSTEM_PROMPT = """You extract application-form questions from a web page's raw text.
+Extract EXACTLY what is present — never invent a question or an option.
+Question types: "short", "paragraph", "choice", "checkbox", "dropdown",
+"date", "time", "file_upload", "unknown".
+Return ONLY valid JSON:
+{
+  "title": str,
+  "description": str | null,
+  "questions": [
+    {"text": str, "type": str, "options": [str], "required": bool}
+  ]
+}
+No markdown fences, no commentary."""
+
+FORM_EXTRACT_RETRY_SUFFIX = PARSE_RETRY_SUFFIX
+
+# Mirrors docs/PROMPTS.md section 9 (Form fill mapping, Phase 6). The
+# anti-fabrication stance is the whole point: null beats a guess, and a
+# deterministic post-check (services/form_parser.verify_choice_answers)
+# re-verifies every choice answer in Python afterwards.
+FORM_FILL_SYSTEM_PROMPT = """You fill job-application form answers using ONLY information present in the
+candidate profile provided. Rules:
+- If the profile does not contain the answer, return null for that question.
+- NEVER invent phone numbers, emails, dates, IDs, addresses, or credentials.
+- For choice/checkbox/dropdown questions, pick strictly from the provided
+  options — copy the option text EXACTLY, character for character.
+- confidence is 0.0-1.0: how directly the profile states the answer.
+- source_field names the profile field the answer came from (or null).
+Return ONLY valid JSON:
+{
+  "answers": [
+    {
+      "entry_id": str,
+      "question": str,
+      "answer": str | [str] | null,
+      "confidence": float,
+      "source_field": str | null
+    }
+  ]
+}
+Include one entry per question, in order. No markdown fences, no commentary."""
+
+FORM_FILL_RETRY_SUFFIX = PARSE_RETRY_SUFFIX
+
 
 class ResumeParseError(Exception):
     """The model responded, but its output never validated (after the one retry)."""
@@ -140,6 +188,14 @@ class JobExtractError(Exception):
 
 
 class SkillGrowthError(Exception):
+    """The model responded, but its output never validated (after the one retry)."""
+
+
+class FormExtractError(Exception):
+    """The model responded, but its output never validated (after the one retry)."""
+
+
+class FormFillError(Exception):
     """The model responded, but its output never validated (after the one retry)."""
 
 
@@ -619,3 +675,144 @@ def generate_skill_growth(gaps: list[str], profile_id: str | None = None) -> Ski
         return result
 
     raise SkillGrowthError(last_error)
+
+
+def extract_form_from_text(page_text: str, profile_id: str | None = None) -> LlmFormExtraction:
+    """Phase 6, non-Google forms only: asks Gemini to pull form questions
+    out of stripped page text (same pattern/temperature as
+    extract_job_from_text). Validates against LlmFormExtraction, retries
+    once with the error appended (Golden Rule 3), logs to llm_calls (Golden
+    Rule 5). Results are flagged source='llm_extracted' by the caller —
+    lower confidence than the deterministic Google parser, shown as such.
+    """
+    prompt_hash = hashlib.sha256(FORM_EXTRACT_SYSTEM_PROMPT.encode()).hexdigest()[:16]
+    user_prompt = f"PAGE TEXT:\n{page_text[:12000]}"
+    prompt = f"{FORM_EXTRACT_SYSTEM_PROMPT}\n\n{user_prompt}"
+
+    for attempt in (0, 1):
+        start = time.monotonic()
+        try:
+            text, tokens_in, tokens_out = _call_gemini([], prompt, temperature=0.1)
+        except Exception as e:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            _log_llm_call(
+                task="extract_form",
+                model=settings.gemini_model,
+                prompt_hash=prompt_hash,
+                tokens_in=None,
+                tokens_out=None,
+                latency_ms=latency_ms,
+                validation_passed=False,
+                retried=attempt == 1,
+                profile_id=profile_id,
+            )
+            raise LlmApiError(str(e)) from e
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        try:
+            result = LlmFormExtraction.model_validate_json(_strip_fences(text))
+        except (ValidationError, ValueError) as e:
+            last_error = str(e)
+            _log_llm_call(
+                task="extract_form",
+                model=settings.gemini_model,
+                prompt_hash=prompt_hash,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=latency_ms,
+                validation_passed=False,
+                retried=attempt == 1,
+                profile_id=profile_id,
+            )
+            prompt = f"{FORM_EXTRACT_SYSTEM_PROMPT}\n\n{user_prompt}{FORM_EXTRACT_RETRY_SUFFIX.format(error=last_error)}"
+            continue
+
+        _log_llm_call(
+            task="extract_form",
+            model=settings.gemini_model,
+            prompt_hash=prompt_hash,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            latency_ms=latency_ms,
+            validation_passed=True,
+            retried=attempt == 1,
+            profile_id=profile_id,
+        )
+        return result
+
+    raise FormExtractError(last_error)
+
+
+def _form_fill_user_prompt(profile: dict, form_schema_json: str) -> str:
+    return f"""CANDIDATE PROFILE:
+{ResumeProfile.model_validate(profile).model_dump_json()}
+
+FORM QUESTIONS:
+{form_schema_json}"""
+
+
+def map_profile_to_form(profile: dict, form_schema_json: str, profile_id: str | None = None) -> FormFillResponse:
+    """Phase 6: maps profile facts onto form questions — null for anything
+    the profile can't answer, options copied exactly for choice questions.
+    Validates against FormFillResponse, retries once with the error
+    appended (Golden Rule 3), logs to llm_calls (Golden Rule 5). The
+    deterministic choice-membership check
+    (services/form_parser.verify_choice_answers) runs on the result — this
+    function's output is never trusted alone (Golden Rule 4 spirit).
+    """
+    prompt_hash = hashlib.sha256(FORM_FILL_SYSTEM_PROMPT.encode()).hexdigest()[:16]
+    user_prompt = _form_fill_user_prompt(profile, form_schema_json)
+    prompt = f"{FORM_FILL_SYSTEM_PROMPT}\n\n{user_prompt}"
+
+    for attempt in (0, 1):
+        start = time.monotonic()
+        try:
+            text, tokens_in, tokens_out = _call_gemini([], prompt, temperature=0.2)
+        except Exception as e:
+            latency_ms = int((time.monotonic() - start) * 1000)
+            _log_llm_call(
+                task="form_fill",
+                model=settings.gemini_model,
+                prompt_hash=prompt_hash,
+                tokens_in=None,
+                tokens_out=None,
+                latency_ms=latency_ms,
+                validation_passed=False,
+                retried=attempt == 1,
+                profile_id=profile_id,
+            )
+            raise LlmApiError(str(e)) from e
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        try:
+            result = FormFillResponse.model_validate_json(_strip_fences(text))
+        except (ValidationError, ValueError) as e:
+            last_error = str(e)
+            _log_llm_call(
+                task="form_fill",
+                model=settings.gemini_model,
+                prompt_hash=prompt_hash,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=latency_ms,
+                validation_passed=False,
+                retried=attempt == 1,
+                profile_id=profile_id,
+            )
+            prompt = f"{FORM_FILL_SYSTEM_PROMPT}\n\n{user_prompt}{FORM_FILL_RETRY_SUFFIX.format(error=last_error)}"
+            continue
+
+        _log_llm_call(
+            task="form_fill",
+            model=settings.gemini_model,
+            prompt_hash=prompt_hash,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            latency_ms=latency_ms,
+            validation_passed=True,
+            retried=attempt == 1,
+            profile_id=profile_id,
+        )
+        return result
+
+    raise FormFillError(last_error)

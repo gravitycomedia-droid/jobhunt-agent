@@ -9,6 +9,7 @@ import '../models/activity_item.dart';
 import '../models/application_item.dart';
 import '../models/background_task.dart';
 import '../models/cost_stats.dart';
+import '../models/form_fill.dart';
 import '../models/health_status.dart';
 import '../models/job.dart';
 import '../models/job_extraction.dart';
@@ -519,6 +520,42 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (body['data'] as List).map((s) => SkillGrowthItem.fromJson(s as Map<String, dynamic>)).toList();
+  }
+
+  /// Phase 6: parse a pasted application-form URL. Google Forms parse
+  /// deterministically server-side; other pages go through an LLM
+  /// extraction (flagged `llm_extracted`). A 403 with `form_auth_required`
+  /// means the form needs Google sign-in to even view — the screen shows
+  /// the open-in-browser fallback for that.
+  Future<ParsedForm> parseForm(String url) async {
+    final uri = Uri.parse('$_baseUrl/forms/parse');
+    final response = await http
+        .post(uri, headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode({'url': url}))
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ParsedForm.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Phase 6: map the stored profile onto a parsed form. One Gemini call
+  /// (nulls where the profile has no answer — never invented) plus the
+  /// deterministic choice-membership guardrail, then the prefill URL.
+  Future<FormFillResult> fillForm(FormSchemaModel form) async {
+    final uri = Uri.parse('$_baseUrl/forms/fill');
+    final response = await http
+        .post(uri, headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode({'form': form.toJson()}))
+        .timeout(const Duration(seconds: 90));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return FormFillResult.fromJson(body['data'] as Map<String, dynamic>);
   }
 
   /// Phase 4B: downloads the compiled ATS-friendly PDF for an approved
