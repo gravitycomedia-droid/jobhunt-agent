@@ -195,17 +195,17 @@ class ApiClient {
     return ResumeProfile.fromJson(body['data'] as Map<String, dynamic>);
   }
 
-  /// Triggers a fetch+dedup+insert cycle on the server. This hits Adzuna and
-  /// JSearch for every (role, location) combo in TARGET_ROLES/TARGET_LOCATIONS,
-  /// so it can take up to a minute — a longer `.timeout()` than the other
-  /// calls reflects that, rather than a bug.
+  /// Triggers a fetch+dedup+insert cycle on the server across four sources
+  /// (Adzuna, JSearch, Greenhouse, Lever — job source expansion, ADR-018).
+  /// JSearch alone routinely takes ~60s to respond; a longer `.timeout()`
+  /// than the other calls reflects that, rather than a bug.
   /// Returns the server's `{fetched, inserted}` counts so the completion
   /// toast (Phase 2) can say what actually happened.
   Future<Map<String, dynamic>> refreshJobs() async {
     final uri = Uri.parse('$_baseUrl/jobs/refresh');
     final response = await http
         .post(uri, headers: _authHeaders())
-        .timeout(const Duration(seconds: 90));
+        .timeout(const Duration(seconds: 120));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));

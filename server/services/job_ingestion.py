@@ -136,18 +136,24 @@ async def refresh_job_pool() -> dict:
 
     embeddings = embed_texts([job_embedding_text(job.model_dump(mode="json")) for job, _ in new_jobs])
 
-    inserted = 0
+    payloads = []
     for (job, dedup_key), embedding in zip(new_jobs, embeddings):
         payload = job.model_dump(mode="json")
         payload["dedup_key"] = dedup_key
         payload["embedding"] = embedding
-        try:
-            supabase.table("jobs").insert(payload).execute()
-        except Exception:
-            # Most likely the dedup_key unique constraint firing on a race
-            # between concurrent refreshes — safe to skip, not a real error.
-            continue
-        inserted += 1
+        payloads.append(payload)
+
+    # One batched upsert instead of one insert() round-trip per row — with
+    # Greenhouse/Lever added (job source expansion, ADR-018), a single
+    # refresh can find 200+ new rows, and 200+ sequential HTTP calls to
+    # Supabase was enough on its own to blow past the app's 90s client
+    # timeout. ignore_duplicates=True does the same job the old per-row
+    # try/except did (skip a dedup_key collision from a concurrent refresh
+    # race without erroring), just as one request instead of N.
+    inserted = 0
+    if payloads:
+        result = supabase.table("jobs").upsert(payloads, on_conflict="dedup_key", ignore_duplicates=True).execute()
+        inserted = len(result.data)
 
     return {"fetched": len(fetched), "inserted": inserted}
 
