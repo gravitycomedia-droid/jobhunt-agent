@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
+import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
+import 'resume_upload_screen.dart';
 
 /// Phase 4 (prototype `ui.isSettings`, "Notifications" group only — the
 /// prototype's "Agent" group is dropped: autoApply conflicts with
@@ -12,6 +14,11 @@ import '../widgets/page_header.dart';
 /// `act.toggle` behavior) and gate calls jobs/daily_pipeline.py already
 /// makes unconditionally — see server/routers/resume.py's
 /// notification-prefs endpoint.
+///
+/// A "RESUME" group (re-upload) was added on top of the prototype — the
+/// prototype only put resume re-upload under Profile → Parsed profile →
+/// "Re-upload resume". Settings is a second, equally-discoverable entry
+/// point into the same [ResumeUploadScreen] flow, not a separate feature.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.initialAlerts, required this.initialFollowupNudge});
 
@@ -64,6 +71,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _updateResume() async {
+    final navigator = Navigator.of(context);
+    await navigator.push(
+      MaterialPageRoute(
+        builder: (_) => ResumeUploadScreen(
+          // ResumeUploadScreen -> ProfileReviewScreen is a two-deep push;
+          // ProfileReviewScreen only pops itself when onSaved is null (see
+          // its _confirm), so with onSaved set here it's on us to pop both
+          // routes and land back on Settings ourselves.
+          onProfileReviewDone: () => navigator
+            ..pop()
+            ..pop(),
+        ),
+      ),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Resume updated.')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -71,6 +98,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [
+          Text('RESUME', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          const SizedBox(height: AppSpacing.space2),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.border),
+              borderRadius: AppRadius.lgRadius,
+              boxShadow: AppElevation.e1,
+            ),
+            child: InkWell(
+              onTap: _updateResume,
+              borderRadius: AppRadius.lgRadius,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+                child: Row(
+                  children: [
+                    const AppIcon(AppIconName.upload, size: 20, color: AppColors.brand600),
+                    const SizedBox(width: AppSpacing.space3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Update resume', style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Upload a new PDF to replace your current profile — we\'ll re-parse it',
+                            style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const AppIcon(AppIconName.chevronRight, size: 18, color: AppColors.textTertiary),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.space4),
           Text('NOTIFICATIONS', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
           const SizedBox(height: AppSpacing.space2),
           Container(

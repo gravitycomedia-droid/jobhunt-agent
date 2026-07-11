@@ -41,6 +41,7 @@ enum AppIconName {
   dollarSign,
   trendingUp,
   settings,
+  autoAwesome,
 }
 
 const Map<AppIconName, IconData> _iconMap = {
@@ -73,6 +74,7 @@ const Map<AppIconName, IconData> _iconMap = {
   AppIconName.dollarSign: Icons.attach_money,
   AppIconName.trendingUp: Icons.trending_up,
   AppIconName.settings: Icons.settings_outlined,
+  AppIconName.autoAwesome: Icons.auto_awesome_outlined,
 };
 
 /// Line-icon primitive — use for all in-app iconography instead of

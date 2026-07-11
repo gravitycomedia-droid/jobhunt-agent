@@ -19,5 +19,6 @@ create index if not exists llm_calls_profile_id_idx on llm_calls(profile_id);
 -- only matters if something ever queries Supabase directly with the
 -- anon key.
 alter table llm_calls enable row level security;
+drop policy if exists "llm_calls: owner read" on llm_calls;
 create policy "llm_calls: owner read" on llm_calls
   for select using (profile_id in (select id from profiles where user_id = auth.uid()));

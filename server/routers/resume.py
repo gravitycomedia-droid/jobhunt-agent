@@ -32,10 +32,20 @@ class OnboardingStepUpdate(BaseModel):
     step: str
 
 
+class StudentInfoUpdate(BaseModel):
+    employment_type: str  # 'student' | 'experienced'
+    usn: str | None = None
+    # Only used to backfill education[0].institution when the resume
+    # parse didn't already find one — never overwrites a real value.
+    college_name: str | None = None
+
+
 # Phase 3B: the onboarding state machine, in code (Golden Rule 2 — states
 # are never an LLM's call). Steps only ever move forward; a re-upload or
 # an out-of-order PATCH can't bounce a finished user back into onboarding.
-ONBOARDING_STEPS = ["welcome", "resume", "review", "roles", "done"]
+# 'student_info' added between 'review' and 'roles' for the
+# student/experienced + USN/college ask (migration 014).
+ONBOARDING_STEPS = ["welcome", "resume", "review", "student_info", "roles", "done"]
 
 
 def _advance_onboarding(profile_id: str, current: str | None, target: str) -> None:
@@ -68,6 +78,11 @@ def _upsert_profile(user_id: str, profile: ResumeProfile, raw_text: str) -> dict
         "education": [ed.model_dump() for ed in profile.education],
         "raw_resume_text": raw_text,
     }
+    if profile.usn:
+        # Only set when this parse actually found one — a re-upload whose
+        # new resume doesn't print a USN shouldn't blank out one the user
+        # already entered by hand via PATCH /resume/profile/student-info.
+        payload["usn"] = profile.usn
     payload["embedding"] = embed_text(profile_embedding_text(payload))
     # Brick 9: one profile row per authenticated user — was "the one global
     # row" pre-auth (see DECISIONS.md ADR-008).
@@ -130,6 +145,41 @@ async def update_my_profile(update: ResumeProfileUpdate, profile: dict = Depends
     result = supabase.table("profiles").update(payload).eq("id", profile["id"]).execute()
     # Phase 3B: saving the review during onboarding completes the review
     # step (forward-only — no-op for done users editing from Profile).
+    # Advances to 'student_info' (not 'roles' directly) since migration
+    # 014 inserted that step right after review.
+    _advance_onboarding(profile["id"], profile.get("onboarding_step"), "student_info")
+    return {"data": result.data[0], "error": None}
+
+
+@router.patch("/profile/student-info")
+async def update_student_info(body: StudentInfoUpdate, profile: dict = Depends(get_current_profile)):
+    """Onboarding step between review and roles (migration 014): student vs.
+    experienced professional, plus USN/college name for students — asked
+    here only because [ResumeUploadScreen]'s parser (services/llm.py) tries
+    to extract both from the resume first and usually succeeds for
+    students; this is the fallback for whatever it didn't find.
+    """
+    if body.employment_type not in ("student", "experienced"):
+        raise HTTPException(status_code=422, detail="employment_type must be 'student' or 'experienced'")
+
+    payload: dict = {"employment_type": body.employment_type}
+    if body.usn:
+        payload["usn"] = body.usn
+
+    education = profile.get("education") or []
+    has_institution = bool(education) and bool(education[0].get("institution"))
+    if body.employment_type == "student" and body.college_name and not has_institution:
+        if education:
+            education = [{**education[0], "institution": body.college_name}, *education[1:]]
+        else:
+            education = [{"degree": "", "institution": body.college_name, "year": ""}]
+        payload["education"] = education
+        # institution feeds the embedding text (see embeddings.py) — re-embed
+        # like PATCH /resume/profile does whenever profile content changes.
+        merged = {**profile, **payload}
+        payload["embedding"] = embed_text(profile_embedding_text(merged), profile_id=profile["id"])
+
+    result = supabase.table("profiles").update(payload).eq("id", profile["id"]).execute()
     _advance_onboarding(profile["id"], profile.get("onboarding_step"), "roles")
     return {"data": result.data[0], "error": None}
 

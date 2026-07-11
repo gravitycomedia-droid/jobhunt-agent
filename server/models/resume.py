@@ -31,6 +31,9 @@ class ResumeProfile(BaseModel):
     experience: list[ExperienceItem] = []
     projects: list[ProjectItem] = []
     education: list[EducationItem] = []
+    # USN (Indian engineering college register number) or an equivalent
+    # roll/registration number — most resumes won't have one, that's fine.
+    usn: Optional[str] = None
 
 
 class ResumeProfileUpdate(BaseModel):

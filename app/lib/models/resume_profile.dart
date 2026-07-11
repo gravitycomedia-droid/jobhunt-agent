@@ -104,9 +104,18 @@ class ResumeProfile {
   bool notifyFollowupNudge;
 
   /// Phase 3B: where the user is in onboarding (welcome/resume/review/
-  /// roles/done) — AuthGate resumes the flow at exactly this step. Server
-  /// bumps it forward as steps complete; skips PATCH it explicitly.
+  /// student_info/roles/done) — AuthGate resumes the flow at exactly this
+  /// step. Server bumps it forward as steps complete; skips PATCH it
+  /// explicitly.
   String onboardingStep;
+
+  /// Set via PATCH /resume/profile/student-info, same "separate endpoint,
+  /// not part of [toJson]" precedent as [targetRoles]/notifications above.
+  /// [usn] may also arrive pre-filled straight from the resume parser
+  /// (services/llm.py extracts it when visible) before the user ever hits
+  /// that endpoint.
+  String? employmentType;
+  String? usn;
 
   /// Phase 5: exact server JSON, cached verbatim for round-tripping (the
   /// hand-written [toJson] below is the PATCH body — a subset, not a
@@ -126,6 +135,8 @@ class ResumeProfile {
     this.notifyAlerts = true,
     this.notifyFollowupNudge = true,
     this.onboardingStep = 'done',
+    this.employmentType,
+    this.usn,
     this.raw = const {},
   });
 
@@ -152,6 +163,8 @@ class ResumeProfile {
       // Missing column (pre-migration-011 server) reads as done — never
       // trap an existing user back in onboarding.
       onboardingStep: json['onboarding_step'] as String? ?? 'done',
+      employmentType: json['employment_type'] as String?,
+      usn: json['usn'] as String?,
     );
   }
 

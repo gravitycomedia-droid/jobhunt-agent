@@ -1,0 +1,30 @@
+-- ============================================
+-- Job-Hunt Agent — Migration 013: fix job-embedding relevance bug
+-- Run in Supabase SQL Editor (Dashboard → SQL).
+-- ============================================
+
+-- 001_core_schema.sql created jobs_embedding_idx (ivfflat, lists=100) in
+-- the SAME migration that created the (then-empty) jobs table. IVFFlat
+-- trains its cluster centroids from whatever rows exist at CREATE INDEX
+-- time — on an empty table that's zero real data, so every centroid was
+-- degenerate from day one and never got retrained as jobs were ingested
+-- (ivfflat doesn't self-maintain; it needs a manual REINDEX). Combined
+-- with pgvector's default `ivfflat.probes = 1` (never overridden anywhere
+-- in this codebase), match_jobs_by_similarity's stage-1 shortlist was
+-- effectively scanning ~1/100th of the index against garbage centroids —
+-- the root cause of matches looking unrelated to the uploaded resume.
+--
+-- Fix: drop the premature ANN index. Without it, the same `order by
+-- embedding <=> ... limit N` query in match_jobs_by_similarity falls back
+-- to an exact (brute-force) nearest-neighbor scan — slower per-row than a
+-- healthy ANN index, but always exactly correct, and at current beta
+-- job-pool sizes (low thousands of rows) the latency difference is
+-- negligible.
+--
+-- Revisit once the jobs table is large enough (roughly 50k+ rows) that
+-- sequential scan latency actually shows up: rebuild ivfflat with
+-- `lists ≈ sqrt(row_count)` *after* the table is populated (never in the
+-- same migration that creates it), or switch to an HNSW index
+-- (`using hnsw (embedding vector_cosine_ops)`), which builds incrementally
+-- and doesn't have this train-on-empty-table failure mode.
+drop index if exists jobs_embedding_idx;

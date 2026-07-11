@@ -1,23 +1,20 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
 
-from config import settings
 from jobs.daily_pipeline import run_daily_pipeline_for_all, run_daily_pipeline_for_profile
-from services.auth import get_current_profile
+from services.auth import get_current_profile, verify_pipeline_cron
 from services.background_tasks import create_task, run_task
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
 
-@router.post("/run")
-async def run_pipeline_for_all(x_pipeline_secret: str | None = Header(default=None)):
-    """The Render cron path (Brick 9): runs the agent loop for every beta
-    user. There's no per-user session to authenticate a cron job with, so
-    this is guarded by a shared secret (PIPELINE_SECRET) instead of
-    services/auth.py's JWT check — set X-Pipeline-Secret on the Render cron
-    job's request to match server/.env's PIPELINE_SECRET.
+@router.post("/run", dependencies=[Depends(verify_pipeline_cron)])
+async def run_pipeline_for_all():
+    """The cron path (Brick 9, Cloud Run migration): runs the agent loop
+    for every beta user. There's no per-user session to authenticate a
+    cron job with, so this is guarded by verify_pipeline_cron instead of
+    services/auth.py's JWT check — see that function for the two accepted
+    credential types (Render's shared secret, Cloud Scheduler's OIDC token).
     """
-    if not settings.pipeline_secret or x_pipeline_secret != settings.pipeline_secret:
-        raise HTTPException(status_code=401, detail="Invalid or missing X-Pipeline-Secret")
     summary = await run_daily_pipeline_for_all()
     return {"data": summary, "error": None}
 

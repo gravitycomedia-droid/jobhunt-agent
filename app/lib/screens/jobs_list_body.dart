@@ -16,6 +16,7 @@ import '../widgets/stale_banner.dart';
 import '../widgets/task_toast.dart';
 import 'add_job_screen.dart';
 import 'form_fill_screen.dart';
+import 'jd_resume_screen.dart';
 import 'shortlist_screen.dart';
 
 /// The Jobs tab's content (frontend rebuild Phase 1, prototype `ui.isJobs`)
@@ -141,6 +142,13 @@ class _JobsListBodyState extends State<JobsListBody> {
           title: 'Jobs',
           subtitle: _isLoading ? null : '${filteredJobs.length} posting${filteredJobs.length == 1 ? '' : 's'}',
           actions: [
+            HeaderActionButton(
+              icon: AppIconName.autoAwesome,
+              tooltip: 'Customize resume for a JD',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const JdResumeScreen()),
+              ),
+            ),
             HeaderActionButton(
               icon: AppIconName.fileText,
               tooltip: 'Fill an application form',

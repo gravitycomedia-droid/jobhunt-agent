@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'config/supabase_config.dart';
 import 'screens/auth_gate.dart';
+import 'services/api_client.dart';
 import 'theme/app_theme.dart';
 import 'widgets/task_toast.dart';
 
@@ -14,7 +15,18 @@ Future<void> main() async {
   // first paint since every screen depends on knowing sign-in state.
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
+  // ADR-010: Render free tier spins the server down after ~15min idle and
+  // takes 30-60s to cold-start. Not awaiting this means the wake-up ping
+  // happens during app launch instead of during the user's first
+  // re-rank/tailor tap, where it used to blow past a 30s client timeout.
+  // Doesn't eliminate the cold start, just moves it earlier. Errors are
+  // expected and ignored — this is a best-effort nudge, not a real call.
+  _warmUpServer();
   runApp(const JobHuntAgentApp());
+}
+
+void _warmUpServer() {
+  ApiClient().fetchHealth().ignore();
 }
 
 /// The app's root widget. FlutterFlow builds this for you behind the scenes

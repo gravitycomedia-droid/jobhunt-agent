@@ -16,8 +16,12 @@ Return ONLY valid JSON matching this schema:
   "name": str, "headline": str | null, "skills": [str],
   "experience": [{"role": str, "company": str, "duration": str, "bullets": [str]}],
   "projects": [{"name": str, "tech": [str], "description": str}],
-  "education": [{"degree": str, "institution": str, "year": str}]
+  "education": [{"degree": str, "institution": str, "year": str}],
+  "usn": str | null
 }
+"usn" is a USN (University Seat Number), roll number, or registration number
+— extract it only if literally printed on the resume (common on student
+resumes, rare otherwise); use null rather than guessing.
 If a field is absent, use null (or [] for lists). No markdown fences, no commentary.
 ```
 **USER**: the resume page images.

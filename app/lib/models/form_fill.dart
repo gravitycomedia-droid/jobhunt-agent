@@ -131,17 +131,30 @@ class FormAnswer {
       guardrailPass: json['guardrail_pass'] as bool? ?? true,
     );
   }
+
+  /// PATCH /forms/fills/{id} body shape — mirrors server/models/form.py's
+  /// FormAnswer exactly (the server just stores this list verbatim).
+  Map<String, dynamic> toJson() => {
+        'entry_id': entryId,
+        'question': question,
+        'answer': answer,
+        'confidence': confidence,
+        'source_field': sourceField,
+        'guardrail_pass': guardrailPass,
+      };
 }
 
 /// POST /forms/fill response.
 class FormFillResult {
+  final String fillId;
   final List<FormAnswer> answers;
   final String? prefillUrl;
 
-  const FormFillResult({required this.answers, this.prefillUrl});
+  const FormFillResult({required this.fillId, required this.answers, this.prefillUrl});
 
   factory FormFillResult.fromJson(Map<String, dynamic> json) {
     return FormFillResult(
+      fillId: json['fill_id'] as String,
       answers: (json['answers'] as List).map((a) => FormAnswer.fromJson((a as Map).cast<String, dynamic>())).toList(),
       prefillUrl: json['prefill_url'] as String?,
     );

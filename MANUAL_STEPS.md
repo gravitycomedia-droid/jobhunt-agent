@@ -17,20 +17,41 @@ Dashboard → SQL Editor → paste and run each file:
       `profiles.onboarding_step`, backfills existing users to 'done'.
 - [ ] `server/db/migrations/012_form_fills.sql` — Phase 6. Fill history
       table; POST /forms/fill 500s without it.
+- [ ] `server/db/migrations/013_fix_job_embedding_relevance.sql` — drops
+      the `jobs_embedding_idx` ANN index (see the migration's own comment):
+      it was trained on an empty table back in migration 001 and never
+      retrained, so stage-1 similarity search was matching against near-
+      random centroids — the root cause of "jobs shown don't match the
+      resume at all." Falls back to an exact nearest-neighbor scan, fine at
+      current beta job-pool sizes.
+- [ ] `server/db/migrations/014_student_info.sql` — adds
+      `profiles.employment_type`/`usn` and inserts the new `student_info`
+      onboarding step into the `onboarding_step` CHECK constraint. Until
+      applied, PATCH /resume/profile/student-info 500s and PATCH
+      /resume/profile/onboarding-step rejects `'student_info'`.
 
-## 2. Supabase — fix Google OAuth redirect (Phase 1B)
+## 2. Supabase — fix Google OAuth redirect
 
-The "lands on localhost:5173" bug is dashboard config, not code:
+Still broken as of 2026-07-11, now landing on the *old Render page*
+instead of localhost — this section's previous fix (below) is what caused
+that: it pointed the fallback Site URL at Render, and Render is still live
+(ADR-014) even after the Cloud Run migration, so the stale fallback still
+resolves. Fixing this properly this time means the fallback can never again
+point at a web backend that might itself get migrated/decommissioned:
 
 Dashboard → Authentication → URL Configuration:
 
-- [ ] **Additional Redirect URLs** → add exactly:
+- [ ] **Additional Redirect URLs** → confirm this exact entry is present
+      (trailing slash included — Supabase matches these literally):
       `com.jobhuntagent.jobhunt_agent://login-callback/`
-      (trailing slash included — Supabase matches these literally).
-- [ ] **Site URL** → change from `http://localhost:5173` to
-      `https://jobhunt-agent-server.onrender.com` (or the deep link above).
-      Site URL is the *fallback* when a redirect isn't allow-listed; it must
-      never point at a dev server.
+- [ ] **Site URL** → change to the same deep link:
+      `com.jobhuntagent.jobhunt_agent://login-callback/`
+      Do **not** point Site URL at any backend URL (Render, Cloud Run, or
+      future replacements) — it's the fallback used whenever the redirect
+      isn't allow-listed, so it should always resolve back into the app,
+      never onto a web page. This is what actually fixes the "lands on a
+      server page after Google login" bug for good, independent of which
+      backend host is live at any given time.
 
 No Google Cloud Console change needed — Google redirects to Supabase's own
 `/auth/v1/callback`, which is already configured.

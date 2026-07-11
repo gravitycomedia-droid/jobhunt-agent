@@ -3,6 +3,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from slugify import slugify
 
+from config import settings
 from db.supabase_client import supabase
 from services.auth import get_current_profile
 from services.background_tasks import create_task, run_task
@@ -45,8 +46,13 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
     if not bullets:
         raise HTTPException(status_code=422, detail="Stored profile has no experience bullets to tailor")
 
+    # JD-paste resume builder jobs (routers/jobs.py's `from-jd` flow) run on
+    # the cheap tier end-to-end (ADR-017) — this is the only place that
+    # decides that, so every OTHER caller of tailor_and_store (matched
+    # jobs, Add Job) is unaffected and keeps using settings.gemini_model.
+    model = settings.gemini_model_lite if job.get("source") == "jd_paste" else None
     try:
-        llm_response = tailor_resume(bullets, job.get("description") or "", profile_id=profile["id"])
+        llm_response = tailor_resume(bullets, job.get("description") or "", profile_id=profile["id"], model=model)
     except TailorError as e:
         raise HTTPException(status_code=422, detail=f"Could not tailor resume: {e}") from e
     except LlmApiError as e:

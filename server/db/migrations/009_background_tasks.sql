@@ -29,5 +29,6 @@ create index if not exists background_tasks_profile_id_idx
 -- profile_id against the caller). This policy only matters if something
 -- ever queries Supabase directly with the anon key.
 alter table background_tasks enable row level security;
+drop policy if exists "background_tasks: owner read" on background_tasks;
 create policy "background_tasks: owner read" on background_tasks
   for select using (profile_id in (select id from profiles where user_id = auth.uid()));

@@ -21,23 +21,28 @@ alter table profiles
 -- project that talks about auth at all.
 
 alter table profiles enable row level security;
+drop policy if exists "profiles: owner read/write" on profiles;
 create policy "profiles: owner read/write" on profiles
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 alter table matches enable row level security;
+drop policy if exists "matches: owner read/write" on matches;
 create policy "matches: owner read/write" on matches
   for all using (profile_id in (select id from profiles where user_id = auth.uid()));
 
 alter table applications enable row level security;
+drop policy if exists "applications: owner read/write" on applications;
 create policy "applications: owner read/write" on applications
   for all using (profile_id in (select id from profiles where user_id = auth.uid()));
 
 alter table tailored_resumes enable row level security;
+drop policy if exists "tailored_resumes: owner read/write" on tailored_resumes;
 create policy "tailored_resumes: owner read/write" on tailored_resumes
   for all using (profile_id in (select id from profiles where user_id = auth.uid()));
 
 -- jobs is a shared pool with no owner — any authenticated user may read
 -- it; only the server (service role, bypasses RLS) ever writes to it.
 alter table jobs enable row level security;
+drop policy if exists "jobs: authenticated read" on jobs;
 create policy "jobs: authenticated read" on jobs
   for select using (auth.role() = 'authenticated');

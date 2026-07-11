@@ -44,7 +44,13 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
   // ADR-011: tailoring is a 202-style background task now — TaskCenter
   // owns the poll loop, so tailoring keeps running (and completes with a
   // toast) even if the user backs out of this screen mid-generation.
-  ValueNotifier<TrackedTask?> get _tailorTask => TaskCenter.instance.notifierFor(TaskKind.tailor);
+  // Scoped by jobId (not just TaskKind.tailor) so tailoring one job doesn't
+  // silently block/collide with tailoring another — see TaskCenter.start's
+  // "one active task per kind+id" contract. Without this, opening job B's
+  // diff screen while job A's tailor task was still running would no-op the
+  // start call for B entirely, leaving B on the loading skeleton (or, worse,
+  // eventually resolving with A's completion event and showing A's diff).
+  ValueNotifier<TrackedTask?> get _tailorTask => TaskCenter.instance.notifierFor(TaskKind.tailor, id: widget.jobId);
 
   @override
   void initState() {
@@ -117,7 +123,7 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
               'the background and usually takes under a minute.',
         );
       }
-      await TaskCenter.instance.start(TaskKind.tailor, () => _apiClient.tailorResume(widget.jobId));
+      await TaskCenter.instance.start(TaskKind.tailor, () => _apiClient.tailorResume(widget.jobId), id: widget.jobId);
     } catch (e) {
       setState(() {
         _errorMessage = e.toString();
@@ -136,12 +142,14 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
       // straight to the compiled preview.
       await _apiClient.approveTailoredResume(resume.id, accepted: _accepted);
       if (!mounted) return;
+      // Just push — ResumePreviewScreen's own back button already pops
+      // itself. Popping again here on return raced that pop's still-running
+      // transition and threw a RenderBox-not-laid-out assertion.
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ResumePreviewScreen(jobId: widget.jobId, jobTitle: widget.jobTitle),
         ),
       );
-      if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not generate resume: $e')));
@@ -251,15 +259,24 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
             padding: const EdgeInsets.all(AppSpacing.screenPadX),
             child: Row(
               children: [
-                OutlinedButton(
-                  onPressed: _isGenerating
-                      ? null
-                      : () => setState(() {
-                            for (var i = 0; i < _accepted.length; i++) {
-                              if (resume.bullets[i].guardrailPass) _accepted[i] = true;
-                            }
-                          }),
-                  child: const Text('Accept all'),
+                // See profile_body.dart's Edit button for why this is
+                // pinned to a tight SizedBox instead of sitting bare in
+                // the Row (Flutter layout bug on this SDK: a non-flex
+                // OutlinedButton here throws "BoxConstraints forces an
+                // infinite width" on first layout and blanks the screen).
+                SizedBox(
+                  width: 108,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: _isGenerating
+                        ? null
+                        : () => setState(() {
+                              for (var i = 0; i < _accepted.length; i++) {
+                                if (resume.bullets[i].guardrailPass) _accepted[i] = true;
+                              }
+                            }),
+                    child: const Text('Accept all'),
+                  ),
                 ),
                 const SizedBox(width: AppSpacing.space3),
                 Expanded(

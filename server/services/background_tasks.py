@@ -13,6 +13,8 @@ import traceback
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
+from starlette.concurrency import run_in_threadpool
+
 from db.supabase_client import supabase
 
 logger = logging.getLogger(__name__)
@@ -60,10 +62,21 @@ async def run_task(task_id: str, fn: TaskFn) -> None:
     """Wrapper scheduled via FastAPI BackgroundTasks: marks the row running,
     executes fn (sync or async), records done+result or failed+error. Never
     raises — a background task has no response to propagate into.
+
+    run_task itself is a coroutine function, so Starlette's BackgroundTasks
+    awaits it directly on the server's single event loop (see
+    starlette.background.BackgroundTask.__call__) instead of routing it
+    through a threadpool the way it would for a plain `def`. fn is not
+    async — it's rerank_shortlist/tailor_and_store/the pipeline runner,
+    which make blocking supabase-py and Gemini SDK calls in a loop that can
+    run for minutes — so calling it directly here would freeze the entire
+    process (every other request, including the poll hitting this same
+    task) for that whole duration. run_in_threadpool moves that blocking
+    work off the event loop.
     """
     _set_status(task_id, "running")
     try:
-        result = fn()
+        result = await run_in_threadpool(fn)
         if inspect.isawaitable(result):
             result = await result
         _set_status(task_id, "done", result=result)

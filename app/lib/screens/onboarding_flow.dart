@@ -9,13 +9,15 @@ import '../widgets/app_icon.dart';
 import 'matching_loading_screen.dart';
 import 'profile_review_screen.dart';
 import 'resume_upload_screen.dart';
+import 'student_info_screen.dart';
 import 'target_roles_screen.dart';
 import 'welcome_screen.dart';
 
 /// The onboarding steps as an explicit enum (Phase 3B) — mirrors the
 /// server's `profiles.onboarding_step` values, plus the client-only
-/// `matching` transition screen at the end.
-enum OnboardingStep { welcome, resume, review, roles, matching }
+/// `matching` transition screen at the end. `studentInfo` (migration 014)
+/// sits between review and roles.
+enum OnboardingStep { welcome, resume, review, studentInfo, roles, matching }
 
 /// Phase 3B rework: onboarding as an explicit step state machine instead
 /// of chained Navigator.pushes. Why: with pushes, resuming at an arbitrary
@@ -55,6 +57,7 @@ class OnboardingFlow extends StatefulWidget {
   static OnboardingStep stepFromServer(String step) => switch (step) {
         'resume' => OnboardingStep.resume,
         'review' => OnboardingStep.review,
+        'student_info' => OnboardingStep.studentInfo,
         'roles' => OnboardingStep.roles,
         _ => OnboardingStep.welcome,
       };
@@ -69,15 +72,18 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   late OnboardingStep _step = widget.initialStep;
   late ResumeProfile? _profile = widget.initialProfile;
 
-  // Steps the user counts: welcome(1) resume(2) review(3) roles(4);
-  // matching is a transition, not a numbered step.
+  // Steps the user counts: welcome(1) resume(2) review(3) studentInfo(4)
+  // roles(5); matching is a transition, not a numbered step.
   int get _stepNumber => switch (_step) {
         OnboardingStep.welcome => 1,
         OnboardingStep.resume => 2,
         OnboardingStep.review => 3,
-        OnboardingStep.roles => 4,
-        OnboardingStep.matching => 4,
+        OnboardingStep.studentInfo => 4,
+        OnboardingStep.roles => 5,
+        OnboardingStep.matching => 5,
       };
+
+  static const _totalSteps = 5;
 
   void _goTo(OnboardingStep step) => setState(() => _step = step);
 
@@ -85,6 +91,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   /// advance (forward-only), then move on locally either way — a flaky
   /// network shouldn't trap the user on a screen they chose to skip.
   void _skipReview() {
+    unawaited(_apiClient.updateOnboardingStep('student_info').catchError((_) {}));
+    _goTo(OnboardingStep.studentInfo);
+  }
+
+  /// Student-info skip: employment_type/usn stay unset — no downstream
+  /// feature depends on them being present, so this is a clean skip.
+  void _skipStudentInfo() {
     unawaited(_apiClient.updateOnboardingStep('roles').catchError((_) {}));
     _goTo(OnboardingStep.roles);
   }
@@ -99,11 +112,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   OnboardingStep? get _backTarget => switch (_step) {
         OnboardingStep.welcome => null,
         OnboardingStep.resume => OnboardingStep.welcome,
-        // Back from review = re-upload a different PDF; back from roles =
-        // re-check the parsed profile. Forward server state is untouched —
-        // walking backward to fix a typo never regresses onboarding_step.
+        // Back from review = re-upload a different PDF; back from
+        // studentInfo/roles = re-check earlier steps. Forward server state
+        // is untouched — walking backward to fix a typo never regresses
+        // onboarding_step.
         OnboardingStep.review => OnboardingStep.resume,
-        OnboardingStep.roles => _profile == null ? null : OnboardingStep.review,
+        OnboardingStep.studentInfo => _profile == null ? null : OnboardingStep.review,
+        OnboardingStep.roles => _profile == null ? null : OnboardingStep.studentInfo,
         OnboardingStep.matching => null,
       };
 
@@ -111,6 +126,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         OnboardingStep.welcome => () => _goTo(OnboardingStep.resume),
         OnboardingStep.resume => null, // NOT skippable — profile is required
         OnboardingStep.review => _skipReview,
+        OnboardingStep.studentInfo => _skipStudentInfo,
         OnboardingStep.roles => _skipRoles,
         OnboardingStep.matching => null,
       };
@@ -160,7 +176,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    for (var i = 1; i <= 4; i++) ...[
+                    for (var i = 1; i <= _totalSteps; i++) ...[
                       if (i > 1) const SizedBox(width: 6),
                       Container(
                         width: 28,
@@ -174,7 +190,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text('Step $_stepNumber of 4', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+                Text('Step $_stepNumber of $_totalSteps', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
               ],
             ),
           ),
@@ -223,8 +239,22 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         return ProfileReviewScreen(
           profile: profile,
           embedded: true,
-          // PATCH /resume/profile advanced onboarding_step to 'roles'.
-          onSaved: () => _goTo(OnboardingStep.roles),
+          // PATCH /resume/profile advanced onboarding_step to 'student_info'.
+          onSaved: () => _goTo(OnboardingStep.studentInfo),
+        );
+      case OnboardingStep.studentInfo:
+        final profile = _profile;
+        if (profile == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(OnboardingStep.resume));
+          return const SizedBox.shrink();
+        }
+        return StudentInfoScreen(
+          profile: profile,
+          // PATCH /resume/profile/student-info advanced onboarding_step to 'roles'.
+          onDone: (updated) => setState(() {
+            _profile = updated;
+            _step = OnboardingStep.roles;
+          }),
         );
       case OnboardingStep.roles:
         return TargetRolesScreen(

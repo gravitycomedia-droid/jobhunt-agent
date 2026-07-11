@@ -13,8 +13,13 @@ import re
 from urllib.parse import urlencode
 
 import httpx
+from rapidfuzz import fuzz, process
 
 from models.form import FormAnswer, FormQuestion, FormSchema
+
+# How closely a current question's text must match a past one (after
+# normalize_question) to reuse that past answer — see apply_answer_history.
+_HISTORY_MATCH_THRESHOLD = 88
 
 # Google's internal item-type enum inside FB_PUBLIC_LOAD_DATA_.
 _GOOGLE_TYPE = {
@@ -151,6 +156,48 @@ def verify_choice_answers(schema: FormSchema, answers: list[FormAnswer]) -> list
         values = answer.answer if isinstance(answer.answer, list) else [answer.answer]
         if not all(v in question.options for v in values):
             answer.guardrail_pass = False
+    return answers
+
+
+def normalize_question(text: str) -> str:
+    """Collapses wording noise (punctuation, casing, extra whitespace) so
+    the same real-world question asked slightly differently across two
+    forms ("Phone number" vs "Your phone number:") still matches."""
+    return re.sub(r"[^a-z0-9 ]", "", text.lower()).strip()
+
+
+def apply_answer_history(answers: list[FormAnswer], history: dict[str, FormAnswer]) -> list[FormAnswer]:
+    """Silently overrides each answer with one remembered from a past form
+    fill whenever the current question closely fuzzy-matches a previously
+    answered one — recurring questions (phone number, visa sponsorship,
+    notice period, expected salary...) get the user's own last answer
+    instead of a fresh LLM guess. Still shown as a normal editable row, so
+    a wrong reuse is just as easy to fix as any other suggestion.
+
+    Mutates and returns `answers` (same in-place style as
+    verify_choice_answers). Caller must re-run verify_choice_answers
+    afterward — a reused choice/checkbox answer might not be a valid
+    option on THIS particular form even though it was on the one it came
+    from.
+    """
+    if not history:
+        return answers
+    keys = list(history.keys())
+    for answer in answers:
+        key = normalize_question(answer.question)
+        if not key:
+            continue
+        # token_set_ratio (not plain ratio) so "Phone number" still matches
+        # "Your phone number:" — real forms wrap the same question in
+        # different filler words, not just different punctuation/casing.
+        match = process.extractOne(key, keys, scorer=fuzz.token_set_ratio, score_cutoff=_HISTORY_MATCH_THRESHOLD)
+        if match is None:
+            continue
+        past = history[match[0]]
+        answer.answer = past.answer
+        answer.confidence = 1.0
+        answer.source_field = "reused from a previous form"
+        answer.guardrail_pass = True
     return answers
 
 

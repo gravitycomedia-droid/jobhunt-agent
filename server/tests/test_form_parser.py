@@ -6,8 +6,10 @@ from models.form import FormAnswer
 from services.form_parser import (
     FormAuthRequiredError,
     FormParseError,
+    apply_answer_history,
     build_prefill_url,
     is_google_form_url,
+    normalize_question,
     parse_google_form,
     verify_choice_answers,
 )
@@ -121,3 +123,40 @@ def test_checkbox_repeats_params_when_clean():
     answers = [FormAnswer(entry_id="2004", question="Stack", answer=["Flutter", "React Native"], confidence=0.9)]
     url = build_prefill_url(schema, verify_choice_answers(schema, answers))
     assert url.count("entry.2004=") == 2
+
+
+def test_normalize_question_collapses_wording_noise():
+    assert normalize_question("Phone Number:") == normalize_question("  phone number  ")
+
+
+def test_apply_answer_history_reuses_fuzzy_matching_question():
+    history = {
+        normalize_question("Phone number"): FormAnswer(
+            entry_id="9001", question="Phone number", answer="555-1234", confidence=0.9, source_field="profile.phone"
+        )
+    }
+    answers = [FormAnswer(entry_id="2001", question="Your phone number:", answer=None, confidence=0.0)]
+    reused = apply_answer_history(answers, history)
+    assert reused[0].answer == "555-1234"
+    assert reused[0].confidence == 1.0
+    assert reused[0].source_field == "reused from a previous form"
+
+
+def test_apply_answer_history_leaves_unmatched_questions_alone():
+    history = {normalize_question("Phone number"): FormAnswer(entry_id="9001", question="Phone number", answer="555-1234")}
+    answers = [FormAnswer(entry_id="2001", question="Favorite programming language", answer=None, confidence=0.0)]
+    reused = apply_answer_history(answers, history)
+    assert reused[0].answer is None
+
+
+def test_apply_answer_history_reuse_still_subject_to_choice_guardrail():
+    schema = _parsed()
+    history = {
+        normalize_question("Years of experience"): FormAnswer(
+            entry_id="9001", question="Years of experience", answer="10+"  # not an option on THIS form
+        )
+    }
+    answers = [FormAnswer(entry_id="2003", question="Years of experience", answer=None, confidence=0.0)]
+    reused = verify_choice_answers(schema, apply_answer_history(answers, history))
+    assert reused[0].answer == "10+"
+    assert not reused[0].guardrail_pass

@@ -22,5 +22,6 @@ create index if not exists form_fills_profile_id_idx on form_fills(profile_id);
 -- Same defense-in-depth posture as 004/006/009: the server scopes by
 -- profile_id itself; this only matters for direct anon-key access.
 alter table form_fills enable row level security;
+drop policy if exists "form_fills: owner read" on form_fills;
 create policy "form_fills: owner read" on form_fills
   for select using (profile_id in (select id from profiles where user_id = auth.uid()));

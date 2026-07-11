@@ -25,16 +25,16 @@ import '../models/tailored_resume.dart';
 /// goes through here instead of calling `http` directly, which is what made
 /// Brick 9's auth headers a one-file change: [_authHeaders] below.
 class ApiClient {
-  /// Brick 10: the server is deployed on Render (CLAUDE.md's hosting
-  /// choice) at this fixed URL, so a real phone can reach it — unlike the
-  /// old localhost/10.0.2.2 addresses, which only ever resolved back to
-  /// whatever machine was running the emulator. Override with
+  /// Cloud Run migration: moved off Render (free-tier cold starts were
+  /// routinely blowing past client timeouts — see api_client.dart's
+  /// timeout comments) onto Cloud Run, same Dockerfile, project
+  /// jobhunteragent-502002, region asia-south1. Override with
   /// `--dart-define=API_BASE_URL=http://<lan-ip>:8000` for local dev
   /// against a server running on your own machine instead.
   static String get _baseUrl {
     const override = String.fromEnvironment('API_BASE_URL');
     if (override.isNotEmpty) return override;
-    return 'https://jobhunt-agent-server.onrender.com';
+    return 'https://jobhunt-agent-server-380742808186.asia-south1.run.app';
   }
 
   /// Brick 9: every authenticated route needs the current Supabase
@@ -44,10 +44,7 @@ class ApiClient {
   /// 401 from the server rather than a null-header crash here.
   Map<String, String> _authHeaders([Map<String, String>? extra]) {
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    return {
-      if (token != null) 'Authorization': 'Bearer $token',
-      ...?extra,
-    };
+    return {if (token != null) 'Authorization': 'Bearer $token', ...?extra};
   }
 
   /// `Future<HealthStatus>` means "a HealthStatus that isn't ready yet, but
@@ -87,7 +84,9 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final data = body['data'];
-    return data == null ? null : ResumeProfile.fromJson(data as Map<String, dynamic>);
+    return data == null
+        ? null
+        : ResumeProfile.fromJson(data as Map<String, dynamic>);
   }
 
   /// Brick 8: registers this device's FCM token so the agent loop
@@ -108,7 +107,10 @@ class ApiClient {
   /// Onboarding (frontend rebuild Phase 1): the roles/min-salary the agent
   /// matches against. Not yet wired into the server's job-fetch step (see
   /// DECISIONS.md) — this just persists the preference for now.
-  Future<void> updateTargetRoles(List<String> targetRoles, double? minSalary) async {
+  Future<void> updateTargetRoles(
+    List<String> targetRoles,
+    double? minSalary,
+  ) async {
     final uri = Uri.parse('$_baseUrl/resume/profile/target-roles');
     final response = await http.patch(
       uri,
@@ -121,6 +123,33 @@ class ApiClient {
     }
   }
 
+  /// Onboarding step between review and roles: student vs. experienced,
+  /// plus USN/college name for students (only sent when the resume parse
+  /// didn't already find them — see [ResumeProfile.employmentType]/[usn]).
+  Future<ResumeProfile> updateStudentInfo({
+    required String employmentType,
+    String? usn,
+    String? collegeName,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/resume/profile/student-info');
+    final response = await http.patch(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({
+        'employment_type': employmentType,
+        'usn': usn,
+        'college_name': collegeName,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ResumeProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
   /// Uploads a resume PDF for parsing. `MultipartRequest` is Dart's way of
   /// building a multipart/form-data POST — the same wire format a browser
   /// uses for a file-upload `<form>`, just constructed in code instead of
@@ -129,12 +158,14 @@ class ApiClient {
     final uri = Uri.parse('$_baseUrl/resume/parse');
     final request = http.MultipartRequest('POST', uri)
       ..headers.addAll(_authHeaders())
-      ..files.add(http.MultipartFile.fromBytes(
-        'file',
-        pdfBytes,
-        filename: filename,
-        contentType: MediaType('application', 'pdf'),
-      ));
+      ..files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          pdfBytes,
+          filename: filename,
+          contentType: MediaType('application', 'pdf'),
+        ),
+      );
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
@@ -172,7 +203,9 @@ class ApiClient {
   /// toast (Phase 2) can say what actually happened.
   Future<Map<String, dynamic>> refreshJobs() async {
     final uri = Uri.parse('$_baseUrl/jobs/refresh');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 90));
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 90));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -191,7 +224,9 @@ class ApiClient {
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as List).map((j) => Job.fromJson(j as Map<String, dynamic>)).toList();
+    return (body['data'] as List)
+        .map((j) => Job.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 
   /// Add Job step 1 (frontend rebuild Phase 2): fetches the pasted URL
@@ -200,7 +235,11 @@ class ApiClient {
   Future<JobExtraction> parseManualJobUrl(String url) async {
     final uri = Uri.parse('$_baseUrl/jobs/manual/parse');
     final response = await http
-        .post(uri, headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode({'url': url}))
+        .post(
+          uri,
+          headers: _authHeaders({'Content-Type': 'application/json'}),
+          body: jsonEncode({'url': url}),
+        )
         .timeout(const Duration(seconds: 45));
 
     if (response.statusCode != 200) {
@@ -229,6 +268,63 @@ class ApiClient {
     return Job.fromJson(body['data'] as Map<String, dynamic>);
   }
 
+  /// JD-paste resume builder step 1: paste JD text, or upload it as a PDF
+  /// (exactly one of [jdText]/[pdfBytes]) — returns structured fields to
+  /// review before [createJdResumeJob] creates anything. Multipart even
+  /// for the text-only case since the server route accepts both shapes.
+  Future<JobExtraction> parseJd({
+    String? jdText,
+    List<int>? pdfBytes,
+    String? pdfFilename,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/jobs/from-jd/parse');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers.addAll(_authHeaders());
+    if (pdfBytes != null) {
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          pdfBytes,
+          filename: pdfFilename ?? 'jd.pdf',
+          contentType: MediaType('application', 'pdf'),
+        ),
+      );
+    } else {
+      request.fields['jd_text'] = jdText ?? '';
+    }
+
+    final streamedResponse = await request.send().timeout(
+      const Duration(seconds: 45),
+    );
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return JobExtraction.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// JD-paste resume builder step 2: creates the job + application row
+  /// from the reviewed extraction. The caller then pushes ResumeDiffScreen
+  /// with the returned id/title — same tailoring flow as any matched job.
+  Future<JdResumeJob> createJdResumeJob(JobExtraction extraction) async {
+    final uri = Uri.parse('$_baseUrl/jobs/from-jd');
+    final response = await http.post(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode(extraction.toJson()),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return JdResumeJob.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
   /// Stage-1 RAG shortlist (Brick 4, ADR-001): the top-N jobs by cosine
   /// similarity to the stored profile. No LLM re-rank yet — that's Brick 5.
   Future<List<ShortlistItem>> fetchShortlist({int limit = 50}) async {
@@ -240,7 +336,9 @@ class ApiClient {
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as List).map((j) => ShortlistItem.fromJson(j as Map<String, dynamic>)).toList();
+    return (body['data'] as List)
+        .map((j) => ShortlistItem.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 
   /// Stage 2 of the two-stage RAG match (Brick 5, ADR-001): triggers the LLM
@@ -251,7 +349,11 @@ class ApiClient {
   /// poll [getTaskStatus] until the task finishes, then [fetchMatches].
   Future<String> rerankShortlist({int limit = 20}) async {
     final uri = Uri.parse('$_baseUrl/matches/rerank?limit=$limit');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
+    // 60s not 30s: Render free tier (ADR-010) cold-starts after ~15min idle,
+    // which alone can eat 30-60s before this fast POST even gets a response.
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
 
     if (response.statusCode != 202) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -265,7 +367,9 @@ class ApiClient {
   /// loop; screens subscribe to it rather than calling this directly.
   Future<BackgroundTask> getTaskStatus(String taskId) async {
     final uri = Uri.parse('$_baseUrl/tasks/$taskId');
-    final response = await http.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
+    final response = await http
+        .get(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -286,7 +390,9 @@ class ApiClient {
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as List).map((j) => MatchItem.fromJson(j as Map<String, dynamic>)).toList();
+    return (body['data'] as List)
+        .map((j) => MatchItem.fromJson(j as Map<String, dynamic>))
+        .toList();
   }
 
   /// Brick 6: tailors the stored resume toward one job and runs the
@@ -295,7 +401,9 @@ class ApiClient {
   /// poll [getTaskStatus], then read the row via [fetchTailoredResume].
   Future<String> tailorResume(String jobId) async {
     final uri = Uri.parse('$_baseUrl/tailor/$jobId');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
 
     if (response.statusCode != 202) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -317,7 +425,9 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final data = body['data'];
-    return data == null ? null : TailoredResume.fromJson(data as Map<String, dynamic>);
+    return data == null
+        ? null
+        : TailoredResume.fromJson(data as Map<String, dynamic>);
   }
 
   /// The human approval gate (Golden Rule: no auto-submitting anywhere) —
@@ -326,12 +436,15 @@ class ApiClient {
   /// in the same order as [TailoredResume.bullets] (frontend rebuild
   /// Phase 2); omit it to keep the original Brick 6 behavior of a single
   /// global approve.
-  Future<TailoredResume> approveTailoredResume(String tailoredResumeId, {List<bool>? accepted}) async {
+  Future<TailoredResume> approveTailoredResume(
+    String tailoredResumeId, {
+    List<bool>? accepted,
+  }) async {
     final uri = Uri.parse('$_baseUrl/tailor/$tailoredResumeId/approve');
     final response = await http.patch(
       uri,
       headers: _authHeaders({'Content-Type': 'application/json'}),
-      body: jsonEncode({if (accepted != null) 'accepted': accepted}),
+      body: jsonEncode({'accepted': ?accepted}),
     );
 
     if (response.statusCode != 200) {
@@ -354,7 +467,7 @@ class ApiClient {
       headers: _authHeaders({'Content-Type': 'application/json'}),
       body: jsonEncode({
         'job_id': jobId,
-        if (resumeVersionId != null) 'resume_version_id': resumeVersionId,
+        'resume_version_id': ?resumeVersionId,
       }),
     );
 
@@ -374,14 +487,19 @@ class ApiClient {
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as List).map((a) => ApplicationItem.fromJson(a as Map<String, dynamic>)).toList();
+    return (body['data'] as List)
+        .map((a) => ApplicationItem.fromJson(a as Map<String, dynamic>))
+        .toList();
   }
 
   /// The Kanban drag action: moves an application to a new pipeline stage.
   /// Returns nothing (the PATCH response is the bare row, no job join) —
   /// [ApplicationsScreen] updates its local copy via [ApplicationItem.copyWith]
   /// on success instead of re-parsing a job-less row.
-  Future<void> updateApplicationState(String applicationId, String state) async {
+  Future<void> updateApplicationState(
+    String applicationId,
+    String state,
+  ) async {
     final uri = Uri.parse('$_baseUrl/applications/$applicationId');
     final response = await http.patch(
       uri,
@@ -397,7 +515,10 @@ class ApiClient {
   /// AppDetailScreen's notes field (frontend rebuild Phase 2) — the
   /// `applications.notes` column existed since Brick 7 but had no editable
   /// UI until now.
-  Future<void> updateApplicationNotes(String applicationId, String notes) async {
+  Future<void> updateApplicationNotes(
+    String applicationId,
+    String notes,
+  ) async {
     final uri = Uri.parse('$_baseUrl/applications/$applicationId');
     final response = await http.patch(
       uri,
@@ -417,7 +538,9 @@ class ApiClient {
   /// a full reload.
   Future<(String, String)> draftFollowup(String applicationId) async {
     final uri = Uri.parse('$_baseUrl/applications/$applicationId/followup');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -425,12 +548,18 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final data = body['data'] as Map<String, dynamic>;
-    return (data['followup_subject'] as String, data['followup_body'] as String);
+    return (
+      data['followup_subject'] as String,
+      data['followup_body'] as String,
+    );
   }
 
   /// AppDetailScreen's contact-email field (Phase 4) — the recruiter
   /// address "Approve & send" delivers a drafted follow-up to.
-  Future<void> updateApplicationContactEmail(String applicationId, String contactEmail) async {
+  Future<void> updateApplicationContactEmail(
+    String applicationId,
+    String contactEmail,
+  ) async {
     final uri = Uri.parse('$_baseUrl/applications/$applicationId');
     final response = await http.patch(
       uri,
@@ -448,8 +577,12 @@ class ApiClient {
   /// contact email to already be set; the tap itself is the human
   /// approval gate (Golden Rule: no auto-submitting anywhere).
   Future<void> sendFollowup(String applicationId) async {
-    final uri = Uri.parse('$_baseUrl/applications/$applicationId/followup/send');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
+    final uri = Uri.parse(
+      '$_baseUrl/applications/$applicationId/followup/send',
+    );
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -463,7 +596,9 @@ class ApiClient {
   /// 202 + poll pattern as [rerankShortlist]; returns the task id.
   Future<String> runPipeline() async {
     final uri = Uri.parse('$_baseUrl/pipeline/run-mine');
-    final response = await http.post(uri, headers: _authHeaders()).timeout(const Duration(seconds: 30));
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
 
     if (response.statusCode != 202) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -500,7 +635,9 @@ class ApiClient {
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as List).map((a) => ActivityItem.fromJson(a as Map<String, dynamic>)).toList();
+    return (body['data'] as List)
+        .map((a) => ActivityItem.fromJson(a as Map<String, dynamic>))
+        .toList();
   }
 
   /// Phase 4: skills-to-learn aggregated from the caller's real match
@@ -512,14 +649,18 @@ class ApiClient {
   /// single-call tasks below rather than the default (no timeout at all).
   Future<List<SkillGrowthItem>> fetchSkillGrowth() async {
     final uri = Uri.parse('$_baseUrl/stats/skill-growth');
-    final response = await http.get(uri, headers: _authHeaders()).timeout(const Duration(minutes: 3));
+    final response = await http
+        .get(uri, headers: _authHeaders())
+        .timeout(const Duration(minutes: 3));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as List).map((s) => SkillGrowthItem.fromJson(s as Map<String, dynamic>)).toList();
+    return (body['data'] as List)
+        .map((s) => SkillGrowthItem.fromJson(s as Map<String, dynamic>))
+        .toList();
   }
 
   /// Phase 6: parse a pasted application-form URL. Google Forms parse
@@ -530,7 +671,11 @@ class ApiClient {
   Future<ParsedForm> parseForm(String url) async {
     final uri = Uri.parse('$_baseUrl/forms/parse');
     final response = await http
-        .post(uri, headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode({'url': url}))
+        .post(
+          uri,
+          headers: _authHeaders({'Content-Type': 'application/json'}),
+          body: jsonEncode({'url': url}),
+        )
         .timeout(const Duration(seconds: 60));
 
     if (response.statusCode != 200) {
@@ -547,7 +692,11 @@ class ApiClient {
   Future<FormFillResult> fillForm(FormSchemaModel form) async {
     final uri = Uri.parse('$_baseUrl/forms/fill');
     final response = await http
-        .post(uri, headers: _authHeaders({'Content-Type': 'application/json'}), body: jsonEncode({'form': form.toJson()}))
+        .post(
+          uri,
+          headers: _authHeaders({'Content-Type': 'application/json'}),
+          body: jsonEncode({'form': form.toJson()}),
+        )
         .timeout(const Duration(seconds: 90));
 
     if (response.statusCode != 200) {
@@ -558,12 +707,36 @@ class ApiClient {
     return FormFillResult.fromJson(body['data'] as Map<String, dynamic>);
   }
 
+  /// Persists the user's final (possibly edited) answers for a fill —
+  /// called right before opening the prefilled form, so the next form's
+  /// /forms/fill can silently reuse recurring answers (server's
+  /// _build_answer_history) from what was actually confirmed, not the raw
+  /// LLM guess. Fire-and-forget from the caller's side: errors here should
+  /// never block or fail the "open the form" action itself.
+  Future<void> updateFormFillAnswers(
+    String fillId,
+    List<FormAnswer> answers,
+  ) async {
+    final uri = Uri.parse('$_baseUrl/forms/fills/$fillId');
+    final response = await http.patch(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({'answers': answers.map((a) => a.toJson()).toList()}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+  }
+
   /// Phase 4B: downloads the compiled ATS-friendly PDF for an approved
   /// tailored resume. The one endpoint that skips the JSON envelope —
   /// binary body (documented exception in server/routers/tailor.py).
   Future<Uint8List> downloadResumePdf(String tailoredResumeId) async {
     final uri = Uri.parse('$_baseUrl/tailor/$tailoredResumeId/pdf');
-    final response = await http.get(uri, headers: _authHeaders()).timeout(const Duration(seconds: 60));
+    final response = await http
+        .get(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
 
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
@@ -592,7 +765,10 @@ class ApiClient {
   /// (push alerts, stale follow-up drafting) — not new pipeline behavior,
   /// just an on/off switch. Deliberately separate from PATCH /resume/profile,
   /// same reason as fcm-token/target-roles.
-  Future<void> updateNotificationPrefs({required bool alerts, required bool followupNudge}) async {
+  Future<void> updateNotificationPrefs({
+    required bool alerts,
+    required bool followupNudge,
+  }) async {
     final uri = Uri.parse('$_baseUrl/resume/profile/notification-prefs');
     final response = await http.patch(
       uri,

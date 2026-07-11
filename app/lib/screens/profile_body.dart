@@ -113,6 +113,22 @@ class _ProfileBodyState extends State<ProfileBody> {
     if (mounted) unawaited(_load());
   }
 
+  Future<void> _openSettings() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsScreen(
+          initialAlerts: profile.notifyAlerts,
+          initialFollowupNudge: profile.notifyFollowupNudge,
+        ),
+      ),
+    );
+    // Settings now also hosts "Update resume" — refresh in case the user
+    // re-uploaded from there, same as _editProfile/_editTargetRoles do.
+    if (mounted) unawaited(_load());
+  }
+
   @override
   Widget build(BuildContext context) {
     final email = Supabase.instance.client.auth.currentUser?.email;
@@ -130,16 +146,7 @@ class _ProfileBodyState extends State<ProfileBody> {
               // Settings needs the loaded profile's notification prefs —
               // disabled until the profile fetch lands (same data the nav
               // row below relies on).
-              onPressed: _profile == null
-                  ? null
-                  : () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => SettingsScreen(
-                            initialAlerts: _profile!.notifyAlerts,
-                            initialFollowupNudge: _profile!.notifyFollowupNudge,
-                          ),
-                        ),
-                      ),
+              onPressed: _profile == null ? null : _openSettings,
             ),
           ],
         ),
@@ -202,14 +209,7 @@ class _ProfileBodyState extends State<ProfileBody> {
           _navRow(
             icon: AppIconName.settings,
             label: 'Settings',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SettingsScreen(
-                  initialAlerts: _profile!.notifyAlerts,
-                  initialFollowupNudge: _profile!.notifyFollowupNudge,
-                ),
-              ),
-            ),
+            onTap: _openSettings,
             showDivider: false,
           ),
         ],
@@ -344,7 +344,13 @@ class _ProfileBodyState extends State<ProfileBody> {
             ),
           ),
           const SizedBox(width: AppSpacing.space3),
-          OutlinedButton(onPressed: _editProfile, child: const Text('Edit')),
+          // A bare OutlinedButton as a non-flex Row child hits a Flutter
+          // layout bug on this SDK (freshly-inserted ListView item ->
+          // "BoxConstraints forces an infinite width" inside
+          // _RenderInputPadding, button_style_button.dart) that corrupts
+          // the whole list's layout. Forcing a tight SizedBox around it
+          // sidesteps the bug regardless of root cause.
+          SizedBox(width: 84, height: 40, child: OutlinedButton(onPressed: _editProfile, child: const Text('Edit'))),
         ],
       ),
     );

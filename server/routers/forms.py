@@ -8,15 +8,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from db.supabase_client import supabase
-from models.form import FormQuestion, FormSchema
+from models.form import FormAnswer, FormQuestion, FormSchema
 from services.auth import get_current_profile
 from services.form_parser import (
     FormAuthRequiredError,
     FormFetchError,
     FormParseError,
+    apply_answer_history,
     build_prefill_url,
     fetch_form_html,
     is_google_form_url,
+    normalize_question,
     parse_google_form,
     verify_choice_answers,
 )
@@ -43,6 +45,38 @@ class ParseFormRequest(BaseModel):
 
 class FillFormRequest(BaseModel):
     form: FormSchema
+
+
+class UpdateFillAnswersRequest(BaseModel):
+    answers: list[FormAnswer]
+
+
+def _build_answer_history(profile_id: str) -> dict[str, FormAnswer]:
+    """Most-recent non-null answer per normalized question text, across
+    this profile's past form fills (most-recent-first, first-seen-wins).
+    The real signal is the user's own final edits — PATCH /forms/fills/{id}
+    (below) overwrites a fill's `answers` with those once the user opens
+    the prefilled form — but a fill nobody ever opened still has the raw
+    LLM guess stored at /forms/fill time as a fallback."""
+    rows = (
+        supabase.table("form_fills")
+        .select("answers")
+        .eq("profile_id", profile_id)
+        .order("created_at", desc=True)
+        .limit(50)
+        .execute()
+        .data
+    )
+    history: dict[str, FormAnswer] = {}
+    for row in rows:
+        for raw in row.get("answers") or []:
+            if not raw.get("answer"):
+                continue
+            key = normalize_question(raw.get("question") or "")
+            if not key or key in history:
+                continue
+            history[key] = FormAnswer(**raw)
+    return history
 
 
 @router.post("/parse")
@@ -126,19 +160,56 @@ async def fill_form(body: FillFormRequest, profile: dict = Depends(get_current_p
         raise HTTPException(status_code=502, detail=f"Form filling is temporarily unavailable: {e}") from e
 
     answers = verify_choice_answers(schema, llm_response.answers)
+
+    # Silently reuse answers to recurring questions (phone number, visa
+    # sponsorship, notice period...) from past forms instead of a fresh LLM
+    # guess. Re-verify afterward — a reused choice/checkbox answer might not
+    # be a valid option on THIS form even though it was on the one it came
+    # from.
+    history = _build_answer_history(profile["id"])
+    answers = apply_answer_history(answers, history)
+    answers = verify_choice_answers(schema, answers)
+
     prefill_url = build_prefill_url(schema, answers)
 
-    supabase.table("form_fills").insert(
-        {
-            "profile_id": profile["id"],
-            "form_url": schema.form_url,
-            "form_title": schema.title,
-            "answers": [a.model_dump() for a in answers],
-            "prefill_url": prefill_url,
-        }
-    ).execute()
+    fill_row = (
+        supabase.table("form_fills")
+        .insert(
+            {
+                "profile_id": profile["id"],
+                "form_url": schema.form_url,
+                "form_title": schema.title,
+                "answers": [a.model_dump() for a in answers],
+                "prefill_url": prefill_url,
+            }
+        )
+        .execute()
+        .data[0]
+    )
 
     return {
-        "data": {"answers": [a.model_dump() for a in answers], "prefill_url": prefill_url},
+        "data": {"fill_id": fill_row["id"], "answers": [a.model_dump() for a in answers], "prefill_url": prefill_url},
         "error": None,
     }
+
+
+@router.patch("/fills/{fill_id}")
+async def update_fill_answers(fill_id: str, body: UpdateFillAnswersRequest, profile: dict = Depends(get_current_profile)):
+    """Called right before the app opens the prefilled form (form_fill_screen
+    .dart's "Open prefilled form" tap) — persists the user's FINAL,
+    possibly-edited answers over the original LLM guess, so
+    _build_answer_history above learns from what the user actually
+    confirmed rather than the first draft. Best-effort from the app's side
+    (fire-and-forget) — never blocks or fails the actual form-opening
+    action.
+    """
+    result = (
+        supabase.table("form_fills")
+        .update({"answers": [a.model_dump() for a in body.answers]})
+        .eq("id", fill_id)
+        .eq("profile_id", profile["id"])  # owner-scoped — can't touch another profile's history
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Fill not found")
+    return {"data": result.data[0], "error": None}

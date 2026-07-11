@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -39,6 +41,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
   List<FormAnswer> _answers = [];
   final Map<String, TextEditingController> _answerControllers = {};
   String? _prefillUrl;
+  String? _fillId;
 
   @override
   void dispose() {
@@ -59,6 +62,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
       _parsed = null;
       _answers = [];
       _prefillUrl = null;
+      _fillId = null;
     });
     try {
       final parsed = await _apiClient.parseForm(url);
@@ -86,6 +90,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
       setState(() {
         _answers = result.answers;
         _prefillUrl = result.prefillUrl;
+        _fillId = result.fillId;
         _isFilling = false;
         for (final a in _answers) {
           _answerControllers[a.entryId] = TextEditingController(text: a.answerText);
@@ -123,9 +128,35 @@ class _FormFillScreenState extends State<FormFillScreen> {
     return '${parsed.form.formUrl}$sep${params.join('&')}';
   }
 
+  /// The same per-row edits as [_editedPrefillUrl], but as [FormAnswer]s
+  /// instead of URL params — sent to PATCH /forms/fills/{id} so a future
+  /// form's answer-history reuse learns from what the user actually typed,
+  /// not the original LLM guess.
+  List<FormAnswer> get _editedAnswers {
+    final types = {for (final q in _parsed?.form.questions ?? const <FormQuestion>[]) q.entryId: q.type};
+    return _answers.map((a) {
+      final text = _answerControllers[a.entryId]?.text.trim() ?? '';
+      final Object? value = text.isEmpty
+          ? null
+          : (types[a.entryId] == 'checkbox' ? text.split(',').map((v) => v.trim()).toList() : text);
+      return FormAnswer(
+        entryId: a.entryId,
+        question: a.question,
+        answer: value,
+        confidence: a.confidence,
+        sourceField: a.sourceField,
+        guardrailPass: a.guardrailPass,
+      );
+    }).toList();
+  }
+
   Future<void> _openPrefilled() async {
     final url = _editedPrefillUrl;
     if (url == null) return;
+    final fillId = _fillId;
+    if (fillId != null) {
+      unawaited(_apiClient.updateFormFillAnswers(fillId, _editedAnswers).catchError((_) {}));
+    }
     final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the form')));

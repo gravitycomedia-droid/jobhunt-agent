@@ -38,3 +38,16 @@ class JobExtraction {
         'salary_max': salaryMax,
       };
 }
+
+/// POST /jobs/from-jd response — just enough to hand straight into
+/// ResumeDiffScreen, which reuses the standard tailoring flow unchanged.
+class JdResumeJob {
+  final String jobId;
+  final String jobTitle;
+
+  const JdResumeJob({required this.jobId, required this.jobTitle});
+
+  factory JdResumeJob.fromJson(Map<String, dynamic> json) {
+    return JdResumeJob(jobId: json['job_id'] as String, jobTitle: json['job_title'] as String);
+  }
+}

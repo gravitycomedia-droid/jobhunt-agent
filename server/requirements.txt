@@ -11,6 +11,7 @@ httpx
 python-slugify
 rapidfuzz
 firebase-admin
+google-auth
 beautifulsoup4
 resend
 reportlab
