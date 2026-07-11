@@ -14,6 +14,7 @@ import '../widgets/background_task_dialog.dart';
 import '../widgets/match_card.dart';
 import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
+import '../widgets/stale_banner.dart';
 import 'resume_diff_screen.dart';
 
 /// The Matches tab's content (Brick 9 polish: chrome comes from
@@ -76,15 +77,23 @@ class _MatchesBodyState extends State<MatchesBody> {
       _isLoading = true;
       _errorMessage = null;
     });
+    // Phase 5 stale-while-revalidate: paint the cached list instantly (no
+    // skeleton), then fetch fresh underneath.
+    final painted = await MatchFeed.instance.loadFromCache();
+    if (mounted && painted) setState(() => _isLoading = false);
     try {
       await MatchFeed.instance.refresh();
+      if (!mounted) return;
       setState(() => _isLoading = false);
       // Fire-and-forget: the UI already has something to show, so the
       // re-rank runs underneath rather than blocking the first paint.
       unawaited(_startRerank());
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        // With a cached paint the stale banner covers it; a full-screen
+        // error would throw away perfectly readable data.
+        _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
     }
@@ -200,6 +209,10 @@ class _MatchesBodyState extends State<MatchesBody> {
   }
 
   Widget _statusBanner() {
+    final staleSince = MatchFeed.instance.staleSince.value;
+    if (staleSince != null) {
+      return StaleBanner(cachedAt: staleSince, onRetry: _loadCached);
+    }
     if (_isReranking) {
       return const AppBanner(
         tone: BannerTone.info,

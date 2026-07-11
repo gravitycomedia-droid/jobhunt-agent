@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/application_item.dart';
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/application_card.dart';
@@ -9,6 +10,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/kanban_column.dart';
 import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
+import '../widgets/stale_banner.dart';
 import 'app_detail_screen.dart';
 
 /// The Track tab's content (chrome comes from [MainTabScreen] /
@@ -30,6 +32,7 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
 
   bool _isLoading = true;
   String? _errorMessage;
+  DateTime? _staleSince; // Phase 5: non-null = painting cached data
   List<ApplicationItem> _items = [];
 
   @override
@@ -38,20 +41,38 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<bool> _paintFromCache() async {
+    if (_items.isNotEmpty) return true;
+    final entry = await CacheService.instance.read<List<ApplicationItem>>(
+      CacheService.keyApplications,
+      (json) => (json as List).map((a) => ApplicationItem.fromJson((a as Map).cast<String, dynamic>())).toList(),
+    );
+    if (entry == null || !mounted) return false;
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _items = entry.data;
+      _staleSince = entry.cachedAt;
+      _isLoading = false;
     });
+    return true;
+  }
+
+  Future<void> _load() async {
+    setState(() => _errorMessage = null);
+    final painted = await _paintFromCache();
+    if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final items = await _apiClient.fetchApplications();
+      if (!mounted) return;
       setState(() {
         _items = items;
+        _staleSince = null;
         _isLoading = false;
       });
+      await CacheService.instance.write(CacheService.keyApplications, [for (final a in items) a.raw]);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
     }
@@ -87,6 +108,10 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
             ),
           ],
         ),
+        if (_staleSince != null) ...[
+          StaleBanner(cachedAt: _staleSince!, onRetry: _load),
+          const SizedBox(height: AppSpacing.space3),
+        ],
         Expanded(child: _buildContent()),
       ],
     );

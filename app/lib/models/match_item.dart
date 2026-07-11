@@ -14,6 +14,10 @@ class MatchItem {
   final String verdict;
   final String oneLineReason;
 
+  /// Phase 5: the exact server JSON this was parsed from — written to the
+  /// cache verbatim so cached rows round-trip through the same fromJson.
+  final Map<String, dynamic> raw;
+
   MatchItem({
     required this.job,
     required this.similarity,
@@ -23,10 +27,12 @@ class MatchItem {
     required this.compensators,
     required this.verdict,
     required this.oneLineReason,
+    this.raw = const {},
   });
 
   factory MatchItem.fromJson(Map<String, dynamic> json) {
     return MatchItem(
+      raw: json,
       job: Job.fromJson(json),
       similarity: (json['similarity'] as num).toDouble(),
       fitScore: (json['fit_score'] as num).toInt(),

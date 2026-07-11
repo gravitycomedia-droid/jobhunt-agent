@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/cost_stats.dart';
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
@@ -45,19 +46,35 @@ class _CostStatsScreenState extends State<CostStatsScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() => _errorMessage = null);
+    // Phase 5: paint cached stats instantly, revalidate underneath.
+    var painted = _stats != null;
+    if (!painted) {
+      final entry = await CacheService.instance.read<CostStats>(
+        CacheService.keyCostStats,
+        (json) => CostStats.fromJson((json as Map).cast<String, dynamic>()),
+      );
+      if (entry != null && mounted) {
+        painted = true;
+        setState(() {
+          _stats = entry.data;
+          _isLoading = false;
+        });
+      }
+    }
+    if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final stats = await _apiClient.fetchCostStats();
+      if (!mounted) return;
       setState(() {
         _stats = stats;
         _isLoading = false;
       });
+      await CacheService.instance.write(CacheService.keyCostStats, stats.raw);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
     }

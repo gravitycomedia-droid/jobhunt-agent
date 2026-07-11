@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/activity_item.dart';
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
@@ -35,19 +36,35 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() => _errorMessage = null);
+    // Phase 5: paint the cached feed instantly, revalidate underneath.
+    var painted = _activity.isNotEmpty;
+    if (!painted) {
+      final entry = await CacheService.instance.read<List<ActivityItem>>(
+        CacheService.keyActivity,
+        (json) => (json as List).map((a) => ActivityItem.fromJson((a as Map).cast<String, dynamic>())).toList(),
+      );
+      if (entry != null && mounted) {
+        painted = true;
+        setState(() {
+          _activity = entry.data;
+          _isLoading = false;
+        });
+      }
+    }
+    if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final activity = await _apiClient.fetchActivity();
+      if (!mounted) return;
       setState(() {
         _activity = activity;
         _isLoading = false;
       });
+      await CacheService.instance.write(CacheService.keyActivity, [for (final a in activity) a.raw]);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
     }

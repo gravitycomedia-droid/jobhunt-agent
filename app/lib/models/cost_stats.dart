@@ -29,10 +29,15 @@ class CostStats {
   final int totalTokens;
   final List<CostBreakdownItem> breakdown;
 
-  CostStats({required this.totalCost, required this.totalCalls, required this.totalTokens, required this.breakdown});
+  /// Phase 5: exact server JSON, cached verbatim for round-tripping.
+  final Map<String, dynamic> raw;
+
+  CostStats(
+      {required this.totalCost, required this.totalCalls, required this.totalTokens, required this.breakdown, this.raw = const {}});
 
   factory CostStats.fromJson(Map<String, dynamic> json) {
     return CostStats(
+      raw: json,
       totalCost: (json['total_cost'] as num).toDouble(),
       totalCalls: (json['total_calls'] as num).toInt(),
       totalTokens: (json['total_tokens'] as num).toInt(),

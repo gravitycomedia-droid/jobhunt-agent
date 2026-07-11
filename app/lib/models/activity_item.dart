@@ -11,10 +11,15 @@ class ActivityItem {
   final String detail;
   final DateTime timestamp;
 
-  ActivityItem({required this.type, this.stage, required this.title, required this.detail, required this.timestamp});
+  /// Phase 5: exact server JSON, cached verbatim for round-tripping.
+  final Map<String, dynamic> raw;
+
+  ActivityItem(
+      {required this.type, this.stage, required this.title, required this.detail, required this.timestamp, this.raw = const {}});
 
   factory ActivityItem.fromJson(Map<String, dynamic> json) {
     return ActivityItem(
+      raw: json,
       type: json['type'] as String,
       stage: json['stage'] as String?,
       title: json['title'] as String,

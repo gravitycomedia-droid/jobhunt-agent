@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../services/match_feed.dart';
 import '../services/push_service.dart';
 import '../services/task_center.dart';
@@ -40,6 +41,10 @@ class _AuthGateState extends State<AuthGate> {
   Session? _session = Supabase.instance.client.auth.currentSession;
   late final StreamSubscription<AuthState> _subscription;
 
+  // Phase 5: the id to wipe cache entries for on sign-out — captured while
+  // signed in, because the signedOut event's session is already null.
+  String? _lastUserId = Supabase.instance.client.auth.currentUser?.id;
+
   _PreAuthScreen _preAuthScreen = _PreAuthScreen.splash;
 
   // Null until checked for the current session; re-armed on every sign-in
@@ -72,16 +77,34 @@ class _AuthGateState extends State<AuthGate> {
         unawaited(PushService.initAndRegister());
         unawaited(_checkProfile());
       }
-      // Sign-out hygiene: stop pollers and drop per-user in-memory state so
-      // the next account never sees the previous user's tasks or matches.
+      // Sign-out hygiene: stop pollers and drop per-user state (in-memory
+      // AND on-disk cache) so the next account never sees this user's data.
       if (data.event == AuthChangeEvent.signedOut) {
         TaskCenter.instance.reset();
         MatchFeed.instance.reset();
+        final previousUserId = _lastUserId;
+        if (previousUserId != null) {
+          unawaited(CacheService.instance.clearForUser(previousUserId));
+        }
       }
+      _lastUserId = data.session?.user.id ?? _lastUserId;
     });
   }
 
   Future<void> _checkProfile() async {
+    // Phase 5: the cached profile (which mirrors onboarding_step) answers
+    // the routing question instantly — the network fetch then confirms or
+    // corrects it in the background.
+    final cached = await CacheService.instance.read<ResumeProfile>(
+      CacheService.keyProfile,
+      (json) => ResumeProfile.fromJson((json as Map).cast<String, dynamic>()),
+    );
+    if (mounted && cached != null && !_profileChecked) {
+      setState(() {
+        _profile = cached.data;
+        _profileChecked = true;
+      });
+    }
     try {
       final profile = await _apiClient.fetchCurrentProfile();
       if (!mounted) return;
@@ -89,12 +112,15 @@ class _AuthGateState extends State<AuthGate> {
         _profile = profile;
         _profileChecked = true;
       });
+      if (profile != null) {
+        await CacheService.instance.write(CacheService.keyProfile, profile.raw);
+      }
     } catch (_) {
-      // Treat a failed check as "no profile" rather than getting stuck on
-      // a spinner forever — onboarding is re-triggerable (it just re-checks
-      // on the next sign-in), whereas an infinite loading state isn't
-      // recoverable without a restart.
-      if (!mounted) return;
+      // With no cache, treat a failed check as "no profile" rather than
+      // getting stuck on a spinner forever — onboarding is re-triggerable,
+      // an infinite loading state isn't. With a cache, keep the cached
+      // routing decision.
+      if (!mounted || _profileChecked) return;
       setState(() {
         _profile = null;
         _profileChecked = true;

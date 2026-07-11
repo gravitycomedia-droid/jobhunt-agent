@@ -108,6 +108,11 @@ class ResumeProfile {
   /// bumps it forward as steps complete; skips PATCH it explicitly.
   String onboardingStep;
 
+  /// Phase 5: exact server JSON, cached verbatim for round-tripping (the
+  /// hand-written [toJson] below is the PATCH body — a subset, not a
+  /// faithful copy, so it can't be used for caching).
+  final Map<String, dynamic> raw;
+
   ResumeProfile({
     required this.id,
     required this.name,
@@ -121,10 +126,12 @@ class ResumeProfile {
     this.notifyAlerts = true,
     this.notifyFollowupNudge = true,
     this.onboardingStep = 'done',
+    this.raw = const {},
   });
 
   factory ResumeProfile.fromJson(Map<String, dynamic> json) {
     return ResumeProfile(
+      raw: json,
       id: json['id'] as String,
       name: json['name'] as String,
       headline: json['headline'] as String?,

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/match_item.dart';
 import 'api_client.dart';
+import 'cache_service.dart';
 import 'task_center.dart';
 
 /// Phase 1C: the single source of truth for the ranked-matches list.
@@ -40,12 +41,45 @@ class MatchFeed {
   /// that; hiding rows is what caused count-vs-cards confusion before.
   List<MatchItem> _canonical(List<MatchItem> items) => items;
 
+  /// Phase 5: when the cached list was painted but the fresh fetch failed,
+  /// this holds the cache timestamp so bodies can show the stale banner.
+  /// Null whenever the data on screen is fresh (or absent).
+  final ValueNotifier<DateTime?> staleSince = ValueNotifier(null);
+
+  /// Phase 5 stale-while-revalidate: paint the cached list instantly (no
+  /// skeleton) if one exists. Returns true if a cache was painted.
+  Future<bool> loadFromCache() async {
+    if (matches.value != null) return true; // already have data this session
+    final entry = await CacheService.instance.read<List<MatchItem>>(
+      CacheService.keyMatches,
+      (json) => (json as List).map((m) => MatchItem.fromJson((m as Map).cast<String, dynamic>())).toList(),
+    );
+    if (entry == null || matches.value != null) return matches.value != null;
+    matches.value = _canonical(entry.data);
+    staleSince.value = entry.cachedAt;
+    return true;
+  }
+
   Future<List<MatchItem>> refresh({int limit = 50}) async {
-    final items = _canonical(await _api.fetchMatches(limit: limit));
-    matches.value = items;
-    return items;
+    try {
+      final items = _canonical(await _api.fetchMatches(limit: limit));
+      matches.value = items;
+      staleSince.value = null;
+      await CacheService.instance.write(CacheService.keyMatches, [for (final m in items) m.raw]);
+      return items;
+    } catch (_) {
+      // Keep whatever is painted (possibly cached); mark it stale so the
+      // banner shows, then rethrow for callers that surface errors.
+      if (matches.value != null && staleSince.value == null) {
+        staleSince.value = DateTime.now(); // fresh-as-of-last-success unknown; now is the honest floor
+      }
+      rethrow;
+    }
   }
 
   /// Sign-out hygiene — next account must never see this user's matches.
-  void reset() => matches.value = null;
+  void reset() {
+    matches.value = null;
+    staleSince.value = null;
+  }
 }

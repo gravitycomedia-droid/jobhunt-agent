@@ -23,6 +23,9 @@ class ApplicationItem {
   final String? contactEmail;
   final DateTime? followupSentAt;
 
+  /// Phase 5: exact server JSON, cached verbatim for round-tripping.
+  final Map<String, dynamic> raw;
+
   ApplicationItem({
     required this.id,
     required this.jobId,
@@ -36,10 +39,12 @@ class ApplicationItem {
     this.followupBody,
     this.contactEmail,
     this.followupSentAt,
+    this.raw = const {},
   });
 
   factory ApplicationItem.fromJson(Map<String, dynamic> json) {
     return ApplicationItem(
+      raw: json,
       id: json['id'] as String,
       jobId: json['job_id'] as String,
       job: Job.fromJson(json['job'] as Map<String, dynamic>),
@@ -64,6 +69,7 @@ class ApplicationItem {
     DateTime? followupSentAt,
   }) {
     return ApplicationItem(
+      raw: raw,
       id: id,
       jobId: jobId,
       job: job,

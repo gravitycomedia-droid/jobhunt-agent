@@ -5,11 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
+import '../widgets/stale_banner.dart';
 import 'cost_stats_screen.dart';
 import 'profile_review_screen.dart';
 import 'resume_upload_screen.dart';
@@ -34,6 +36,7 @@ class _ProfileBodyState extends State<ProfileBody> {
 
   bool _isLoading = true;
   String? _errorMessage;
+  DateTime? _staleSince; // Phase 5: non-null = painting cached data
   ResumeProfile? _profile;
 
   @override
@@ -42,20 +45,40 @@ class _ProfileBodyState extends State<ProfileBody> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<bool> _paintFromCache() async {
+    if (_profile != null) return true;
+    final entry = await CacheService.instance.read<ResumeProfile>(
+      CacheService.keyProfile,
+      (json) => ResumeProfile.fromJson((json as Map).cast<String, dynamic>()),
+    );
+    if (entry == null || !mounted) return false;
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _profile = entry.data;
+      _staleSince = entry.cachedAt;
+      _isLoading = false;
     });
+    return true;
+  }
+
+  Future<void> _load() async {
+    setState(() => _errorMessage = null);
+    final painted = await _paintFromCache();
+    if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final profile = await _apiClient.fetchCurrentProfile();
+      if (!mounted) return;
       setState(() {
         _profile = profile;
+        _staleSince = null;
         _isLoading = false;
       });
+      if (profile != null) {
+        await CacheService.instance.write(CacheService.keyProfile, profile.raw);
+      }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
     }
@@ -128,6 +151,10 @@ class _ProfileBodyState extends State<ProfileBody> {
   Widget _buildContent(String? email) {
     return ListView(
       children: [
+        if (_staleSince != null) ...[
+          StaleBanner(cachedAt: _staleSince!, onRetry: _load),
+          const SizedBox(height: AppSpacing.space3),
+        ],
         _accountCard(email),
         const SizedBox(height: AppSpacing.space4),
         _resumeSection(),

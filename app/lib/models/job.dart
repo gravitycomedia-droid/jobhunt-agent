@@ -12,6 +12,9 @@ class Job {
   final double? salaryMax;
   final String? salaryCurrency; // ISO 4217, e.g. "INR" — Phase 1D
 
+  /// Phase 5: exact server JSON, cached verbatim for round-tripping.
+  final Map<String, dynamic> raw;
+
   Job({
     required this.id,
     required this.source,
@@ -23,10 +26,12 @@ class Job {
     this.salaryMin,
     this.salaryMax,
     this.salaryCurrency,
+    this.raw = const {},
   });
 
   factory Job.fromJson(Map<String, dynamic> json) {
     return Job(
+      raw: json,
       id: json['id'] as String,
       source: json['source'] as String,
       title: json['title'] as String,

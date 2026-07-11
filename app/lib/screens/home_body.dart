@@ -7,6 +7,7 @@ import '../models/match_item.dart';
 import 'dart:async' show unawaited;
 
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../services/match_feed.dart';
 import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
@@ -16,6 +17,7 @@ import '../widgets/background_task_dialog.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_skeletons.dart';
 import '../widgets/score_ring.dart';
+import '../widgets/stale_banner.dart';
 import '../widgets/status_pill.dart';
 import 'activity_log_screen.dart';
 import 'resume_diff_screen.dart';
@@ -46,6 +48,7 @@ class _HomeBodyState extends State<HomeBody> {
   bool _isLoading = true;
   String? _errorMessage;
   bool _hasProfile = true;
+  DateTime? _staleSince; // Phase 5: non-null = painting cached data
   List<ApplicationItem> _applications = [];
   List<ActivityItem> _activity = [];
 
@@ -90,11 +93,40 @@ class _HomeBodyState extends State<HomeBody> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _load() async {
+  /// Phase 5: paint the last-known dashboard instantly from cache, then
+  /// revalidate. A cached profile also answers "has a profile?" offline —
+  /// airplane-mode open lands on the dashboard, not the upload nudge.
+  Future<bool> _paintFromCache() async {
+    if (_applications.isNotEmpty || _activity.isNotEmpty || _matches.isNotEmpty) return true;
+    final results = await Future.wait([
+      MatchFeed.instance.loadFromCache(),
+      CacheService.instance.read<List<ApplicationItem>>(
+        CacheService.keyApplications,
+        (json) => (json as List).map((a) => ApplicationItem.fromJson((a as Map).cast<String, dynamic>())).toList(),
+      ),
+      CacheService.instance.read<List<ActivityItem>>(
+        CacheService.keyActivity,
+        (json) => (json as List).map((a) => ActivityItem.fromJson((a as Map).cast<String, dynamic>())).toList(),
+      ),
+    ]);
+    final apps = results[1] as CacheEntry<List<ApplicationItem>>?;
+    final activity = results[2] as CacheEntry<List<ActivityItem>>?;
+    final paintedFeed = results[0] as bool;
+    if (!mounted || (apps == null && activity == null && !paintedFeed)) return false;
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _hasProfile = true;
+      _applications = apps?.data ?? _applications;
+      _activity = activity?.data ?? _activity;
+      _staleSince = apps?.cachedAt ?? activity?.cachedAt;
+      _isLoading = false;
     });
+    return true;
+  }
+
+  Future<void> _load() async {
+    setState(() => _errorMessage = null);
+    final painted = await _paintFromCache();
+    if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final profile = await _apiClient.fetchCurrentProfile();
       if (profile == null) {
@@ -109,15 +141,20 @@ class _HomeBodyState extends State<HomeBody> {
         _apiClient.fetchApplications(),
         _apiClient.fetchActivity(limit: 3),
       ]);
+      if (!mounted) return;
       setState(() {
         _hasProfile = true;
         _applications = results[1] as List<ApplicationItem>;
         _activity = results[2] as List<ActivityItem>;
+        _staleSince = null;
         _isLoading = false;
       });
+      await CacheService.instance.write(CacheService.keyApplications, [for (final a in _applications) a.raw]);
+      await CacheService.instance.write(CacheService.keyActivity, [for (final a in _activity) a.raw]);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
     }
@@ -186,6 +223,10 @@ class _HomeBodyState extends State<HomeBody> {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
+          if (_staleSince != null) ...[
+            StaleBanner(cachedAt: _staleSince!, onRetry: _load),
+            const SizedBox(height: AppSpacing.space3),
+          ],
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

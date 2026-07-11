@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import '../models/application_item.dart';
 import '../models/job.dart';
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';
 import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
+import '../widgets/stale_banner.dart';
 import '../widgets/task_toast.dart';
 import 'add_job_screen.dart';
 import 'shortlist_screen.dart';
@@ -35,6 +37,7 @@ class _JobsListBodyState extends State<JobsListBody> {
   bool _isLoading = true;
   bool _isRefreshing = false;
   String? _errorMessage;
+  DateTime? _staleSince; // Phase 5: non-null = painting cached data
   List<Job> _jobs = [];
   List<ApplicationItem> _applications = [];
   String? _sourceFilter;
@@ -45,21 +48,43 @@ class _JobsListBodyState extends State<JobsListBody> {
     _loadJobs();
   }
 
-  Future<void> _loadJobs() async {
+  /// Phase 5 stale-while-revalidate: cached first page paints instantly
+  /// (no skeleton), fresh fetch updates underneath; on fetch failure the
+  /// cached paint stays with a stale banner.
+  Future<bool> _paintFromCache() async {
+    if (_jobs.isNotEmpty) return true;
+    final entry = await CacheService.instance.read<List<Job>>(
+      CacheService.keyJobs,
+      (json) => (json as List).map((j) => Job.fromJson((j as Map).cast<String, dynamic>())).toList(),
+    );
+    if (entry == null || !mounted) return false;
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _jobs = entry.data;
+      _staleSince = entry.cachedAt;
+      _isLoading = false;
     });
+    return true;
+  }
+
+  Future<void> _loadJobs() async {
+    setState(() => _errorMessage = null);
+    final painted = await _paintFromCache();
+    if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final results = await Future.wait([_apiClient.fetchJobs(limit: 50), _apiClient.fetchApplications()]);
+      if (!mounted) return;
       setState(() {
         _jobs = results[0] as List<Job>;
         _applications = results[1] as List<ApplicationItem>;
+        _staleSince = null;
         _isLoading = false;
       });
+      await CacheService.instance.write(CacheService.keyJobs, [for (final j in _jobs) j.raw]);
+      await CacheService.instance.write(CacheService.keyApplications, [for (final a in _applications) a.raw]);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = e.toString();
+        _errorMessage = painted ? null : e.toString(); // stale banner covers the cached case
         _isLoading = false;
       });
     }
@@ -165,6 +190,10 @@ class _JobsListBodyState extends State<JobsListBody> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_staleSince != null) ...[
+          StaleBanner(cachedAt: _staleSince!, onRetry: _loadJobs),
+          const SizedBox(height: AppSpacing.space3),
+        ],
         Row(
           children: [
             const Spacer(),
