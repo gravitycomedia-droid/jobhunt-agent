@@ -7,7 +7,7 @@ from config import settings
 from db.supabase_client import supabase
 from services.auth import get_current_profile
 from services.background_tasks import create_task, run_task
-from services.guardrail import verify_bullets
+from services.guardrail import compute_gaps, verify_bullets, verify_skills
 from services.llm import LlmApiError, TailorError, tailor_resume
 from services.resume_pdf import compile_ats_pdf
 
@@ -51,15 +51,40 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
     # decides that, so every OTHER caller of tailor_and_store (matched
     # jobs, Add Job) is unaffected and keeps using settings.gemini_model.
     model = settings.gemini_model_lite if job.get("source") == "jd_paste" else None
+    skills = profile.get("skills") or []
     try:
-        llm_response = tailor_resume(bullets, job.get("description") or "", profile_id=profile["id"], model=model)
+        llm_response = tailor_resume(
+            bullets,
+            job.get("description") or "",
+            profile_id=profile["id"],
+            model=model,
+            skills=skills,
+            headline=profile.get("headline") or "",
+        )
     except TailorError as e:
         raise HTTPException(status_code=422, detail=f"Could not tailor resume: {e}") from e
     except LlmApiError as e:
         raise HTTPException(status_code=502, detail=f"Resume tailor is temporarily unavailable: {e}") from e
 
-    verified_bullets = verify_bullets(llm_response.tailored_bullets, profile.get("raw_resume_text") or "")
+    raw_resume_text = profile.get("raw_resume_text") or ""
+    verified_bullets = verify_bullets(llm_response.tailored_bullets, raw_resume_text)
     guardrail_flags = sum(1 for b in verified_bullets if not b["guardrail_pass"])
+
+    analysis = llm_response.analysis
+    # ADR-019: the LLM's skill reordering is intersected back to real skills
+    # (never a source of new skills), and the gap check is computed in Python —
+    # both enforcement steps, not prompt promises (Golden Rule 2/4).
+    skills_ordered = verify_skills(llm_response.skills_ordered, skills)
+    gaps = compute_gaps(analysis.hard_requirements, skills, raw_resume_text)
+
+    stored_analysis = {
+        "role_type": analysis.role_type,
+        "culture_signal": analysis.culture_signal,
+        "jd_title": analysis.jd_title,
+        "summary_line": analysis.summary_line,
+        "hard_requirements": analysis.hard_requirements,
+        "skills_ordered": skills_ordered,
+    }
 
     row = (
         supabase.table("tailored_resumes")
@@ -70,6 +95,8 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
                 "bullets": verified_bullets,
                 "guardrail_flags": guardrail_flags,
                 "approved": False,
+                "analysis": stored_analysis,
+                "gaps": gaps,
             }
         )
         .execute()
@@ -123,7 +150,7 @@ async def tailored_resume_pdf(tailored_resume_id: str, profile: dict = Depends(g
     if not rows or rows[0]["profile_id"] != profile["id"]:
         raise HTTPException(status_code=404, detail="Tailored resume not found")
 
-    pdf_bytes = compile_ats_pdf(profile, rows[0]["bullets"])
+    pdf_bytes = compile_ats_pdf(profile, rows[0])
     filename = f"{slugify(profile.get('name') or 'resume')}-resume.pdf"
     return Response(
         content=pdf_bytes,

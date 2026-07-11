@@ -54,3 +54,62 @@ def test_pdf_bytes_are_valid_pdf_with_text_layer():
     assert "INVENTED CLAIM" not in text  # rejected tailored text never leaks
     for heading in ("SUMMARY", "SKILLS", "EXPERIENCE", "PROJECTS", "EDUCATION"):
         assert heading in text
+
+
+def _extract(pdf: bytes) -> str:
+    import io
+
+    from pypdf import PdfReader
+
+    return "".join(page.extract_text() for page in PdfReader(io.BytesIO(pdf)).pages)
+
+
+def test_analysis_row_uses_jd_title_summary_and_two_column():
+    # ADR-019: a full row with a startup culture signal renders the JD title,
+    # the reframed summary, and a two-column layout that still extracts as text.
+    row = {
+        "job_id": "job-123",
+        "bullets": BULLETS,
+        "analysis": {
+            "role_type": "full_stack",
+            "culture_signal": "startup",
+            "jd_title": "Full-Stack Engineer Intern",
+            "summary_line": "Full-stack engineer who ships end to end.",
+            "hard_requirements": ["Python", "Flutter"],
+            "skills_ordered": ["Flutter", "Python"],
+        },
+    }
+    pdf = compile_ats_pdf(PROFILE, row)
+    text = _extract(pdf)
+    assert "Full-Stack Engineer Intern" in text  # exact JD title on the resume
+    assert "Full-stack engineer who ships end to end." in text  # reframed summary
+    assert "built X with Flutter" in text  # accepted bullet still present
+    assert "INVENTED CLAIM" not in text  # rejected tailored text never leaks
+
+
+def test_single_page_fit_for_long_profile():
+    # Framework §1 / one-page auto-fit: a profile with many bullets must still
+    # compile to a single page.
+    import io
+
+    from pypdf import PdfReader
+
+    big = {
+        **PROFILE,
+        "experience": [
+            {
+                "role": "Engineer",
+                "company": f"Co {n}",
+                "duration": "2020-2024",
+                "bullets": [f"delivered project {n}-{m} on time" for m in range(6)],
+            }
+            for n in range(6)
+        ],
+    }
+    bullets = [
+        {"original": b, "tailored": b, "guardrail_pass": True, "accepted": True}
+        for exp in big["experience"]
+        for b in exp["bullets"]
+    ]
+    pdf = compile_ats_pdf(big, {"job_id": "x", "bullets": bullets, "analysis": {}})
+    assert len(PdfReader(io.BytesIO(pdf)).pages) == 1

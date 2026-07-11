@@ -210,7 +210,7 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
             itemCount: resume.bullets.length + 1,
             separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
             itemBuilder: (context, index) {
-              if (index == 0) return _statusBanner(resume);
+              if (index == 0) return _headerBanners(resume);
               final i = index - 1;
               final bullet = resume.bullets[i];
               return Column(
@@ -289,6 +289,52 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  // ADR-019: index-0 header now stacks up to three banners — the JD-analysis
+  // context (role type + matched title), the guardrail status, and the gap
+  // disclosure. Gaps are JD requirements the resume can't honestly claim;
+  // showing them here is the framework's non-negotiable honesty step — they're
+  // never written onto the resume.
+  Widget _headerBanners(TailoredResume resume) {
+    final banners = <Widget>[];
+
+    final analysis = resume.analysis;
+    if (analysis != null && (analysis.roleType.isNotEmpty || analysis.jdTitle.isNotEmpty)) {
+      final role = analysis.roleType.replaceAll('_', ' ');
+      banners.add(
+        AppBanner(
+          tone: BannerTone.info,
+          title: analysis.jdTitle.isNotEmpty ? 'Tailored for “${analysis.jdTitle}”' : 'Tailored resume',
+          message: role.isNotEmpty
+              ? 'Read as a $role role — bullets and skills reordered to lead with what this job asks for.'
+              : 'Bullets and skills reordered to lead with what this job asks for.',
+        ),
+      );
+    }
+
+    banners.add(_statusBanner(resume));
+
+    if (resume.gaps.isNotEmpty) {
+      banners.add(
+        AppBanner(
+          tone: BannerTone.warning,
+          title: 'Requirements you may not fully meet',
+          message:
+              '${resume.gaps.join(', ')}. These are not claimed on your resume — flag them honestly if asked.',
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < banners.length; i++) ...[
+          if (i > 0) const SizedBox(height: AppSpacing.space2),
+          banners[i],
+        ],
       ],
     );
   }

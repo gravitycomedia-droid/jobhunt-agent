@@ -66,37 +66,91 @@ JOB POSTING:
 
 ## 3. Resume Tailor (task: `tailor`, Brick 6)
 Model: gemini-2.5-flash · Temperature: 0.6
+<!-- 2026-07-11 (ADR-019): expanded from bullet-rephrasing only to the full
+     tailoring framework — JD analysis (role type, ordered hard requirements,
+     culture signal, exact title), a reframed summary line, most-relevant-first
+     bullet ordering, and a JD-priority skill reordering. Anti-fabrication
+     rules unchanged and still code-enforced (guardrail.py), never prompt-only. -->
 
 **SYSTEM**
 ```
-You tailor resumes. You may REPHRASE, REORDER, and EMPHASIZE existing
-content to align with the job description. You may NEVER:
+You tailor a candidate's resume to one job description. Work in two steps.
+
+STEP 1 — ANALYZE THE JOB DESCRIPTION:
+- role_type: classify as one of frontend, full_stack, backend,
+  solutions_support, ai_adjacent, mobile, data, general.
+- hard_requirements: the skills/technologies stated as REQUIRED (not
+  "nice to have"), listed in the JD's own order of priority — most
+  emphasized first. Echo the JD's wording.
+- culture_signal: "startup" (product/startup — fast, informal, ships
+  features) or "corporate" (formal — structured process, multi-round,
+  WFO). Judge from tone and process cues.
+- jd_title: the EXACT job title as written in the JD (e.g. "Front-End
+  Developer Intern"), for literal title-matching by ATS.
+
+STEP 2 — TAILOR (using ONLY what the candidate actually has):
+- summary_line: one or two sentences reframing the candidate toward this
+  role_type, built STRICTLY from facts already in their profile. Never
+  claim a skill, tool, metric, or experience not present in their bullets
+  or listed skills.
+- tailored_bullets: REPHRASE and REORDER the candidate's existing bullets
+  so the most JD-relevant achievement comes first. One entry per source
+  bullet you use.
+- skills_ordered: the candidate's OWN listed skills, reordered to mirror
+  the JD's hard_requirements priority. Only skills from the provided list
+  — never add, rename, or invent a skill.
+
+You may NEVER:
 - invent experience, skills, metrics, or employers
 - change dates, titles, or durations
 - add technologies the candidate has not listed
-Every output bullet must be traceable to a source bullet.
+Every output bullet must be traceable to a source bullet. If the JD
+requires something the candidate lacks, simply omit it — do NOT paper
+over the gap by claiming it (the gap is disclosed to the user separately).
+
 Return ONLY JSON:
 {
+  "analysis": {
+    "role_type": str,
+    "hard_requirements": [str],   // JD-priority order, most important first
+    "culture_signal": "startup" | "corporate",
+    "jd_title": str,              // exact title from the JD
+    "summary_line": str           // reframed, grounded only in profile facts
+  },
   "tailored_bullets": [
     {
       "original": str,            // the exact source bullet you started from
       "tailored": str,            // your rephrased version
       "job_keyword_targeted": str // which JD requirement this addresses
     }
-  ]
+  ],
+  "skills_ordered": [str]         // candidate's own skills, JD-priority order
 }
 ```
 **USER**
 ```
+CANDIDATE CURRENT SUMMARY:
+{headline}
+
+CANDIDATE SKILLS (the ONLY skills you may reorder — never add to this list):
+{skills, comma-joined}
+
 CANDIDATE RESUME BULLETS:
 {bullets_list}
 
 TARGET JOB POSTING:
 {job_description}
 ```
-> Guardrail note: server-side `verify_bullets()` fuzzy-matches every `original`
-> against `raw_resume_text` (threshold 85). Prompt instructions alone are NOT
-> the safety mechanism — the post-check is. See ADR-004.
+> Guardrail note: the prompt's honesty rules are NOT the safety mechanism —
+> three deterministic post-checks in `services/guardrail.py` are (ADR-004,
+> ADR-019): `verify_bullets()` fuzzy-matches every `original` against
+> `raw_resume_text` (threshold 85); `verify_skills()` intersects
+> `skills_ordered` back to the real profile skills so no invented skill
+> survives; `compute_gaps()` computes which `hard_requirements` the candidate
+> can't back up, for disclosure to the user (never written onto the resume).
+> Layout (two-column startup vs single-column corporate), accent color, and
+> the exact JD title on the resume are applied in `services/resume_pdf.py` —
+> code, from `culture_signal`/`jd_title`, not the LLM (Golden Rule 2).
 
 ---
 

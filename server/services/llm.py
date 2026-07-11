@@ -54,21 +54,62 @@ Return ONLY JSON:
 RERANK_RETRY_SUFFIX = PARSE_RETRY_SUFFIX
 
 # Mirrors docs/PROMPTS.md section 3 (Resume Tailor, Brick 6).
-TAILOR_SYSTEM_PROMPT = """You tailor resumes. You may REPHRASE, REORDER, and EMPHASIZE existing
-content to align with the job description. You may NEVER:
+# 2026-07-11: expanded from bullet-rephrasing only to the full tailoring
+# framework — JD analysis (role type, ordered hard requirements, culture
+# signal, exact title), a reframed summary line, most-relevant-first bullet
+# ordering, and a JD-priority skill reordering. The anti-fabrication rules
+# are unchanged and still enforced in code (guardrail.py), not by the prompt.
+TAILOR_SYSTEM_PROMPT = """You tailor a candidate's resume to one job description. Work in two steps.
+
+STEP 1 — ANALYZE THE JOB DESCRIPTION:
+- role_type: classify as one of frontend, full_stack, backend,
+  solutions_support, ai_adjacent, mobile, data, general.
+- hard_requirements: the skills/technologies stated as REQUIRED (not
+  "nice to have"), listed in the JD's own order of priority — most
+  emphasized first. Echo the JD's wording.
+- culture_signal: "startup" (product/startup — fast, informal, ships
+  features) or "corporate" (formal — structured process, multi-round,
+  WFO). Judge from tone and process cues.
+- jd_title: the EXACT job title as written in the JD (e.g. "Front-End
+  Developer Intern"), for literal title-matching by ATS.
+
+STEP 2 — TAILOR (using ONLY what the candidate actually has):
+- summary_line: one or two sentences reframing the candidate toward this
+  role_type, built STRICTLY from facts already in their profile. Never
+  claim a skill, tool, metric, or experience not present in their bullets
+  or listed skills.
+- tailored_bullets: REPHRASE and REORDER the candidate's existing bullets
+  so the most JD-relevant achievement comes first. One entry per source
+  bullet you use.
+- skills_ordered: the candidate's OWN listed skills, reordered to mirror
+  the JD's hard_requirements priority. Only skills from the provided list
+  — never add, rename, or invent a skill.
+
+You may NEVER:
 - invent experience, skills, metrics, or employers
 - change dates, titles, or durations
 - add technologies the candidate has not listed
-Every output bullet must be traceable to a source bullet.
+Every output bullet must be traceable to a source bullet. If the JD
+requires something the candidate lacks, simply omit it — do NOT paper
+over the gap by claiming it (the gap is disclosed to the user separately).
+
 Return ONLY JSON:
 {
+  "analysis": {
+    "role_type": str,
+    "hard_requirements": [str],   // JD-priority order, most important first
+    "culture_signal": "startup" | "corporate",
+    "jd_title": str,              // exact title from the JD
+    "summary_line": str           // reframed, grounded only in profile facts
+  },
   "tailored_bullets": [
     {
       "original": str,            // the exact source bullet you started from
       "tailored": str,            // your rephrased version
       "job_keyword_targeted": str // which JD requirement this addresses
     }
-  ]
+  ],
+  "skills_ordered": [str]         // candidate's own skills, JD-priority order
 }"""
 
 TAILOR_RETRY_SUFFIX = PARSE_RETRY_SUFFIX
@@ -400,9 +441,18 @@ def rerank_job(profile: dict, job: dict, profile_id: str | None = None) -> Match
     raise RerankError(last_error)
 
 
-def _tailor_user_prompt(bullets: list[str], job_description: str) -> str:
+def _tailor_user_prompt(
+    bullets: list[str], skills: list[str], headline: str, job_description: str
+) -> str:
     bullets_list = "\n".join(f"- {b}" for b in bullets)
-    return f"""CANDIDATE RESUME BULLETS:
+    skills_list = ", ".join(skills) if skills else "(none listed)"
+    return f"""CANDIDATE CURRENT SUMMARY:
+{headline or "(none)"}
+
+CANDIDATE SKILLS (the ONLY skills you may reorder — never add to this list):
+{skills_list}
+
+CANDIDATE RESUME BULLETS:
 {bullets_list}
 
 TARGET JOB POSTING:
@@ -410,7 +460,12 @@ TARGET JOB POSTING:
 
 
 def tailor_resume(
-    bullets: list[str], job_description: str, profile_id: str | None = None, model: str | None = None
+    bullets: list[str],
+    job_description: str,
+    profile_id: str | None = None,
+    model: str | None = None,
+    skills: list[str] | None = None,
+    headline: str = "",
 ) -> TailorLlmResponse:
     """Brick 6: ask Gemini to rephrase resume bullets toward a job posting,
     validate against TailorLlmResponse, retry once with the error appended
@@ -425,7 +480,7 @@ def tailor_resume(
     default model unchanged.
     """
     prompt_hash = hashlib.sha256(TAILOR_SYSTEM_PROMPT.encode()).hexdigest()[:16]
-    user_prompt = _tailor_user_prompt(bullets, job_description)
+    user_prompt = _tailor_user_prompt(bullets, skills or [], headline, job_description)
     prompt = f"{TAILOR_SYSTEM_PROMPT}\n\n{user_prompt}"
     used_model = model or settings.gemini_model
 
