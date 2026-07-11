@@ -5,6 +5,15 @@ class Settings(BaseSettings):
     gemini_api_key: str
     gemini_model: str = "gemini-2.5-flash"
     gemini_embed_model: str = "gemini-embedding-001"
+    # JD-paste resume builder only (routers/jobs.py's `from-jd` flow,
+    # services/llm.py's tailor_resume/extract_job_from_text `model` param)
+    # — a standalone convenience tool outside the core matching/tailoring
+    # pipeline, so it defaults to the cheapest current Gemini text tier
+    # instead of gemini_model. See DECISIONS.md ADR-017.
+    # 2026-07-11: was gemini-2.5-flash-lite, which Google now 404s for new
+    # API keys ("no longer available to new users"); gemini-3.1-flash-lite
+    # verified working with this project's key.
+    gemini_model_lite: str = "gemini-3.1-flash-lite"
 
     supabase_url: str
     supabase_service_key: str
@@ -40,6 +49,14 @@ class Settings(BaseSettings):
     # from the per-user POST /pipeline/run-mine, which uses the caller's
     # own Supabase session instead.
     pipeline_secret: str = ""
+
+    # Cloud Run migration: Cloud Scheduler authenticates the same route with
+    # a Google-signed OIDC bearer token instead of a shared secret — no
+    # value to leak from job config. Both are accepted at once (see
+    # services/auth.py::verify_pipeline_cron) so Render's cron keeps working
+    # until it's decommissioned.
+    pipeline_oidc_service_account: str = ""
+    pipeline_oidc_audience: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 

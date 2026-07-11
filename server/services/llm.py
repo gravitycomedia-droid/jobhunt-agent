@@ -24,8 +24,12 @@ Return ONLY valid JSON matching this schema:
   "name": str, "headline": str | null, "skills": [str],
   "experience": [{"role": str, "company": str, "duration": str, "bullets": [str]}],
   "projects": [{"name": str, "tech": [str], "description": str}],
-  "education": [{"degree": str, "institution": str, "year": str}]
+  "education": [{"degree": str, "institution": str, "year": str}],
+  "usn": str | null
 }
+"usn" is a USN (University Seat Number), roll number, or registration number
+— extract it only if literally printed on the resume (common on student
+resumes, rare otherwise); use null rather than guessing.
 If a field is absent, use null (or [] for lists). No markdown fences, no commentary."""
 
 PARSE_RETRY_SUFFIX = """
@@ -244,10 +248,12 @@ def _log_llm_call(
     ).execute()
 
 
-def _call_gemini(images: list[bytes], prompt: str, temperature: float = 0.1) -> tuple[str, int | None, int | None]:
+def _call_gemini(
+    images: list[bytes], prompt: str, temperature: float = 0.1, model: str | None = None
+) -> tuple[str, int | None, int | None]:
     parts = [types.Part.from_bytes(data=img, mime_type="image/png") for img in images]
     response = _client.models.generate_content(
-        model=settings.gemini_model,
+        model=model or settings.gemini_model,
         contents=[*parts, prompt],
         config=types.GenerateContentConfig(temperature=temperature),
     )
@@ -403,26 +409,35 @@ TARGET JOB POSTING:
 {job_description}"""
 
 
-def tailor_resume(bullets: list[str], job_description: str, profile_id: str | None = None) -> TailorLlmResponse:
+def tailor_resume(
+    bullets: list[str], job_description: str, profile_id: str | None = None, model: str | None = None
+) -> TailorLlmResponse:
     """Brick 6: ask Gemini to rephrase resume bullets toward a job posting,
     validate against TailorLlmResponse, retry once with the error appended
     on failure (Golden Rule 3), and log every attempt to llm_calls (Golden
     Rule 5). The anti-fabrication guarantee is NOT this function's job —
     services/guardrail.py's post-check on the result is (ADR-004).
+
+    `model` overrides `settings.gemini_model` for this call only — used by
+    the JD-paste resume builder (routers/jobs.py's `from-jd` flow, jobs
+    with `source='jd_paste'`) to run on the GEMINI_MODEL_LITE tier (config.py) instead of
+    the standard tier (ADR-016/017), while every other caller keeps the
+    default model unchanged.
     """
     prompt_hash = hashlib.sha256(TAILOR_SYSTEM_PROMPT.encode()).hexdigest()[:16]
     user_prompt = _tailor_user_prompt(bullets, job_description)
     prompt = f"{TAILOR_SYSTEM_PROMPT}\n\n{user_prompt}"
+    used_model = model or settings.gemini_model
 
     for attempt in (0, 1):
         start = time.monotonic()
         try:
-            text, tokens_in, tokens_out = _call_gemini([], prompt, temperature=0.6)
+            text, tokens_in, tokens_out = _call_gemini([], prompt, temperature=0.6, model=used_model)
         except Exception as e:
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_llm_call(
                 task="tailor",
-                model=settings.gemini_model,
+                model=used_model,
                 prompt_hash=prompt_hash,
                 tokens_in=None,
                 tokens_out=None,
@@ -440,7 +455,7 @@ def tailor_resume(bullets: list[str], job_description: str, profile_id: str | No
             last_error = str(e)
             _log_llm_call(
                 task="tailor",
-                model=settings.gemini_model,
+                model=used_model,
                 prompt_hash=prompt_hash,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
@@ -454,7 +469,7 @@ def tailor_resume(bullets: list[str], job_description: str, profile_id: str | No
 
         _log_llm_call(
             task="tailor",
-            model=settings.gemini_model,
+            model=used_model,
             prompt_hash=prompt_hash,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
@@ -542,29 +557,33 @@ def generate_followup_draft(
     raise FollowupError(last_error)
 
 
-def extract_job_from_text(page_text: str, profile_id: str | None = None) -> JobExtraction:
+def extract_job_from_text(page_text: str, profile_id: str | None = None, model: str | None = None) -> JobExtraction:
     """Add Job (frontend rebuild Phase 2): asks Gemini to pull structured
     fields out of a fetched page's raw text, validates against
     JobExtraction, retries once with the error appended on failure (Golden
     Rule 3), and logs every attempt to llm_calls (Golden Rule 5). The page
     itself was fetched by the caller (routers/jobs.py) — this function only
     ever sees text, never touches the network.
+
+    `model` overrides `settings.gemini_model` — see tailor_resume's
+    docstring for why (JD-paste resume builder, ADR-016/017).
     """
     prompt_hash = hashlib.sha256(JOB_EXTRACT_SYSTEM_PROMPT.encode()).hexdigest()[:16]
     # Page text can be long; Gemini's context window handles it, but there's
     # no reason to pay for tokens past what a posting realistically needs.
     user_prompt = f"PAGE TEXT:\n{page_text[:12000]}"
     prompt = f"{JOB_EXTRACT_SYSTEM_PROMPT}\n\n{user_prompt}"
+    used_model = model or settings.gemini_model
 
     for attempt in (0, 1):
         start = time.monotonic()
         try:
-            text, tokens_in, tokens_out = _call_gemini([], prompt, temperature=0.1)
+            text, tokens_in, tokens_out = _call_gemini([], prompt, temperature=0.1, model=used_model)
         except Exception as e:
             latency_ms = int((time.monotonic() - start) * 1000)
             _log_llm_call(
                 task="extract_job",
-                model=settings.gemini_model,
+                model=used_model,
                 prompt_hash=prompt_hash,
                 tokens_in=None,
                 tokens_out=None,
@@ -582,7 +601,7 @@ def extract_job_from_text(page_text: str, profile_id: str | None = None) -> JobE
             last_error = str(e)
             _log_llm_call(
                 task="extract_job",
-                model=settings.gemini_model,
+                model=used_model,
                 prompt_hash=prompt_hash,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
@@ -596,7 +615,7 @@ def extract_job_from_text(page_text: str, profile_id: str | None = None) -> JobE
 
         _log_llm_call(
             task="extract_job",
-            model=settings.gemini_model,
+            model=used_model,
             prompt_hash=prompt_hash,
             tokens_in=tokens_in,
             tokens_out=tokens_out,

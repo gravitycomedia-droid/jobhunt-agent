@@ -11,6 +11,10 @@ reconciliation with a Google Cloud invoice.
 # input-only, tokens_out is always None for task="embed").
 _PRICING_PER_MILLION_TOKENS: dict[str, tuple[float, float]] = {
     "gemini-2.5-flash": (0.30, 2.50),
+    # old lite tier kept for pricing historical llm_calls rows; new lite
+    # tier assumed same list price until Google publishes otherwise.
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+    "gemini-3.1-flash-lite": (0.10, 0.40),
     "gemini-embedding-001": (0.15, 0.0),
 }
 _FALLBACK_PRICING = (0.30, 2.50)
