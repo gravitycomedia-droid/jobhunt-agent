@@ -226,6 +226,7 @@ class _MatchesBodyState extends State<MatchesBody> {
       company: job.company ?? 'Unknown company',
       location: job.location,
       source: job.source,
+      sourceUrl: job.redirectUrl,
       salary: job.salaryLabel,
       postedAt: job.postedAtLabel,
       score: item.fitScore,

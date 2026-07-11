@@ -249,6 +249,7 @@ class _JobsListBodyState extends State<JobsListBody> {
       company: job.company ?? 'Unknown company',
       location: job.location,
       source: job.source,
+      sourceUrl: job.redirectUrl,
       salary: job.salaryLabel,
       postedAt: job.postedAtLabel,
       bookmarked: _isTracked(job.id),

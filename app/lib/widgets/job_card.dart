@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_tokens.dart';
 import 'app_icon.dart';
@@ -27,6 +28,7 @@ class JobCard extends StatelessWidget {
     required this.company,
     this.location,
     this.source,
+    this.sourceUrl,
     this.salary,
     this.postedAt,
     this.logoUrl,
@@ -43,6 +45,10 @@ class JobCard extends StatelessWidget {
 
   /// Source name shown as an info chip, e.g. "Adzuna".
   final String? source;
+
+  /// Phase 4A: the original posting's URL — tapping the source chip opens
+  /// it in the external browser. Null disables the chip with a tooltip.
+  final String? sourceUrl;
 
   /// Compensation string, rendered in mono, e.g. "\$145K–\$180K".
   final String? salary;
@@ -129,7 +135,7 @@ class JobCard extends StatelessWidget {
                     if (location != null) _Meta(icon: AppIconName.mapPin, text: location!),
                     if (postedAt != null) _Meta(icon: AppIconName.clock, text: postedAt!),
                     if (salary != null) _Meta(text: salary!, mono: true),
-                    if (source != null) _SourceChip(source: source!),
+                    if (source != null) _SourceChip(source: source!, url: sourceUrl),
                   ],
                 ),
               ],
@@ -202,16 +208,33 @@ class _Meta extends StatelessWidget {
 }
 
 class _SourceChip extends StatelessWidget {
-  const _SourceChip({required this.source});
+  const _SourceChip({required this.source, this.url});
 
   final String source;
+  final String? url;
+
+  Future<void> _open(BuildContext context) async {
+    final uri = Uri.tryParse(url!);
+    // externalApplication: hand off to the real browser (or the job
+    // board's app via its app link) rather than an in-app view — the user
+    // may need to sign in to the board with their existing session there.
+    final ok = uri != null && await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the original posting')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    final enabled = url != null && url!.isNotEmpty;
+    final fg = enabled ? AppColors.infoText : AppColors.textTertiary;
+
+    final chip = DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.infoSoft,
-        border: Border.all(color: AppColors.infoBorder),
+        color: enabled ? AppColors.infoSoft : AppColors.neutralSoft,
+        border: Border.all(color: enabled ? AppColors.infoBorder : AppColors.border),
         borderRadius: AppRadius.pillRadius,
       ),
       child: Padding(
@@ -219,16 +242,22 @@ class _SourceChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const AppIcon(AppIconName.externalLink, size: 11, color: AppColors.infoText),
+            AppIcon(AppIconName.externalLink, size: 11, color: fg),
             const SizedBox(width: 4),
             Text(
               source,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.infoText),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
             ),
           ],
         ),
       ),
     );
+
+    // Phase 4A: tap opens the original posting; no URL = disabled + tooltip.
+    if (!enabled) {
+      return Tooltip(message: 'Source link unavailable', triggerMode: TooltipTriggerMode.tap, child: chip);
+    }
+    return InkWell(borderRadius: AppRadius.pillRadius, onTap: () => _open(context), child: chip);
   }
 }
 

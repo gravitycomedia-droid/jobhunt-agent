@@ -52,6 +52,7 @@ class MatchCard extends StatefulWidget {
     required this.score,
     this.location,
     this.source,
+    this.sourceUrl,
     this.salary,
     this.postedAt,
     this.logoUrl,
@@ -68,6 +69,7 @@ class MatchCard extends StatefulWidget {
   final String company;
   final String? location;
   final String? source;
+  final String? sourceUrl; // Phase 4A: passed through to JobCard's chip
   final String? salary;
   final String? postedAt;
   final String? logoUrl;
@@ -109,6 +111,7 @@ class _MatchCardState extends State<MatchCard> {
       company: widget.company,
       location: widget.location,
       source: widget.source,
+      sourceUrl: widget.sourceUrl,
       salary: widget.salary,
       postedAt: widget.postedAt,
       logoUrl: widget.logoUrl,
