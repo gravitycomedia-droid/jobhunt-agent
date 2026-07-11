@@ -8,8 +8,8 @@ import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/loading_skeleton.dart';
 import '../widgets/page_header.dart';
+import '../widgets/page_skeletons.dart';
 import 'cost_stats_screen.dart';
 import 'profile_review_screen.dart';
 import 'resume_upload_screen.dart';
@@ -263,7 +263,8 @@ class _ProfileBodyState extends State<ProfileBody> {
 
   Widget _resumeSection() {
     if (_isLoading) {
-      return const LoadingSkeleton(variant: SkeletonVariant.card);
+      // Phase 4C: profile shape — avatar circle + field rows.
+      return const SizedBox(height: 320, child: ProfileSkeleton());
     }
 
     if (_errorMessage != null) {

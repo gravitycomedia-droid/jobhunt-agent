@@ -7,8 +7,8 @@ import '../widgets/app_icon.dart';
 import '../widgets/application_card.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/kanban_column.dart';
-import '../widgets/loading_skeleton.dart';
 import '../widgets/page_header.dart';
+import '../widgets/page_skeletons.dart';
 import 'app_detail_screen.dart';
 
 /// The Track tab's content (chrome comes from [MainTabScreen] /
@@ -94,16 +94,8 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
 
   Widget _buildContent() {
     if (_isLoading) {
-      return ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.zero,
-        itemCount: kApplicationStates.length,
-        separatorBuilder: (_, _) => const SizedBox(width: AppSpacing.space3),
-        itemBuilder: (_, _) => const SizedBox(
-          width: 264,
-          child: LoadingSkeleton(variant: SkeletonVariant.card),
-        ),
-      );
+      // Phase 4C: Kanban shape — column headers + card blocks per column.
+      return KanbanSkeleton(columns: kApplicationStates.length);
     }
 
     if (_errorMessage != null) {

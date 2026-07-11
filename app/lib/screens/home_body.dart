@@ -14,7 +14,7 @@ import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/background_task_dialog.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/loading_skeleton.dart';
+import '../widgets/page_skeletons.dart';
 import '../widgets/score_ring.dart';
 import '../widgets/status_pill.dart';
 import 'activity_log_screen.dart';
@@ -139,12 +139,8 @@ class _HomeBodyState extends State<HomeBody> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return ListView.separated(
-        padding: EdgeInsets.zero,
-        itemCount: 3,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (_, _) => const LoadingSkeleton(variant: SkeletonVariant.card),
-      );
+      // Phase 4C: home shape — greeting lines, hero card, stat grid.
+      return const HomeSkeleton();
     }
 
     if (_errorMessage != null) {

@@ -9,8 +9,8 @@ import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';
-import '../widgets/loading_skeleton.dart';
 import '../widgets/page_header.dart';
+import '../widgets/page_skeletons.dart';
 import '../widgets/task_toast.dart';
 import 'add_job_screen.dart';
 import 'shortlist_screen.dart';
@@ -138,11 +138,12 @@ class _JobsListBodyState extends State<JobsListBody> {
 
   Widget _buildContent(List<Job> filteredJobs) {
     if (_isLoading) {
+      // Phase 4C: structure-matched skeleton — 5 job-card shapes.
       return ListView.separated(
         padding: EdgeInsets.zero,
-        itemCount: 4,
+        itemCount: 5,
         separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (_, _) => const LoadingSkeleton(variant: SkeletonVariant.card),
+        itemBuilder: (_, _) => const JobCardSkeleton(),
       );
     }
 

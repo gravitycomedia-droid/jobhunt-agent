@@ -11,9 +11,9 @@ import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/background_task_dialog.dart';
-import '../widgets/loading_skeleton.dart';
 import '../widgets/match_card.dart';
 import '../widgets/page_header.dart';
+import '../widgets/page_skeletons.dart';
 import 'resume_diff_screen.dart';
 
 /// The Matches tab's content (Brick 9 polish: chrome comes from
@@ -146,11 +146,12 @@ class _MatchesBodyState extends State<MatchesBody> {
 
   Widget _buildContent() {
     if (_isLoading) {
+      // Phase 4C: match-card shape (score-ring circle placeholder).
       return ListView.separated(
         padding: EdgeInsets.zero,
         itemCount: 4,
         separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (_, _) => const LoadingSkeleton(variant: SkeletonVariant.card),
+        itemBuilder: (_, _) => const MatchCardSkeleton(),
       );
     }
 
