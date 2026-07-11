@@ -10,7 +10,7 @@ from db.supabase_client import supabase
 from models.job import JobExtraction, JobIn
 from services.dedup import is_duplicate, make_dedup_key
 from services.embeddings import embed_text, embed_texts, job_embedding_text
-from services.job_sources import fetch_adzuna, fetch_jsearch
+from services.job_sources import fetch_adzuna, fetch_greenhouse, fetch_jsearch, fetch_lever
 
 
 def is_fresh(job: JobIn, now: datetime | None = None) -> bool:
@@ -59,12 +59,16 @@ async def fetch_manual_job_text(url: str) -> str:
     return text
 
 
-def insert_manual_job(extraction: JobExtraction, redirect_url: str) -> dict:
+def insert_manual_job(extraction: JobExtraction, redirect_url: str | None = None, source: str = "manual") -> dict:
     """Add Job (frontend rebuild Phase 2): inserts a user-reviewed
     extraction into the shared job pool with source='manual'. Exact
     dedup_key match against a posting already in the pool (e.g. from
     Adzuna/JSearch) returns that existing row instead of creating a
     second one — see the exact-vs-fuzzy tradeoff noted below.
+
+    `redirect_url` is optional and `source` overridable for the JD-paste
+    resume builder (routers/jobs.py's `from-jd` flow, source='jd_paste') —
+    a pasted/uploaded JD has no source link to redirect to.
     """
     # Exact dedup_key match only — is_duplicate()'s fuzzy check (used by
     # refresh_job_pool) only returns a bool, not which row matched, so it
@@ -78,7 +82,7 @@ def insert_manual_job(extraction: JobExtraction, redirect_url: str) -> dict:
         return existing[0]
 
     payload = {
-        "source": "manual",
+        "source": source,
         "external_id": str(uuid.uuid4()),
         "title": extraction.title,
         "company": extraction.company,
@@ -100,8 +104,10 @@ async def refresh_job_pool() -> dict:
     (the cron/batch path, which has no per-request auth dependency to
     resolve) without duplicating the logic in each caller.
     """
-    adzuna_jobs, jsearch_jobs = await asyncio.gather(fetch_adzuna(), fetch_jsearch())
-    fetched = adzuna_jobs + jsearch_jobs
+    adzuna_jobs, jsearch_jobs, greenhouse_jobs, lever_jobs = await asyncio.gather(
+        fetch_adzuna(), fetch_jsearch(), fetch_greenhouse(), fetch_lever()
+    )
+    fetched = adzuna_jobs + jsearch_jobs + greenhouse_jobs + lever_jobs
     # Phase 1D: drop stale postings before dedup/embedding — one gate for
     # both sources.
     fetched = [job for job in fetched if is_fresh(job)]

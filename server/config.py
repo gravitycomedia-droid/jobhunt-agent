@@ -42,7 +42,23 @@ class Settings(BaseSettings):
     daily_pipeline_hour: int = 7
     target_roles: str = ""
     target_locations: str = ""
+    # Job source expansion Phase 1: Adzuna's free tier has far more headroom
+    # than JSearch's 200/month RapidAPI cap, so Adzuna can query more Indian
+    # cities without touching JSearch's shared target_locations. Empty →
+    # falls back to target_locations (see services/job_sources.py).
+    adzuna_locations: str = ""
     environment: str = "development"
+
+    # Job source expansion Phase 2/3: Greenhouse/Lever public job-board APIs
+    # — free, unauthenticated, no key to manage. Greenhouse tokens only
+    # (each posting's own `company_name` field supplies the display name —
+    # verified live against postman/groww/razorpaysoftwareprivatelimited/
+    # phonepe, no need to hand-maintain a name alongside the token). Lever
+    # postings don't return a company name, so its entries are
+    # "slug:Display Name" pairs — verified live against cred/meesho/zeta/
+    # freshworks.
+    greenhouse_boards: str = "postman,groww,razorpaysoftwareprivatelimited,phonepe"
+    lever_companies: str = "cred:CRED,meesho:Meesho,zeta:Zeta,freshworks:Freshworks"
 
     # Brick 9: shared secret the Render cron job sends in X-Pipeline-Secret
     # to trigger the all-users batch run (POST /pipeline/run) — distinct
