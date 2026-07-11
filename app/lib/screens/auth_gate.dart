@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthChangeEvent, AuthState, Session, Supabase;
 
+import '../models/resume_profile.dart';
 import '../services/api_client.dart';
 import '../services/match_feed.dart';
 import '../services/push_service.dart';
@@ -41,9 +42,13 @@ class _AuthGateState extends State<AuthGate> {
 
   _PreAuthScreen _preAuthScreen = _PreAuthScreen.splash;
 
-  // Null = not checked yet for the current session. Re-armed on every
-  // sign-in so a fresh session always gets a fresh profile check.
-  bool? _hasProfile;
+  // Null until checked for the current session; re-armed on every sign-in
+  // so a fresh session always gets a fresh profile check. Phase 3B: we
+  // keep the whole profile (not just a bool) because its onboarding_step
+  // decides WHERE onboarding resumes, and the review step needs the
+  // already-parsed profile data.
+  bool _profileChecked = false;
+  ResumeProfile? _profile;
   bool _onboardingComplete = false;
 
   @override
@@ -54,7 +59,8 @@ class _AuthGateState extends State<AuthGate> {
       setState(() {
         _session = data.session;
         if (data.event == AuthChangeEvent.signedIn) {
-          _hasProfile = null;
+          _profileChecked = false;
+          _profile = null;
           _onboardingComplete = false;
         }
       });
@@ -79,14 +85,20 @@ class _AuthGateState extends State<AuthGate> {
     try {
       final profile = await _apiClient.fetchCurrentProfile();
       if (!mounted) return;
-      setState(() => _hasProfile = profile != null);
+      setState(() {
+        _profile = profile;
+        _profileChecked = true;
+      });
     } catch (_) {
       // Treat a failed check as "no profile" rather than getting stuck on
       // a spinner forever — onboarding is re-triggerable (it just re-checks
       // on the next sign-in), whereas an infinite loading state isn't
       // recoverable without a restart.
       if (!mounted) return;
-      setState(() => _hasProfile = false);
+      setState(() {
+        _profile = null;
+        _profileChecked = true;
+      });
     }
   }
 
@@ -115,15 +127,24 @@ class _AuthGateState extends State<AuthGate> {
       };
     }
 
-    if (_hasProfile == null) {
+    if (!_profileChecked) {
       return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.brand)));
     }
 
-    if (_hasProfile == false && !_onboardingComplete) {
+    // Phase 3B routing: no profile → onboarding from the top; profile with
+    // an unfinished onboarding_step → resume at EXACTLY that step (kill the
+    // app mid-flow, reopen, land where you left off); 'done' → main app.
+    final profile = _profile;
+    final needsOnboarding = profile == null || profile.onboardingStep != 'done';
+    if (needsOnboarding && !_onboardingComplete) {
       final email = session.user.email ?? '';
       final name = email.contains('@') ? email.split('@').first : 'there';
       return OnboardingFlow(
         userName: name,
+        initialStep: profile == null
+            ? OnboardingStep.welcome
+            : OnboardingFlow.stepFromServer(profile.onboardingStep),
+        initialProfile: profile,
         onComplete: () => setState(() => _onboardingComplete = true),
       );
     }

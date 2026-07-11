@@ -13,6 +13,10 @@ Dashboard → SQL Editor → paste and run, in order (each is `if not exists`-sa
 - [ ] `server/db/migrations/010_salary_currency.sql` — Phase 1D. Adds
       `jobs.salary_currency`, backfills INR on existing salaried rows, and
       deletes stale (> 60 days) postings that no application references.
+- [ ] `server/db/migrations/011_onboarding_step.sql` — Phase 3B. Adds
+      `profiles.onboarding_step` (backfills existing users to 'done').
+      Until applied, onboarding resumption falls back to treating every
+      profile as done (safe, but skips aren't persisted).
 
 ## 2. Supabase — fix Google OAuth redirect (Phase 1B)
 

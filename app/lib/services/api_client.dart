@@ -520,6 +520,22 @@ class ApiClient {
     return (body['data'] as List).map((s) => SkillGrowthItem.fromJson(s as Map<String, dynamic>)).toList();
   }
 
+  /// Phase 3B: explicit onboarding-step advance for skip buttons
+  /// (ProfileReview skip → 'roles', TargetRoles skip → 'done'). The server
+  /// state machine is forward-only, so this can never regress a user.
+  Future<void> updateOnboardingStep(String step) async {
+    final uri = Uri.parse('$_baseUrl/resume/profile/onboarding-step');
+    final response = await http.patch(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({'step': step}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+  }
+
   /// Phase 4 Settings screen: gates the two calls
   /// jobs/daily_pipeline.py::_process_profile already makes unconditionally
   /// (push alerts, stale follow-up drafting) — not new pipeline behavior,

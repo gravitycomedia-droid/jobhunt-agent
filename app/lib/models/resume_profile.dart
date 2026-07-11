@@ -103,6 +103,11 @@ class ResumeProfile {
   bool notifyAlerts;
   bool notifyFollowupNudge;
 
+  /// Phase 3B: where the user is in onboarding (welcome/resume/review/
+  /// roles/done) — AuthGate resumes the flow at exactly this step. Server
+  /// bumps it forward as steps complete; skips PATCH it explicitly.
+  String onboardingStep;
+
   ResumeProfile({
     required this.id,
     required this.name,
@@ -115,6 +120,7 @@ class ResumeProfile {
     this.minSalary,
     this.notifyAlerts = true,
     this.notifyFollowupNudge = true,
+    this.onboardingStep = 'done',
   });
 
   factory ResumeProfile.fromJson(Map<String, dynamic> json) {
@@ -136,6 +142,9 @@ class ResumeProfile {
       minSalary: (json['min_salary'] as num?)?.toDouble(),
       notifyAlerts: (json['notification_prefs'] as Map<String, dynamic>?)?['alerts'] as bool? ?? true,
       notifyFollowupNudge: (json['notification_prefs'] as Map<String, dynamic>?)?['followup_nudge'] as bool? ?? true,
+      // Missing column (pre-migration-011 server) reads as done — never
+      // trap an existing user back in onboarding.
+      onboardingStep: json['onboarding_step'] as String? ?? 'done',
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../models/resume_profile.dart';
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
@@ -8,22 +9,26 @@ import '../widgets/page_header.dart';
 import 'profile_review_screen.dart';
 
 /// Roughly the FlutterFlow "Upload File" action + a button, hand-written.
+///
+/// Phase 3B: deliberately NOT skippable during onboarding — the whole
+/// product depends on a parsed profile (the old "Skip for now" dropped the
+/// user into an app full of empty states). The copy below sets that
+/// expectation instead.
 class ResumeUploadScreen extends StatefulWidget {
-  const ResumeUploadScreen({super.key, this.onProfileReviewDone, this.onSkip});
+  const ResumeUploadScreen({super.key, this.onProfileReviewDone, this.onParsed, this.embedded = false});
 
-  /// Onboarding (frontend rebuild Phase 1): forwarded straight through as
-  /// the pushed [ProfileReviewScreen]'s `onSaved` — lets the onboarding
-  /// chain continue to Target Roles instead of just popping back. Null
-  /// (the default) when reached from the Profile tab, where popping back
-  /// is correct.
+  /// Standalone mode (Profile tab re-upload): forwarded as the pushed
+  /// [ProfileReviewScreen]'s `onSaved`. Ignored when [onParsed] is set.
   final VoidCallback? onProfileReviewDone;
 
-  /// Onboarding only: shows a "Skip for now" action. Matching can't run
-  /// without a profile, but the prototype (`ui.isUpload`) explicitly
-  /// allows deferring — every screen downstream already has an empty
-  /// state for "no profile yet" (see ProfileBody, MatchesBody, etc), so
-  /// skipping straight to the tab shell is safe.
-  final VoidCallback? onSkip;
+  /// Phase 3B onboarding mode: called with the parsed profile instead of
+  /// this screen pushing review itself — [OnboardingFlow]'s step machine
+  /// owns what comes next.
+  final ValueChanged<ResumeProfile>? onParsed;
+
+  /// True inside [OnboardingFlow] (progress chrome already provided, and
+  /// there is no route to pop — hide our own header/back).
+  final bool embedded;
 
   @override
   State<ResumeUploadScreen> createState() => _ResumeUploadScreenState();
@@ -63,9 +68,13 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
     try {
       final profile = await _apiClient.parseResume(bytes, result.files.single.name);
       if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ProfileReviewScreen(profile: profile, onSaved: widget.onProfileReviewDone)),
-      );
+      if (widget.onParsed != null) {
+        widget.onParsed!(profile); // onboarding: the flow decides what's next
+      } else {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ProfileReviewScreen(profile: profile, onSaved: widget.onProfileReviewDone)),
+        );
+      }
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
@@ -76,7 +85,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const PageHeader(title: 'Upload Resume', showBack: true),
+      appBar: widget.embedded ? null : const PageHeader(title: 'Upload Resume', showBack: true),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6),
@@ -121,11 +130,15 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                   textAlign: TextAlign.center,
                 ),
               ],
-              if (widget.onSkip != null) ...[
-                const SizedBox(height: AppSpacing.space3),
-                TextButton(
-                  onPressed: _isUploading ? null : widget.onSkip,
-                  child: const Text('Skip for now'),
+              if (widget.embedded && !_isUploading) ...[
+                const SizedBox(height: AppSpacing.space4),
+                // Phase 3B: honest no-skip copy — everything downstream
+                // (matching, tailoring, tracking) needs a profile.
+                Text(
+                  'This step can\'t be skipped — the agent matches and tailors '
+                  'against your real resume.',
+                  textAlign: TextAlign.center,
+                  style: AppTypography.caption.copyWith(color: AppColors.textTertiary),
                 ),
               ],
             ],

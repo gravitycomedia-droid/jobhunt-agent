@@ -19,18 +19,20 @@ const _steps = [
 /// Onboarding step 2 (frontend rebuild Phase 1, prototype `ui.isWelcome`):
 /// shown once right after first sign-in, before the resume upload step.
 class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({super.key, required this.name, required this.onContinue});
+  const WelcomeScreen({super.key, required this.name, required this.onContinue, this.embedded = false});
 
   final String name;
   final VoidCallback onContinue;
 
+  /// Phase 3B: true when rendered inside [OnboardingFlow]'s step machine,
+  /// which already provides the Scaffold + progress chrome.
+  final bool embedded;
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6, vertical: AppSpacing.space6),
-          child: Column(
+    final body = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6, vertical: AppSpacing.space6),
+      child: Column(
             children: [
               Expanded(
                 child: Column(
@@ -69,9 +71,10 @@ class WelcomeScreen extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
     );
+
+    if (embedded) return body;
+    return Scaffold(body: SafeArea(child: body));
   }
 }
 

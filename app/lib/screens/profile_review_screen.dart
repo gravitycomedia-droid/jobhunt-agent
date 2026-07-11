@@ -96,7 +96,12 @@ class ProfileReviewScreen extends StatefulWidget {
   /// to the caller is correct.
   final VoidCallback? onSaved;
 
-  const ProfileReviewScreen({super.key, required this.profile, this.onSaved});
+  /// Phase 3B: true inside [OnboardingFlow]'s step machine — the flow
+  /// provides the progress chrome and there's no route to pop, so hide
+  /// this screen's own header/back.
+  final bool embedded;
+
+  const ProfileReviewScreen({super.key, required this.profile, this.onSaved, this.embedded = false});
 
   @override
   State<ProfileReviewScreen> createState() => _ProfileReviewScreenState();
@@ -181,7 +186,7 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const PageHeader(title: 'Review Profile', showBack: true),
+      appBar: widget.embedded ? null : const PageHeader(title: 'Review Profile', showBack: true),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [
