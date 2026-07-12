@@ -59,19 +59,26 @@ def _adzuna_locations() -> list[str]:
     return [loc.strip() for loc in settings.adzuna_locations.split(",") if loc.strip()]
 
 
-def _greenhouse_boards() -> list[str]:
-    return [b.strip() for b in settings.greenhouse_boards.split(",") if b.strip()]
+def _slug_name_pairs(raw: str) -> list[tuple[str, str | None]]:
+    # Shared by both board APIs: entries are "slug" or "slug:Display Name".
+    # A bare slug yields a None name; each caller decides what to fall back to.
+    pairs: list[tuple[str, str | None]] = []
+    for entry in raw.split(","):
+        slug, _, name = entry.strip().partition(":")
+        slug, name = slug.strip(), name.strip()
+        if slug:
+            pairs.append((slug, name or None))
+    return pairs
+
+
+def _greenhouse_boards() -> list[tuple[str, str | None]]:
+    # No name → fall back to the posting's own company_name (see fetch_greenhouse).
+    return _slug_name_pairs(settings.greenhouse_boards)
 
 
 def _lever_companies() -> list[tuple[str, str]]:
-    pairs = []
-    for entry in settings.lever_companies.split(","):
-        entry = entry.strip()
-        if not entry:
-            continue
-        slug, _, name = entry.partition(":")
-        pairs.append((slug.strip(), (name or slug).strip()))
-    return pairs
+    # Lever postings carry no company name, so the slug is the last resort.
+    return [(slug, name or slug) for slug, name in _slug_name_pairs(settings.lever_companies)]
 
 
 def _strip_html(raw: str | None) -> str | None:
@@ -175,7 +182,7 @@ async def fetch_greenhouse() -> list[JobIn]:
     No salary data on this endpoint; left null rather than guessed."""
     jobs: list[JobIn] = []
     async with httpx.AsyncClient(timeout=30) as client:
-        for board in _greenhouse_boards():
+        for board, name_override in _greenhouse_boards():
             url = f"{GREENHOUSE_BASE}/{board}/jobs"
             try:
                 response = await client.get(url, params={"content": "true"})
@@ -190,7 +197,9 @@ async def fetch_greenhouse() -> list[JobIn]:
                         source="greenhouse",
                         external_id=str(r["id"]),
                         title=r.get("title", ""),
-                        company=r.get("company_name"),
+                        # Boards registered under a legal name ("Razorpay Software
+                        # Private Limited") get an override; the rest read fine.
+                        company=name_override or r.get("company_name"),
                         location=(r.get("location") or {}).get("name"),
                         description=_strip_html(r.get("content")),
                         redirect_url=r.get("absolute_url"),
