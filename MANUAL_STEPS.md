@@ -55,6 +55,28 @@ Dashboard → SQL Editor → paste and run each file:
 - [ ] `openai` is a new pip dependency (now in requirements.txt) — the Docker
       build installs it automatically.
 
+## 1b. Cloud Run — update job-targeting env vars
+
+These live as env vars on the Cloud Run service, so editing `.env.example` (or
+your local `server/.env`) changes nothing in production until you push them up.
+
+- [ ] `TARGET_ROLES=fullstack developer,frontend developer`
+- [ ] `TARGET_LOCATIONS=hyderabad,bangalore,remote`
+
+Why they changed: both lists fan out into API calls per refresh — Adzuna is
+`roles × ADZUNA_LOCATIONS × 2`, JSearch is `roles × TARGET_LOCATIONS` against a
+**200 requests/month** free-tier cap. The old values (5 roles × 4 locations,
+where `bengaluru` and `bangalore` were the same city twice) came to ~600
+JSearch calls/month, so JSearch was blowing its quota around day 10 and then
+silently 429ing for the rest of the month. The new values land at 180/month.
+
+Note the split: `settings.target_roles` only decides which jobs get **fetched**
+into the pool. The re-ranker scores against `profiles.target_roles` in the DB
+(per-user, set from the app's Profile screen). If a user's profile roles still
+say flutter/python/mobile while ingestion only fetches fullstack/frontend, the
+match board will be scoring the wrong pool against the wrong target — keep the
+two aligned.
+
 ## 2. Supabase — fix Google OAuth redirect
 
 Still broken as of 2026-07-11, now landing on the *old Render page*
