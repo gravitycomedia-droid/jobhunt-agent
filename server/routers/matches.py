@@ -1,9 +1,11 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 
+from config import settings
 from db.supabase_client import supabase
 from services.auth import get_current_profile
 from services.background_tasks import create_task, run_task
 from services.matching import DEFAULT_RERANK_LIMIT, get_ranked_matches, rerank_shortlist
+from services.rate_limit import enforce_rate_limit
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -33,7 +35,13 @@ async def shortlist(limit: int = Query(50, le=100), profile: dict = Depends(get_
     return {"data": shortlisted, "error": None}
 
 
-@router.post("/rerank", status_code=202)
+@router.post(
+    "/rerank",
+    status_code=202,
+    dependencies=[
+        Depends(enforce_rate_limit("rerank", settings.rate_limit_rerank, settings.rate_limit_window_seconds))
+    ],
+)
 async def rerank(
     background: BackgroundTasks,
     limit: int = Query(DEFAULT_RERANK_LIMIT, le=50),

@@ -2,6 +2,8 @@
 
 > Single source of truth for every prompt in the app. Server code loads these as templates. When a prompt changes, note why in a comment at the top of its section — prompt iteration history is part of your engineering story.
 
+> **Providers (Phase 14 / ADR-023):** each task now names its provider. `parse` stays on Gemini (vision-required). `rerank`, `extract_job`, `followup`, `skill_growth`, `extract_form`, `form_fill` run on **DeepSeek `deepseek-v4-flash`** (thinking disabled). `tailor` is Gemini by default, behind the `TAILOR_PROVIDER` flag (it's the guardrail-adjacent task). Embeddings stay on `gemini-embedding-001`. Prompts are provider-agnostic — the same system/user text is sent either way through `services/llm.py::_run_llm_task`.
+
 ---
 
 ## 1. Resume Parser (task: `parse`, Brick 2)
@@ -35,7 +37,7 @@ Fix the issue and return ONLY the corrected JSON.
 ---
 
 ## 2. Match Re-Ranker (task: `rerank`, Brick 5)
-Model: gemini-2.5-flash · Temperature: 0.2
+Provider: DeepSeek `deepseek-v4-flash` (thinking disabled, ADR-023) · Temperature: 0.2
 
 **SYSTEM**
 ```
@@ -65,7 +67,7 @@ JOB POSTING:
 ---
 
 ## 3. Resume Tailor (task: `tailor`, Brick 6)
-Model: gemini-2.5-flash · Temperature: 0.6
+Provider: Gemini `gemini-2.5-flash` by default, DeepSeek behind `TAILOR_PROVIDER` (guardrail-adjacent, ADR-023) · Temperature: 0.6
 <!-- 2026-07-11 (ADR-019): expanded from bullet-rephrasing only to the full
      tailoring framework — JD analysis (role type, ordered hard requirements,
      culture signal, exact title), a reframed summary line, most-relevant-first
@@ -155,7 +157,7 @@ TARGET JOB POSTING:
 ---
 
 ## 4. Follow-up Draft (task: `followup`, Brick 8)
-Model: gemini-2.5-flash · Temperature: 0.7
+Provider: DeepSeek `deepseek-v4-flash` (thinking disabled, ADR-023) · Temperature: 0.7
 
 **SYSTEM**
 ```
@@ -207,7 +209,9 @@ shape is decided.
 ---
 
 ## 6. Add Job extraction (task: `extract_job`, frontend rebuild Phase 2)
-Model: gemini-2.5-flash · Temperature: 0.1
+Provider: DeepSeek `deepseek-v4-flash` (thinking disabled, ADR-023) · Temperature: 0.1
+(JD-paste builder pins Gemini `gemini-3.1-flash-lite` via the `model`/`provider` override, ADR-017.)
+User text is wrapped in a data-not-instructions block (ADR-025).
 
 **SYSTEM**
 ```
@@ -237,7 +241,7 @@ PAGE TEXT:
 ---
 
 ## 7. Skill Growth (task: `skill_growth`, frontend rebuild Phase 4)
-Model: gemini-2.5-flash · Temperature: 0.4
+Provider: DeepSeek `deepseek-v4-flash` (thinking disabled, ADR-023) · Temperature: 0.4
 
 **SYSTEM**
 ```
@@ -273,7 +277,8 @@ GAP NOTES:
 ---
 
 ## 8. Form extraction (task: `extract_form`, Phase 6 — non-Google forms only)
-Model: gemini-2.5-flash · Temperature: 0.1
+Provider: DeepSeek `deepseek-v4-flash` (thinking disabled, ADR-023) · Temperature: 0.1
+User text is wrapped in a data-not-instructions block (ADR-025).
 
 Google Forms never touch this prompt — they're parsed deterministically
 from `FB_PUBLIC_LOAD_DATA_` (`services/form_parser.py`, zero LLM). This is
@@ -305,7 +310,8 @@ PAGE TEXT:
 ---
 
 ## 9. Form fill mapping (task: `form_fill`, Phase 6)
-Model: gemini-2.5-flash · Temperature: 0.2
+Provider: DeepSeek `deepseek-v4-flash` (thinking disabled, ADR-023) · Temperature: 0.2
+The form schema (containing scraped question text) is wrapped in a data-not-instructions block (ADR-025).
 
 The anti-fabrication rule is the whole prompt: null beats a guess. A
 deterministic post-check (`services/form_parser.verify_choice_answers`)

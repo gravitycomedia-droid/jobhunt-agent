@@ -34,7 +34,7 @@ jobhunt-agent/
 - **Mobile:** Flutter (Dart), Riverpod for state (introduce only from Brick 5+), `http` package for API calls
 - **Backend:** FastAPI + Pydantic v2, Python 3.11+
 - **DB:** Supabase Postgres with pgvector extension. Access via `supabase-py` from the server ONLY.
-- **LLM:** Google Gemini — `gemini-2.5-flash` for all generation, `gemini-embedding-001` (768-dim output) for embeddings
+- **LLM:** two providers behind one validate/retry/log flow (`services/llm.py`, ADR-023). **Gemini** `gemini-2.5-flash` for vision (`parse`) and, by default, `tailor`; `gemini-embedding-001` (768-dim) for embeddings. **DeepSeek** `deepseek-v4-flash` (OpenAI-compatible SDK, thinking disabled) for `rerank`/`extract_job`/`followup`/`skill_growth`/forms. `DEEPSEEK_API_KEY` is server-side only (Golden Rule 1); absent key falls back to Gemini.
 - **Jobs data:** Adzuna API (primary) + JSearch via RapidAPI (secondary). NO scraping — legal APIs only.
 - **Push:** Firebase Cloud Messaging
 - **Hosting:** Render (web service + cron job)

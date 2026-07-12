@@ -1,13 +1,24 @@
 import io
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import Field
 from pypdf import PdfReader
 
 from config import settings
 from db.supabase_client import supabase
+from models.common import (
+    MAX_COMPANY_LEN,
+    MAX_DESCRIPTION_LEN,
+    MAX_JD_TEXT_LEN,
+    MAX_LOCATION_LEN,
+    MAX_TITLE_LEN,
+    MAX_URL_LEN,
+    StrictModel,
+)
 from models.job import JobExtraction
 from services.auth import get_current_profile, get_current_user_id
+from services.pdf_safety import PdfSafetyError, assert_is_pdf, assert_within_size_limit
+from services.rate_limit import enforce_rate_limit, enforce_rate_limit_by_user
 from services.job_ingestion import (
     ManualJobFetchError,
     backfill_job_embeddings,
@@ -20,33 +31,37 @@ from services.llm import JobExtractError, LlmApiError, extract_job_from_text
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-class ManualJobUrl(BaseModel):
-    url: str
+class ManualJobUrl(StrictModel):
+    """The pasted link for Add Job step 1. The length cap is the cheap half of
+    the check — services/job_ingestion.py::_assert_public_url does the real work
+    (scheme + no private/metadata addresses, ADR-024)."""
+
+    url: str = Field(max_length=MAX_URL_LEN)
 
 
-class ManualJobCreate(BaseModel):
+class ManualJobCreate(StrictModel):
     """Frontend rebuild Phase 2 (Add Job): the reviewed/edited fields from
     the parse step — the user can correct anything the LLM extraction got
     wrong before this actually creates a job row."""
 
-    title: str
-    company: str | None = None
-    location: str | None = None
-    description: str | None = None
+    title: str = Field(max_length=MAX_TITLE_LEN)
+    company: str | None = Field(default=None, max_length=MAX_COMPANY_LEN)
+    location: str | None = Field(default=None, max_length=MAX_LOCATION_LEN)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LEN)
     salary_min: float | None = None
     salary_max: float | None = None
-    url: str
+    url: str = Field(max_length=MAX_URL_LEN)
 
 
-class JdResumeJobCreate(BaseModel):
+class JdResumeJobCreate(StrictModel):
     """JD-paste resume builder step 2: the reviewed/edited fields from
     POST /jobs/from-jd/parse. No `url` — unlike Add Job's fetched-page
     flow, a pasted or uploaded JD has no source link to redirect to."""
 
-    title: str
-    company: str | None = None
-    location: str | None = None
-    description: str | None = None
+    title: str = Field(max_length=MAX_TITLE_LEN)
+    company: str | None = Field(default=None, max_length=MAX_COMPANY_LEN)
+    location: str | None = Field(default=None, max_length=MAX_LOCATION_LEN)
+    description: str | None = Field(default=None, max_length=MAX_DESCRIPTION_LEN)
     salary_min: float | None = None
     salary_max: float | None = None
 
@@ -56,7 +71,16 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
     return "\n".join(page.extract_text() or "" for page in reader.pages)
 
 
-@router.post("/refresh")
+@router.post(
+    "/refresh",
+    dependencies=[
+        Depends(
+            enforce_rate_limit_by_user(
+                "jobs_refresh", settings.rate_limit_jobs_refresh, settings.rate_limit_window_seconds
+            )
+        )
+    ],
+)
 async def refresh_jobs(user_id: str = Depends(get_current_user_id)):
     """Requires login but isn't scoped to the caller — the job pool is
     shared across all beta users (Golden Rule: no scraping, legal APIs
@@ -83,7 +107,14 @@ async def backfill_embeddings(user_id: str = Depends(get_current_user_id)):
     return {"data": result, "error": None}
 
 
-@router.post("/manual/parse")
+@router.post(
+    "/manual/parse",
+    dependencies=[
+        Depends(
+            enforce_rate_limit("manual_parse", settings.rate_limit_manual_parse, settings.rate_limit_window_seconds)
+        )
+    ],
+)
 async def parse_manual_job(body: ManualJobUrl, profile: dict = Depends(get_current_profile)):
     """Add Job step 1 (frontend rebuild Phase 2): fetches the pasted URL
     and asks Gemini to extract job fields — returns them for the user to
@@ -128,9 +159,20 @@ async def create_manual_job(body: ManualJobCreate, user_id: str = Depends(get_cu
     return {"data": row, "error": None}
 
 
-@router.post("/from-jd/parse")
+@router.post(
+    "/from-jd/parse",
+    dependencies=[
+        Depends(
+            enforce_rate_limit("manual_parse", settings.rate_limit_manual_parse, settings.rate_limit_window_seconds)
+        )
+    ],
+)
 async def parse_jd(
-    jd_text: str | None = Form(None),
+    # ADR-024: capped at the edge (422) rather than truncated silently inside
+    # the LLM call — the user gets told why, instead of being billed for tokens
+    # from a paste that was quietly cut off. This is a multipart Form field, so
+    # the cap goes here rather than in a StrictModel.
+    jd_text: str | None = Form(None, max_length=MAX_JD_TEXT_LEN),
     file: UploadFile | None = File(None),
     profile: dict = Depends(get_current_profile),
 ):
@@ -143,9 +185,17 @@ async def parse_jd(
     quality bar (ADR-017).
     """
     if file is not None:
-        if file.content_type != "application/pdf":
-            raise HTTPException(status_code=400, detail="Only PDF uploads are supported")
-        text = _extract_pdf_text(await file.read())
+        pdf_bytes = await file.read()
+        # ADR-026: this path only extracts a TEXT layer (no rasterizing), but a
+        # non-PDF or an oversized upload should still be rejected up front with
+        # the same magic-byte + size gates as /resume/parse — a claimed
+        # content-type isn't evidence.
+        try:
+            assert_is_pdf(pdf_bytes)
+            assert_within_size_limit(pdf_bytes)
+        except PdfSafetyError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        text = _extract_pdf_text(pdf_bytes)
     else:
         text = (jd_text or "").strip()
 
@@ -153,7 +203,14 @@ async def parse_jd(
         raise HTTPException(status_code=422, detail="Paste some JD text or upload a PDF")
 
     try:
-        extraction = extract_job_from_text(text, profile_id=profile["id"], model=settings.gemini_model_lite)
+        # Provider pinned alongside the model — a Gemini model name means
+        # nothing to DeepSeek (ADR-023, see services/llm.py::_run_llm_task).
+        extraction = extract_job_from_text(
+            text,
+            profile_id=profile["id"],
+            model=settings.gemini_model_lite,
+            provider="gemini",
+        )
     except JobExtractError as e:
         raise HTTPException(status_code=422, detail=f"Could not extract job details: {e}") from e
     except LlmApiError as e:

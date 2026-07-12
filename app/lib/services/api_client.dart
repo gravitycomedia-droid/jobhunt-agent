@@ -781,12 +781,28 @@ class ApiClient {
     }
   }
 
+  /// Turns a non-2xx response body into a human-readable message. The server
+  /// always sends its reason in `detail` (FastAPI's HTTPException shape), so
+  /// that's preferred; the status-code fallbacks are for the rare case where
+  /// the body isn't the JSON we expect.
+  ///
+  /// 429 (rate limited, server ADR-027) gets an explicit friendly branch:
+  /// TaskCenter surfaces a thrown message straight into a toast, and "You're
+  /// doing that too fast — please wait a few minutes" is what the user should
+  /// see there, never a raw "Server returned 429" or a generic error screen.
   String _extractErrorDetail(String responseBody, int statusCode) {
+    String? detail;
     try {
       final decoded = jsonDecode(responseBody) as Map<String, dynamic>;
-      return decoded['detail']?.toString() ?? 'Server returned $statusCode';
+      detail = decoded['detail']?.toString();
     } catch (_) {
-      return 'Server returned $statusCode';
+      detail = null;
     }
+    if (statusCode == 429) {
+      return detail?.isNotEmpty == true
+          ? detail!
+          : 'You\'re doing that too fast — please wait a few minutes and try again.';
+    }
+    return detail ?? 'Server returned $statusCode';
   }
 }

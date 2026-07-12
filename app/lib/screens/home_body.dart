@@ -9,6 +9,7 @@ import 'dart:async' show unawaited;
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/match_feed.dart';
+import '../services/refresh_throttle.dart';
 import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/activity_style.dart';
@@ -44,11 +45,13 @@ class HomeBody extends StatefulWidget {
 
 class _HomeBodyState extends State<HomeBody> {
   final ApiClient _apiClient = ApiClient();
+  final RefreshThrottle _throttle = RefreshThrottle();
 
   bool _isLoading = true;
   String? _errorMessage;
   bool _hasProfile = true;
   DateTime? _staleSince; // Phase 5: non-null = painting cached data
+  DateTime? _lastUpdated; // ADR-028: for the "updated Xm ago" indicator
   List<ApplicationItem> _applications = [];
   List<ActivityItem> _activity = [];
 
@@ -123,9 +126,23 @@ class _HomeBodyState extends State<HomeBody> {
     return true;
   }
 
-  Future<void> _load() async {
+  /// [force] separates a PASSIVE load (initState) from an explicit refresh
+  /// (pull-to-refresh, Retry). ADR-028: a passive load serves the cached
+  /// dashboard and skips ALL four network calls (profile + matches + apps +
+  /// activity) when the cache is under 5 minutes old — the whole "switching
+  /// back to Home shouldn't refetch everything" win. Force always refetches,
+  /// debounced against rapid pulls.
+  Future<void> _load({bool force = false}) async {
+    if (force && !_throttle.shouldRun()) return;
     setState(() => _errorMessage = null);
     final painted = await _paintFromCache();
+    _lastUpdated = await CacheService.instance.cachedAtFor(CacheService.keyActivity);
+
+    if (!force && painted && await CacheService.instance.isFresh(CacheService.keyActivity)) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final profile = await _apiClient.fetchCurrentProfile();
@@ -148,6 +165,7 @@ class _HomeBodyState extends State<HomeBody> {
         _activity = results[2] as List<ActivityItem>;
         _staleSince = null;
         _isLoading = false;
+        _lastUpdated = DateTime.now();
       });
       await CacheService.instance.write(CacheService.keyApplications, [for (final a in _applications) a.raw]);
       await CacheService.instance.write(CacheService.keyActivity, [for (final a in _activity) a.raw]);
@@ -187,7 +205,7 @@ class _HomeBodyState extends State<HomeBody> {
           title: 'Could not load your dashboard',
           message: _errorMessage,
           actionLabel: 'Retry',
-          onAction: _load,
+          onAction: () => _load(force: true),
         ),
       );
     }
@@ -219,12 +237,19 @@ class _HomeBodyState extends State<HomeBody> {
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () => _load(force: true),
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
           if (_staleSince != null) ...[
-            StaleBanner(cachedAt: _staleSince!, onRetry: _load),
+            StaleBanner(cachedAt: _staleSince!, onRetry: () => _load(force: true)),
+            const SizedBox(height: AppSpacing.space3),
+          ] else if (lastUpdatedLabel(_lastUpdated) != null) ...[
+            // ADR-028: keep the passive 5-minute freshness window visible.
+            Text(
+              lastUpdatedLabel(_lastUpdated)!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary),
+            ),
             const SizedBox(height: AppSpacing.space3),
           ],
           Row(

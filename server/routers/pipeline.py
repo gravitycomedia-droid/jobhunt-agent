@@ -1,8 +1,10 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
 
+from config import settings
 from jobs.daily_pipeline import run_daily_pipeline_for_all, run_daily_pipeline_for_profile
 from services.auth import get_current_profile, verify_pipeline_cron
 from services.background_tasks import create_task, run_task
+from services.rate_limit import enforce_rate_limit
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -19,7 +21,17 @@ async def run_pipeline_for_all():
     return {"data": summary, "error": None}
 
 
-@router.post("/run-mine", status_code=202)
+@router.post(
+    "/run-mine",
+    status_code=202,
+    dependencies=[
+        Depends(
+            enforce_rate_limit(
+                "pipeline_mine", settings.rate_limit_pipeline_mine, settings.rate_limit_window_seconds
+            )
+        )
+    ],
+)
 async def run_pipeline_for_me(background: BackgroundTasks, profile: dict = Depends(get_current_profile)):
     """The authenticated "Run agent now" trigger from the Flutter app —
     refreshes the shared job pool and processes only the caller's own

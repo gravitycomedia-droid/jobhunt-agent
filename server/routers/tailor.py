@@ -9,6 +9,7 @@ from services.auth import get_current_profile
 from services.background_tasks import create_task, run_task
 from services.guardrail import compute_gaps, verify_bullets, verify_skills
 from services.llm import LlmApiError, TailorError, tailor_resume
+from services.rate_limit import enforce_rate_limit
 from services.resume_pdf import compile_ats_pdf
 
 router = APIRouter(prefix="/tailor", tags=["tailor"])
@@ -49,8 +50,13 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
     # JD-paste resume builder jobs (routers/jobs.py's `from-jd` flow) run on
     # the cheap tier end-to-end (ADR-017) — this is the only place that
     # decides that, so every OTHER caller of tailor_and_store (matched
-    # jobs, Add Job) is unaffected and keeps using settings.gemini_model.
-    model = settings.gemini_model_lite if job.get("source") == "jd_paste" else None
+    # jobs, Add Job) is unaffected and keeps to the ADR-023 default routing.
+    # The provider is pinned alongside the model: `gemini_model_lite` is a
+    # Gemini model name and would be meaningless to DeepSeek, so the two must
+    # travel together (see services/llm.py::_run_llm_task).
+    is_jd_paste = job.get("source") == "jd_paste"
+    model = settings.gemini_model_lite if is_jd_paste else None
+    provider = "gemini" if is_jd_paste else None
     skills = profile.get("skills") or []
     try:
         llm_response = tailor_resume(
@@ -58,6 +64,7 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
             job.get("description") or "",
             profile_id=profile["id"],
             model=model,
+            provider=provider,
             skills=skills,
             headline=profile.get("headline") or "",
         )
@@ -105,7 +112,13 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
     return row
 
 
-@router.post("/{job_id}", status_code=202)
+@router.post(
+    "/{job_id}",
+    status_code=202,
+    dependencies=[
+        Depends(enforce_rate_limit("tailor", settings.rate_limit_tailor, settings.rate_limit_window_seconds))
+    ],
+)
 async def tailor(job_id: str, background: BackgroundTasks, profile: dict = Depends(get_current_profile)):
     """Brick 6 endpoint, now ADR-011-shaped: one Gemini tailoring call runs
     20-60s — too long to hold a mobile connection — so this returns 202 +

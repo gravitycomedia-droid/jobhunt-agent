@@ -39,7 +39,40 @@ class CacheService {
   static const keyActivity = 'activity';
   static const allKeys = [keyProfile, keyMatches, keyJobs, keyApplications, keyCostStats, keyActivity];
 
+  /// Phase 14 (ADR-028): passive refresh triggers (tab switch, app resume,
+  /// the matching loading screen's background kick-off) treat cache younger
+  /// than this as fresh enough to skip the network call entirely. Explicit
+  /// pull-to-refresh ignores this and always refetches — see [RefreshThrottle].
+  static const freshFor = Duration(minutes: 5);
+
   String? get _userId => Supabase.instance.client.auth.currentUser?.id;
+
+  /// When the entry for [key] was last written, or null if there's no cache
+  /// (or no signed-in user). Bodies use this both for the freshness gate and
+  /// the "updated Xm ago" indicator. Cheap enough to call on every build.
+  Future<DateTime?> cachedAtFor(String key) async {
+    final userId = _userId;
+    if (userId == null) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$userId:$key');
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return DateTime.parse(decoded['cachedAt'] as String);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// True when [key] has a cache written within [within] (default
+  /// [freshFor]). This is the ADR-028 gate a PASSIVE refresh checks before
+  /// hitting the network: fresh → paint cache, skip the call. Absent cache is
+  /// never "fresh", so the very first load always fetches.
+  Future<bool> isFresh(String key, {Duration within = freshFor}) async {
+    final cachedAt = await cachedAtFor(key);
+    if (cachedAt == null) return false;
+    return DateTime.now().difference(cachedAt) < within;
+  }
 
   /// Reads one entry for the current user. [fromJson] converts the decoded
   /// JSON value (Map or List) back into T. Null = no cache / no user /

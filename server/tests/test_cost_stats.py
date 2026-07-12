@@ -37,6 +37,51 @@ def test_summarize_costs_groups_by_task_and_computes_percentages():
     assert sum(b["pct"] for b in summary["breakdown"]) == 100.0
 
 
+def test_estimate_call_cost_prices_deepseek_at_the_cache_miss_rate():
+    # ADR-023: $0.14/1M in + $0.28/1M out for deepseek-v4-flash. We price ALL
+    # input at the cache-MISS rate deliberately — overstating beats flattering.
+    cost = estimate_call_cost("deepseek-v4-flash", 1_000_000, 1_000_000)
+    assert round(cost, 4) == 0.42
+
+
+def test_deepseek_flash_is_an_order_of_magnitude_cheaper_than_gemini_flash():
+    """The whole point of ADR-023 — if this ever stops holding, the migration
+    has lost its reason to exist."""
+    same_tokens = (1_000_000, 1_000_000)
+    assert estimate_call_cost("deepseek-v4-flash", *same_tokens) < estimate_call_cost("gemini-2.5-flash", *same_tokens) / 5
+
+
+def test_summarize_costs_splits_spend_by_provider():
+    rows = [
+        {"task": "rerank", "provider": "deepseek", "model": "deepseek-v4-flash", "tokens_in": 1_000_000, "tokens_out": 0},
+        {"task": "tailor", "provider": "gemini", "model": "gemini-2.5-flash", "tokens_in": 1_000_000, "tokens_out": 0},
+    ]
+    summary = summarize_costs(rows)
+
+    by_provider = {b["provider"]: b for b in summary["by_provider"]}
+    assert by_provider["deepseek"]["cost"] == 0.14
+    assert by_provider["deepseek"]["label"] == "DeepSeek"
+    assert by_provider["gemini"]["cost"] == 0.30
+    assert by_provider["deepseek"]["calls"] == 1
+    # Highest-cost first, and the two shares account for the whole bill.
+    assert summary["by_provider"][0]["provider"] == "gemini"
+    assert sum(b["pct"] for b in summary["by_provider"]) == 100.0
+
+
+def test_summarize_costs_treats_pre_migration_rows_as_gemini():
+    """llm_calls rows written before migration 016 have no `provider`. Gemini is
+    the correct backfill — it was the only provider that existed."""
+    rows = [{"task": "tailor", "model": "gemini-2.5-flash", "tokens_in": 1000, "tokens_out": 1000}]
+    summary = summarize_costs(rows)
+    assert [b["provider"] for b in summary["by_provider"]] == ["gemini"]
+
+
 def test_summarize_costs_empty_rows():
     summary = summarize_costs([])
-    assert summary == {"total_cost": 0.0, "total_calls": 0, "total_tokens": 0, "breakdown": []}
+    assert summary == {
+        "total_cost": 0.0,
+        "total_calls": 0,
+        "total_tokens": 0,
+        "breakdown": [],
+        "by_provider": [],
+    }

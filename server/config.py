@@ -15,6 +15,27 @@ class Settings(BaseSettings):
     # verified working with this project's key.
     gemini_model_lite: str = "gemini-3.1-flash-lite"
 
+    # Phase 14 / ADR-023: DeepSeek as the second provider. Its API is
+    # OpenAI-compatible, so services/llm.py drives it with the `openai` SDK
+    # pointed at this base_url rather than a bespoke HTTP client.
+    #
+    # Model names are explicit and current: the `deepseek-chat` /
+    # `deepseek-reasoner` aliases (non-thinking / thinking modes of
+    # deepseek-v4-flash) are deprecated 2026-07-24, so this project never
+    # names them. Empty api_key is a supported state — every DeepSeek-routed
+    # task falls back to Gemini when the key is missing (see
+    # services/llm.py::_provider_for), so the server still boots and works
+    # with a Gemini key alone.
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_base_url: str = "https://api.deepseek.com"
+
+    # ADR-023: `tailor` is the one guardrail-adjacent generation task, so it
+    # does NOT follow the other tasks to DeepSeek by default. Flipping this to
+    # "deepseek" is a deliberate opt-in, gated on measuring guardrail-pass
+    # rates against the Gemini baseline first (see DECISIONS.md ADR-023).
+    tailor_provider: str = "gemini"
+
     supabase_url: str
     supabase_service_key: str
     supabase_anon_key: str = ""
@@ -73,6 +94,19 @@ class Settings(BaseSettings):
     # until it's decommissioned.
     pipeline_oidc_service_account: str = ""
     pipeline_oidc_audience: str = ""
+
+    # Phase 14 / ADR-027: per-profile rate limits on the LLM-backed endpoints,
+    # as "<max requests> per <window seconds>". Config, not hardcoded, so the
+    # beta's real usage can tune them without a redeploy. The cron path (POST
+    # /pipeline/run) is deliberately exempt — it's the one legitimate
+    # high-volume caller. See services/rate_limit.py.
+    rate_limit_window_seconds: int = 300  # 5 minutes
+    rate_limit_rerank: int = 5  # POST /matches/rerank
+    rate_limit_tailor: int = 5  # POST /tailor/{job_id}
+    rate_limit_pipeline_mine: int = 5  # POST /pipeline/run-mine
+    rate_limit_resume_parse: int = 3  # POST /resume/parse
+    rate_limit_manual_parse: int = 5  # POST /jobs/manual/parse & /jobs/from-jd/parse
+    rate_limit_jobs_refresh: int = 10  # POST /jobs/refresh
 
     model_config = SettingsConfigDict(env_file=".env")
 

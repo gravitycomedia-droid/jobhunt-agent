@@ -1,6 +1,9 @@
 import asyncio
+import ipaddress
+import socket
 import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -32,17 +35,90 @@ class ManualJobFetchError(Exception):
     so routers/jobs.py can give the user a more specific message."""
 
 
+# Phase 14 / ADR-024 (SSRF): this server fetches a URL the USER chose, which
+# means the user can aim our outbound requests at anything our network can
+# reach — including things the public internet can't. On Cloud Run that's the
+# metadata service at 169.254.169.254, which hands out service-account access
+# tokens to anyone who asks from inside the box. "Fetch this job posting:
+# http://169.254.169.254/computeMetadata/v1/..." would otherwise return the
+# page text straight back to the caller via the extraction preview.
+#
+# So: only http(s), and only hosts that resolve to PUBLIC addresses.
+_ALLOWED_SCHEMES = ("http", "https")
+# Redirects are followed by hand (below) rather than by httpx, because a
+# check-then-follow-redirects client validates only the FIRST url — a public
+# host is free to 302 you to 169.254.169.254, and httpx would follow it.
+_MAX_REDIRECTS = 5
+
+
+def _assert_public_url(url: str) -> None:
+    """Raises ManualJobFetchError unless `url` is http(s) and every address its
+    hostname resolves to is publicly routable.
+
+    `ip.is_global` is the whole check: it's False for RFC1918 private ranges
+    (10/8, 172.16/12, 192.168/16), loopback (127/8, ::1), link-local
+    (169.254/16 — the cloud metadata range — and fe80::/10), CGNAT (100.64/10),
+    multicast, and the reserved blocks. Every address is checked, not just the
+    first: a hostname with both a public A record and a private one must not
+    slip through on the strength of the public one.
+
+    Residual risk (documented, not solved): DNS rebinding. We resolve here and
+    httpx resolves again when it connects, so a hostile resolver could return a
+    public IP to this check and a private one microseconds later. Closing that
+    needs pinning the connection to the vetted IP; it's a real gap, and out of
+    proportion to a single-user portfolio app's threat model.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in _ALLOWED_SCHEMES:
+        raise ManualJobFetchError(f"Only http and https links are supported (got '{parsed.scheme or 'no scheme'}')")
+
+    host = parsed.hostname
+    if not host:
+        raise ManualJobFetchError("That doesn't look like a valid URL")
+
+    try:
+        addrinfo = socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80))
+    except socket.gaierror as e:
+        raise ManualJobFetchError(f"Could not resolve that URL's host: {host}") from e
+
+    for info in addrinfo:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            raise ManualJobFetchError("That URL points to a private or internal address, which isn't allowed")
+
+
 async def fetch_manual_job_text(url: str) -> str:
     """Add Job (frontend rebuild Phase 2): fetches one user-pasted URL and
     strips it to plain text for the LLM extraction prompt. Single
     user-supplied link, fetched on explicit request — not automated
     harvesting of a job board, which is what ADR-003's no-scraping stance
     is actually about (see DECISIONS.md ADR-009).
+
+    ADR-024: every hop is re-validated against _assert_public_url, so neither
+    the pasted URL nor anything it redirects to can reach our internal network.
     """
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; JobHuntAgent/1.0)"}
+    current = url
+
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; JobHuntAgent/1.0)"})
-            response.raise_for_status()
+        # follow_redirects=False: we follow them ourselves so each hop gets the
+        # SSRF check. Timeout is per-request and unchanged at 15s.
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+            for _ in range(_MAX_REDIRECTS + 1):
+                _assert_public_url(current)
+                response = await client.get(current, headers=headers)
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise ManualJobFetchError("That URL redirected without saying where")
+                    # Relative Location headers are legal — resolve against the
+                    # current URL before re-checking it.
+                    current = str(response.url.join(location))
+                    continue
+                response.raise_for_status()
+                break
+            else:
+                raise ManualJobFetchError("That URL redirected too many times")
     except httpx.HTTPError as e:
         raise ManualJobFetchError(f"Could not fetch that URL: {e}") from e
 

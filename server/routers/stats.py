@@ -13,14 +13,15 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 
 @router.get("/costs")
 async def get_cost_stats(profile: dict = Depends(get_current_profile)):
-    """Phase 3: this-calendar-month LLM cost/usage for the caller, broken
-    down by task — what CostStatsScreen renders. See services/cost_stats.py
-    for the (approximate) pricing this is built on.
+    """Phase 3: this-calendar-month LLM cost/usage for the caller, broken down
+    by task and — since ADR-023 put DeepSeek alongside Gemini — by provider.
+    What CostStatsScreen renders. See services/cost_stats.py for the
+    (approximate) pricing this is built on.
     """
     month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     rows = (
         supabase.table("llm_calls")
-        .select("task,model,tokens_in,tokens_out")
+        .select("task,provider,model,tokens_in,tokens_out")
         .eq("profile_id", profile["id"])
         .gte("created_at", month_start)
         .execute()

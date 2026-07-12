@@ -1,51 +1,68 @@
 import io
+from typing import Annotated, Literal, get_args
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pdf2image import convert_from_bytes
-from pydantic import BaseModel
+from pydantic import Field
 from pypdf import PdfReader
 
 from db.supabase_client import supabase
+from models.common import (
+    MAX_COMPANY_LEN,
+    MAX_FCM_TOKEN_LEN,
+    MAX_ROLE_LEN,
+    MAX_TARGET_ROLES,
+    MAX_USN_LEN,
+    StrictModel,
+)
 from models.resume import ResumeProfile, ResumeProfileUpdate
 from services.auth import get_current_profile, get_current_user_id
 from services.embeddings import embed_text, profile_embedding_text
+from config import settings
 from services.llm import LlmApiError, ResumeParseError, parse_resume
+from services.pdf_safety import PdfSafetyError, pdf_to_page_images
+from services.rate_limit import enforce_rate_limit_by_user
 
 router = APIRouter(prefix="/resume", tags=["resume"])
-
-
-class FcmTokenUpdate(BaseModel):
-    fcm_token: str
-
-
-class TargetRolesUpdate(BaseModel):
-    target_roles: list[str]
-    min_salary: float | None = None
-
-
-class NotificationPrefsUpdate(BaseModel):
-    alerts: bool
-    followup_nudge: bool
-
-
-class OnboardingStepUpdate(BaseModel):
-    step: str
-
-
-class StudentInfoUpdate(BaseModel):
-    employment_type: str  # 'student' | 'experienced'
-    usn: str | None = None
-    # Only used to backfill education[0].institution when the resume
-    # parse didn't already find one — never overwrites a real value.
-    college_name: str | None = None
-
 
 # Phase 3B: the onboarding state machine, in code (Golden Rule 2 — states
 # are never an LLM's call). Steps only ever move forward; a re-upload or
 # an out-of-order PATCH can't bounce a finished user back into onboarding.
 # 'student_info' added between 'review' and 'roles' for the
 # student/experienced + USN/college ask (migration 014).
-ONBOARDING_STEPS = ["welcome", "resume", "review", "student_info", "roles", "done"]
+#
+# ADR-024: the Literal IS the validation. `step` used to be a free `str`
+# hand-checked against this list in the handler; now an unknown step is a 422
+# from Pydantic before the handler runs, the same way ApplicationState works.
+OnboardingStep = Literal["welcome", "resume", "review", "student_info", "roles", "done"]
+ONBOARDING_STEPS: list[str] = list(get_args(OnboardingStep))
+
+EmploymentType = Literal["student", "experienced"]
+
+
+class FcmTokenUpdate(StrictModel):
+    fcm_token: str = Field(max_length=MAX_FCM_TOKEN_LEN)
+
+
+class TargetRolesUpdate(StrictModel):
+    target_roles: list[Annotated[str, Field(max_length=MAX_ROLE_LEN)]] = Field(max_length=MAX_TARGET_ROLES)
+    min_salary: float | None = Field(default=None, ge=0)
+
+
+class NotificationPrefsUpdate(StrictModel):
+    alerts: bool
+    followup_nudge: bool
+
+
+class OnboardingStepUpdate(StrictModel):
+    step: OnboardingStep
+
+
+class StudentInfoUpdate(StrictModel):
+    employment_type: EmploymentType
+    usn: str | None = Field(default=None, max_length=MAX_USN_LEN)
+    # Only used to backfill education[0].institution when the resume
+    # parse didn't already find one — never overwrites a real value.
+    college_name: str | None = Field(default=None, max_length=MAX_COMPANY_LEN)
 
 
 def _advance_onboarding(profile_id: str, current: str | None, target: str) -> None:
@@ -54,12 +71,6 @@ def _advance_onboarding(profile_id: str, current: str | None, target: str) -> No
     current_idx = ONBOARDING_STEPS.index(current) if current in ONBOARDING_STEPS else 0
     if ONBOARDING_STEPS.index(target) > current_idx:
         supabase.table("profiles").update({"onboarding_step": target}).eq("id", profile_id).execute()
-
-
-def _page_to_png_bytes(page_image) -> bytes:
-    buf = io.BytesIO()
-    page_image.save(buf, format="PNG")
-    return buf.getvalue()
 
 
 def _extract_raw_text(pdf_bytes: bytes) -> str:
@@ -103,14 +114,31 @@ def _upsert_profile(user_id: str, profile: ResumeProfile, raw_text: str) -> dict
     return result.data[0]
 
 
-@router.post("/parse")
+@router.post(
+    "/parse",
+    dependencies=[
+        Depends(
+            enforce_rate_limit_by_user(
+                "resume_parse", settings.rate_limit_resume_parse, settings.rate_limit_window_seconds
+            )
+        )
+    ],
+)
 async def parse_resume_endpoint(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Only PDF uploads are supported")
-
     pdf_bytes = await file.read()
+
+    # ADR-026: every upload-safety gate (magic bytes → size → page count →
+    # timed render) runs BEFORE any text extraction, embedding, or LLM call, so
+    # a hostile or malformed file is rejected at the cheapest stage that catches
+    # it — never after we've already paid to rasterize or parse it. The old
+    # client-content-type check is gone: it trusted a header the client
+    # controls; the magic-byte check inside pdf_to_page_images doesn't.
+    try:
+        page_images = pdf_to_page_images(pdf_bytes)
+    except PdfSafetyError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
     raw_text = _extract_raw_text(pdf_bytes)
-    page_images = [_page_to_png_bytes(img) for img in convert_from_bytes(pdf_bytes)]
 
     try:
         profile = parse_resume(page_images)
@@ -158,10 +186,11 @@ async def update_student_info(body: StudentInfoUpdate, profile: dict = Depends(g
     here only because [ResumeUploadScreen]'s parser (services/llm.py) tries
     to extract both from the resume first and usually succeeds for
     students; this is the fallback for whatever it didn't find.
-    """
-    if body.employment_type not in ("student", "experienced"):
-        raise HTTPException(status_code=422, detail="employment_type must be 'student' or 'experienced'")
 
+    ADR-024: employment_type is a Literal on StudentInfoUpdate now, so a bad
+    value is a 422 before this runs — the hand-check that used to live here is
+    gone.
+    """
     payload: dict = {"employment_type": body.employment_type}
     if body.usn:
         payload["usn"] = body.usn
@@ -227,9 +256,10 @@ async def update_onboarding_step(body: OnboardingStepUpdate, profile: dict = Dep
     skip → 'roles', TargetRoles skip → 'done'). Forward-only — the state
     machine in _advance_onboarding silently ignores backward requests, so
     a stale client can't regress a finished user.
+
+    ADR-024: `step` is a Literal on OnboardingStepUpdate now — an unknown step
+    is a 422 before the handler runs, so the old membership check is gone.
     """
-    if body.step not in ONBOARDING_STEPS:
-        raise HTTPException(status_code=422, detail=f"Unknown onboarding step: {body.step}")
     _advance_onboarding(profile["id"], profile.get("onboarding_step"), body.step)
     row = supabase.table("profiles").select("*").eq("id", profile["id"]).limit(1).execute().data[0]
     return {"data": row, "error": None}

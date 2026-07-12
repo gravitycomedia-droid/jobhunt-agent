@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/application_item.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
+import '../services/refresh_throttle.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/application_card.dart';
@@ -29,10 +30,12 @@ class ApplicationsBody extends StatefulWidget {
 
 class _ApplicationsBodyState extends State<ApplicationsBody> {
   final ApiClient _apiClient = ApiClient();
+  final RefreshThrottle _throttle = RefreshThrottle();
 
   bool _isLoading = true;
   String? _errorMessage;
   DateTime? _staleSince; // Phase 5: non-null = painting cached data
+  DateTime? _lastUpdated; // ADR-028: for the "updated Xm ago" indicator
   List<ApplicationItem> _items = [];
 
   @override
@@ -56,9 +59,22 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
     return true;
   }
 
-  Future<void> _load() async {
+  /// [force] distinguishes an EXPLICIT refresh (pull-to-refresh, header
+  /// button) from a PASSIVE one (initState). ADR-028: passive loads serve the
+  /// cache and skip the network when it's under 5 minutes old; an explicit
+  /// refresh always hits the network but is debounced against rapid re-pulls.
+  Future<void> _load({bool force = false}) async {
+    if (force && !_throttle.shouldRun()) return;
     setState(() => _errorMessage = null);
     final painted = await _paintFromCache();
+    _lastUpdated = await CacheService.instance.cachedAtFor(CacheService.keyApplications);
+
+    if (!force && painted && await CacheService.instance.isFresh(CacheService.keyApplications)) {
+      // Fresh cache already on screen — nothing to fetch.
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     if (!painted && mounted) setState(() => _isLoading = true);
     try {
       final items = await _apiClient.fetchApplications();
@@ -67,6 +83,7 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
         _items = items;
         _staleSince = null;
         _isLoading = false;
+        _lastUpdated = DateTime.now();
       });
       await CacheService.instance.write(CacheService.keyApplications, [for (final a in items) a.raw]);
     } catch (e) {
@@ -104,13 +121,22 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
             HeaderActionButton(
               icon: AppIconName.refresh,
               tooltip: 'Reload board',
-              onPressed: _load,
+              onPressed: () => _load(force: true),
             ),
           ],
         ),
         if (_staleSince != null) ...[
-          StaleBanner(cachedAt: _staleSince!, onRetry: _load),
+          StaleBanner(cachedAt: _staleSince!, onRetry: () => _load(force: true)),
           const SizedBox(height: AppSpacing.space3),
+        ] else if (!_isLoading && lastUpdatedLabel(_lastUpdated) != null) ...[
+          // ADR-028: make the 5-minute passive window visible.
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.space2),
+            child: Text(
+              lastUpdatedLabel(_lastUpdated)!,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary),
+            ),
+          ),
         ],
         Expanded(child: _buildContent()),
       ],
@@ -130,7 +156,7 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
           title: 'Could not load applications',
           message: _errorMessage,
           actionLabel: 'Retry',
-          onAction: _load,
+          onAction: () => _load(force: true),
         ),
       );
     }
@@ -142,13 +168,13 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
           title: 'Nothing tracked yet',
           message: 'Save a job from Matches to start moving it through the pipeline.',
           actionLabel: 'Retry',
-          onAction: _load,
+          onAction: () => _load(force: true),
         ),
       );
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () => _load(force: true),
       child: SingleChildScrollView(
         padding: EdgeInsets.zero,
         scrollDirection: Axis.horizontal,

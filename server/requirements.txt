@@ -3,6 +3,9 @@ uvicorn[standard]
 python-multipart
 pydantic-settings
 google-genai
+# ADR-023: DeepSeek's API is OpenAI-compatible, so the official OpenAI SDK
+# pointed at settings.deepseek_base_url drives it — no bespoke HTTP client.
+openai
 pdf2image
 pypdf
 Pillow

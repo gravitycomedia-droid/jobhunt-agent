@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../models/match_item.dart';
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../services/match_feed.dart';
+import '../services/refresh_throttle.dart';
 import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
@@ -38,9 +40,11 @@ class MatchesBody extends StatefulWidget {
 
 class _MatchesBodyState extends State<MatchesBody> {
   final ApiClient _apiClient = ApiClient();
+  final RefreshThrottle _throttle = RefreshThrottle();
 
   bool _isLoading = true;
   String? _errorMessage;
+  DateTime? _lastUpdated;
 
   // Phase 1C: the list itself lives in MatchFeed — the same object Home's
   // stat counts — so the two surfaces can never disagree. This State only
@@ -72,6 +76,11 @@ class _MatchesBodyState extends State<MatchesBody> {
     if (mounted) setState(() {});
   }
 
+  /// Passive load (initState / retry). ADR-028: this is a passive trigger, so
+  /// it honors the 5-minute freshness window — if the cached matches are still
+  /// fresh, paint them and skip BOTH the GET /matches call and the expensive
+  /// auto-rerank. Only the explicit pull-to-refresh ([_rerankThenReload])
+  /// ignores the window.
   Future<void> _loadCached() async {
     setState(() {
       _isLoading = true;
@@ -80,10 +89,20 @@ class _MatchesBodyState extends State<MatchesBody> {
     // Phase 5 stale-while-revalidate: paint the cached list instantly (no
     // skeleton), then fetch fresh underneath.
     final painted = await MatchFeed.instance.loadFromCache();
+    _lastUpdated = await CacheService.instance.cachedAtFor(CacheService.keyMatches);
     if (mounted && painted) setState(() => _isLoading = false);
+
+    if (painted && await CacheService.instance.isFresh(CacheService.keyMatches)) {
+      // Fresh enough — the network call and rerank would just re-fetch what
+      // we're already showing. Skip them (the whole point of ADR-028).
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     try {
       await MatchFeed.instance.refresh();
       if (!mounted) return;
+      _lastUpdated = DateTime.now();
       setState(() => _isLoading = false);
       // Fire-and-forget: the UI already has something to show, so the
       // re-rank runs underneath rather than blocking the first paint.
@@ -103,10 +122,14 @@ class _MatchesBodyState extends State<MatchesBody> {
     await TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20));
   }
 
+  /// Explicit pull-to-refresh. ADR-028: always hits the network (a pull means
+  /// "get me fresh data now"), but debounced so a rapid triple-pull fires once.
   Future<void> _rerankThenReload() async {
+    if (!_throttle.shouldRun()) return;
     await _startRerank();
     try {
       await MatchFeed.instance.refresh();
+      if (mounted) setState(() => _lastUpdated = DateTime.now());
     } catch (_) {
       // Keep showing what we have; the banner already covers task errors.
     }
@@ -228,6 +251,15 @@ class _MatchesBodyState extends State<MatchesBody> {
         actionLabel: 'Retry',
         onAction: _rerankThenReload,
         onDismiss: () => TaskCenter.instance.clearIfFinished(TaskKind.rerank),
+      );
+    }
+    // ADR-028: keep the passive 5-minute freshness window visible, so "why
+    // didn't switching back refetch?" has an on-screen answer.
+    final label = lastUpdatedLabel(_lastUpdated);
+    if (label != null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.space2),
+        child: Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary)),
       );
     }
     return const SizedBox.shrink();

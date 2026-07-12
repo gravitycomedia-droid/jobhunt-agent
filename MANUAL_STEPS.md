@@ -29,6 +29,31 @@ Dashboard → SQL Editor → paste and run each file:
       onboarding step into the `onboarding_step` CHECK constraint. Until
       applied, PATCH /resume/profile/student-info 500s and PATCH
       /resume/profile/onboarding-step rejects `'student_info'`.
+- [ ] `server/db/migrations/016_llm_calls_provider.sql` — Phase 14 / ADR-023.
+      Adds `llm_calls.provider` (default `'gemini'`, backfills existing rows).
+      **Additive with a default, so it's safe to apply BEFORE the new code
+      deploys** — old code simply doesn't write the column. Until applied, the
+      new code's every LLM call 500s on insert (it now writes `provider`), so
+      apply this one first if you're sequencing.
+- [ ] `server/db/migrations/017_rate_limits.sql` — Phase 14 / ADR-027. Creates
+      `rate_limit_events`. Until applied, the six rate-limited endpoints
+      (`/matches/rerank`, `/tailor/{id}`, `/pipeline/run-mine`, `/resume/parse`,
+      `/jobs/manual/parse`, `/jobs/from-jd/parse`, `/jobs/refresh`) 500 on their
+      first request.
+
+## 1a. Cloud Run / Render — new secret (Phase 14 / ADR-023)
+
+- [ ] Add `DEEPSEEK_API_KEY` to the deploy's secrets (Secret Manager on Cloud
+      Run, env var on Render), exactly like `GEMINI_API_KEY`. **Never** ship it
+      to the Flutter app. Without it the server still boots and works — every
+      DeepSeek-routed task (rerank, extract, followup, skill-growth, forms)
+      transparently falls back to Gemini — but you get none of the cost saving,
+      and `GET /stats/costs` will show a 100%-Gemini split, which is how you'll
+      notice the key is missing.
+- [ ] Optional: `TAILOR_PROVIDER` (defaults to `gemini`). Leave it until the
+      guardrail-pass A/B in ADR-023 is done.
+- [ ] `openai` is a new pip dependency (now in requirements.txt) — the Docker
+      build installs it automatically.
 
 ## 2. Supabase — fix Google OAuth redirect
 

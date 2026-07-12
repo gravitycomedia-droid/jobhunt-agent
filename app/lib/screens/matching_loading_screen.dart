@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/cache_service.dart';
 import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 
@@ -34,15 +35,26 @@ class _MatchingLoadingScreenState extends State<MatchingLoadingScreen> {
     // ADR-011: refresh first, then start the rerank as a tracked background
     // task — TaskCenter keeps polling after this screen hands off, so
     // MatchesBody refreshes itself when scoring completes.
-    unawaited(
-      _apiClient
-          .refreshJobs()
-          .catchError((_) => <String, dynamic>{}) // rerank still works against the existing pool
-          .then((_) => TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20))),
-    );
+    //
+    // ADR-028: skip the POST /jobs/refresh if the shared pool was refreshed in
+    // the last 5 minutes (e.g. the user just re-ran onboarding) — the pool is
+    // shared and rate-limited, so a redundant refresh here would burn a slot
+    // for no new data. The rerank still fires regardless: it's per-profile,
+    // idempotent (already-scored pairs are skipped server-side), and the whole
+    // point of this screen for a first-time user.
+    unawaited(_kickOff());
     Future.delayed(const Duration(milliseconds: 1600), () {
       if (mounted) widget.onDone();
     });
+  }
+
+  Future<void> _kickOff() async {
+    final jobsFresh = await CacheService.instance.isFresh(CacheService.keyJobs);
+    if (!jobsFresh) {
+      // rerank still works against the existing pool if the refresh fails.
+      await _apiClient.refreshJobs().catchError((_) => <String, dynamic>{});
+    }
+    await TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20));
   }
 
   @override
