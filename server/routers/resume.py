@@ -198,18 +198,23 @@ async def update_fcm_token(body: FcmTokenUpdate, profile: dict = Depends(get_cur
 @router.patch("/profile/target-roles")
 async def update_target_roles(body: TargetRolesUpdate, profile: dict = Depends(get_current_profile)):
     """Onboarding (frontend rebuild Phase 1): the roles/min-salary the agent
-    should match against. Deliberately separate from PATCH /resume/profile
-    for the same reason as fcm-token — a preferences update has no business
-    triggering a profile re-embed. Not yet wired into daily_pipeline.py's
-    job-fetch step, which still reads the global TARGET_ROLES env var — see
-    DECISIONS.md for that gap.
+    should match against.
+
+    ADR-021: this now DOES re-embed. Target roles used to be write-only —
+    stored here and read by nobody in the matching path — so the old comment
+    ("a preferences update has no business triggering a profile re-embed") was
+    correct at the time and is now exactly wrong: target_roles lead the
+    embedding text (services/embeddings.py::profile_embedding_text), so a
+    profile whose roles changed without re-embedding would keep matching
+    against the roles the user previously wanted.
     """
-    result = (
-        supabase.table("profiles")
-        .update({"target_roles": body.target_roles, "min_salary": body.min_salary})
-        .eq("id", profile["id"])
-        .execute()
-    )
+    merged = {**profile, "target_roles": body.target_roles}
+    payload = {
+        "target_roles": body.target_roles,
+        "min_salary": body.min_salary,
+        "embedding": embed_text(profile_embedding_text(merged), profile_id=profile["id"]),
+    }
+    result = supabase.table("profiles").update(payload).eq("id", profile["id"]).execute()
     # Phase 3B: target roles is onboarding's last input step — saving it
     # completes onboarding (forward-only; no-op for revisits from Profile).
     _advance_onboarding(profile["id"], profile.get("onboarding_step"), "done")

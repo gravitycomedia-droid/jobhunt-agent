@@ -10,7 +10,7 @@ from db.supabase_client import supabase
 from models.followup import FollowupDraft
 from models.form import FormFillResponse, LlmFormExtraction
 from models.job import JobExtraction
-from models.match import MatchResult
+from models.match import BatchMatchResponse, MatchResult
 from models.resume import ResumeProfile
 from models.skill_growth import SkillGrowthResponse
 from models.tailor import TailorLlmResponse
@@ -38,20 +38,52 @@ Your previous output failed validation with this error: {error}.
 Fix the issue and return ONLY the corrected JSON."""
 
 # Mirrors docs/PROMPTS.md section 2 (Match Re-Ranker, Brick 5).
-RERANK_SYSTEM_PROMPT = """You evaluate job fit. Compare the CANDIDATE PROFILE to the JOB POSTING.
+# 2026-07-12 (ADR-021): scores a BATCH of jobs in one call instead of one call
+# per job, and is finally told what role the candidate actually wants
+# (profiles.target_roles) — previously the re-ranker only ever saw the resume,
+# so a backend job and the frontend job the user asked for scored on resume
+# overlap alone. `role_alignment` is judged here; the boost it earns is applied
+# in Python (services/matching.py), never by the model (Golden Rule 2).
+RERANK_SYSTEM_PROMPT = """You evaluate job fit for ONE candidate against SEVERAL job postings.
+Score each job INDEPENDENTLY on its own merits — this is an absolute
+assessment, not a ranking against the other jobs in the list.
 Be honest about gaps — an inflated score harms the candidate.
 Score guide: 80+ strong apply, 65-79 stretch worth trying, <65 skip.
-Return ONLY JSON:
+
+TARGET ROLES are the jobs the candidate SAID they want. They matter as much
+as the resume: a posting the candidate could technically do, but which is not
+the kind of role they are looking for, is a weak match no matter how well the
+skills line up. Judge that with role_alignment (0.0-1.0):
+  1.0  this posting IS one of their target roles
+  0.5  adjacent/overlapping (e.g. "full stack" for a "frontend" target)
+  0.0  a different discipline entirely
+If the candidate listed NO target roles, set role_alignment to 0.0 for every
+job and judge on the resume alone.
+
+For each job return, keyed by the job's listed number:
 {
-  "fit_score": int,
-  "strengths": [str],       // max 3, where candidate clearly matches
-  "gaps": [str],            // max 3, requirements candidate lacks
-  "compensators": [str],    // max 2, candidate assets that offset gaps
-  "verdict": "apply" | "stretch" | "skip",
-  "one_line_reason": str
-}"""
+  "results": [
+    {
+      "job_ref": int,           // the number the job was listed under
+      "fit_score": int,         // 0-100, absolute
+      "role_alignment": float,  // 0.0-1.0, see above
+      "strengths": [str],       // max 3, where candidate clearly matches
+      "gaps": [str],            // max 3, requirements candidate lacks
+      "compensators": [str],    // max 2, candidate assets that offset gaps
+      "verdict": "apply" | "stretch" | "skip",
+      "one_line_reason": str
+    }
+  ]
+}
+Return ONE entry per job, every job, no markdown fences, no commentary."""
 
 RERANK_RETRY_SUFFIX = PARSE_RETRY_SUFFIX
+
+# A job description adds sharply diminishing signal past the first few thousand
+# characters — the tail is benefits boilerplate and EEO statements. Capping it
+# is the single cheapest input-token win in the re-ranker, which sends one of
+# these per job in the batch.
+_RERANK_JD_CHARS = 2000
 
 # Mirrors docs/PROMPTS.md section 3 (Resume Tailor, Brick 6).
 # 2026-07-11: expanded from bullet-rephrasing only to the full tailoring
@@ -292,15 +324,34 @@ def _log_llm_call(
 def _call_gemini(
     images: list[bytes], prompt: str, temperature: float = 0.1, model: str | None = None
 ) -> tuple[str, int | None, int | None]:
+    """ADR-020: thinking is disabled for every task in this file.
+
+    Gemini 2.5 Flash reasons by default, and those thinking tokens bill at the
+    OUTPUT rate (8x input) while arriving in `thoughts_token_count` — a field
+    the old logging never read, so llm_calls under-reported real output cost by
+    several multiples. Measured on a rerank-shaped prompt: 759 thinking tokens
+    to produce an 18-token answer, and thinking_budget=0 returned the identical
+    answer. Every task here is structured extraction/scoring against an explicit
+    schema, not open-ended reasoning, so there is nothing for a thinking budget
+    to buy.
+
+    `tokens_out` deliberately reports candidates + thoughts — the number Google
+    actually bills — so services/cost_stats.py stops understating the total.
+    """
     parts = [types.Part.from_bytes(data=img, mime_type="image/png") for img in images]
     response = _client.models.generate_content(
         model=model or settings.gemini_model,
         contents=[*parts, prompt],
-        config=types.GenerateContentConfig(temperature=temperature),
+        config=types.GenerateContentConfig(
+            temperature=temperature,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
     usage = response.usage_metadata
-    tokens_in = usage.prompt_token_count if usage else None
-    tokens_out = usage.candidates_token_count if usage else None
+    if not usage:
+        return response.text or "", None, None
+    tokens_in = usage.prompt_token_count
+    tokens_out = (usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)
     return response.text or "", tokens_in, tokens_out
 
 
@@ -368,23 +419,71 @@ def parse_resume(images: list[bytes], profile_id: str | None = None) -> ResumePr
     raise ResumeParseError(last_error)
 
 
-def _rerank_user_prompt(profile: dict, job: dict) -> str:
-    return f"""CANDIDATE PROFILE:
-{ResumeProfile.model_validate(profile).model_dump_json()}
-
-JOB POSTING:
-{job.get('title', '')} at {job.get('company', '')}, {job.get('location', '')}
-{job.get('description', '')}"""
-
-
-def rerank_job(profile: dict, job: dict, profile_id: str | None = None) -> MatchResult:
-    """Stage 2 of the two-stage RAG match (ADR-001, Brick 5): ask Gemini to
-    score fit between a stored profile and one shortlisted job, validate
-    against MatchResult, retry once with the error appended on failure
-    (Golden Rule 3), and log every attempt to llm_calls (Golden Rule 5).
+def _compact_profile_text(profile: dict, target_roles: list[str]) -> str:
+    """ADR-021: the re-ranker used to receive `ResumeProfile.model_dump_json()`
+    — the entire profile, education years and all — re-sent once per job. The
+    scoring signal lives in the headline, the skills, and what the candidate
+    actually did; the JSON scaffolding and the education block are input tokens
+    bought for nothing. This is the same profile, flattened to the parts that
+    move a fit score, and it now leads with the roles the candidate is
+    targeting.
     """
+    p = ResumeProfile.model_validate(profile)
+    lines = [f"TARGET ROLES (what the candidate wants): {', '.join(target_roles) or '(none specified)'}"]
+    lines.append(f"CURRENT HEADLINE: {p.headline or '(none)'}")
+    lines.append(f"SKILLS: {', '.join(p.skills) or '(none listed)'}")
+    if p.experience:
+        lines.append("EXPERIENCE:")
+        for exp in p.experience:
+            lines.append(f"- {exp.role} at {exp.company} ({exp.duration or 'n/a'})")
+            lines.extend(f"  • {b}" for b in exp.bullets)
+    if p.projects:
+        lines.append("PROJECTS:")
+        for proj in p.projects:
+            tech = ", ".join(proj.tech)
+            lines.append(f"- {proj.name}{f' ({tech})' if tech else ''}: {proj.description or ''}")
+    return "\n".join(lines)
+
+
+def _rerank_user_prompt(profile: dict, jobs: list[dict], target_roles: list[str]) -> str:
+    blocks = []
+    for i, job in enumerate(jobs, start=1):
+        desc = (job.get("description") or "")[:_RERANK_JD_CHARS]
+        blocks.append(
+            f"--- JOB {i} ---\n"
+            f"{job.get('title', '')} at {job.get('company', '')}, {job.get('location', '')}\n"
+            f"{desc}"
+        )
+    jobs_text = "\n\n".join(blocks)
+    return f"""CANDIDATE PROFILE:
+{_compact_profile_text(profile, target_roles)}
+
+{len(jobs)} JOB POSTINGS TO SCORE:
+
+{jobs_text}"""
+
+
+def rerank_jobs(
+    profile: dict, jobs: list[dict], target_roles: list[str] | None = None, profile_id: str | None = None
+) -> list[MatchResult]:
+    """Stage 2 of the two-stage RAG match (ADR-001, Brick 5), batched per
+    ADR-021: score every job in `jobs` in ONE Gemini call and return one
+    MatchResult per job, in the SAME ORDER as `jobs`.
+
+    Order is guaranteed in Python, not by the prompt: the model echoes each
+    job's 1-based `job_ref` and this function re-slots by that ref. A job the
+    model skips entirely is surfaced as a RerankError rather than silently
+    misaligning every score after it — a mis-slotted verdict would attach the
+    wrong reasons to the wrong job, which is worse than no score at all.
+
+    Validates against BatchMatchResponse, retries once with the error appended
+    (Golden Rule 3), logs every attempt to llm_calls (Golden Rule 5).
+    """
+    if not jobs:
+        return []
+
     prompt_hash = hashlib.sha256(RERANK_SYSTEM_PROMPT.encode()).hexdigest()[:16]
-    user_prompt = _rerank_user_prompt(profile, job)
+    user_prompt = _rerank_user_prompt(profile, jobs, target_roles or [])
     prompt = f"{RERANK_SYSTEM_PROMPT}\n\n{user_prompt}"
 
     for attempt in (0, 1):
@@ -408,7 +507,12 @@ def rerank_job(profile: dict, job: dict, profile_id: str | None = None) -> Match
         latency_ms = int((time.monotonic() - start) * 1000)
 
         try:
-            result = MatchResult.model_validate_json(_strip_fences(text))
+            batch = BatchMatchResponse.model_validate_json(_strip_fences(text))
+            by_ref = {item.job_ref: item for item in batch.results}
+            missing = [i for i in range(1, len(jobs) + 1) if i not in by_ref]
+            if missing:
+                raise ValueError(f"model returned no verdict for job(s) {missing}; expected all of 1..{len(jobs)}")
+            results = [MatchResult(**by_ref[i].model_dump(exclude={"job_ref"})) for i in range(1, len(jobs) + 1)]
         except (ValidationError, ValueError) as e:
             last_error = str(e)
             _log_llm_call(
@@ -436,7 +540,7 @@ def rerank_job(profile: dict, job: dict, profile_id: str | None = None) -> Match
             retried=attempt == 1,
             profile_id=profile_id,
         )
-        return result
+        return results
 
     raise RerankError(last_error)
 

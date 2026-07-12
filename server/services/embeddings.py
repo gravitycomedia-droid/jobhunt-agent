@@ -93,8 +93,27 @@ def profile_embedding_text(profile: dict) -> str:
     """Flattens the fields of a stored profile row into one string for
     embedding — headline and skills carry the most matching signal, so they
     lead; experience/project bullets follow.
+
+    ADR-021: the candidate's target_roles now lead the text, repeated once as a
+    plain role phrase. Stage 1 was previously a pure resume-to-JD similarity —
+    it had no idea what job the user actually WANTED, so a backend posting and
+    the frontend posting they asked for looked equally close to a resume that
+    contains both. Putting the target roles at the front pulls the profile
+    vector toward the discipline the user is hunting in, which is exactly what
+    a cosine-similarity shortlist should be measuring against.
+
+    Callers MUST re-embed when target_roles change (routers/resume.py) — an
+    embedding that predates the user's role choice silently ignores it.
     """
-    parts = [profile.get("headline") or "", ", ".join(profile.get("skills") or [])]
+    target_roles = profile.get("target_roles") or []
+    parts = [
+        # Written as a natural phrase rather than a bare list: the embedding
+        # model is a language model, and "Seeking frontend developer roles"
+        # sits closer to a frontend JD than the token "frontend" alone does.
+        f"Seeking {', '.join(target_roles)} roles" if target_roles else "",
+        profile.get("headline") or "",
+        ", ".join(profile.get("skills") or []),
+    ]
     for exp in profile.get("experience") or []:
         parts.append(f"{exp.get('role', '')} at {exp.get('company', '')}: {'; '.join(exp.get('bullets') or [])}")
     for proj in profile.get("projects") or []:
