@@ -29,13 +29,13 @@ Dashboard → SQL Editor → paste and run each file:
       onboarding step into the `onboarding_step` CHECK constraint. Until
       applied, PATCH /resume/profile/student-info 500s and PATCH
       /resume/profile/onboarding-step rejects `'student_info'`.
-- [ ] `server/db/migrations/016_llm_calls_provider.sql` — Phase 14 / ADR-023.
+- [x] `server/db/migrations/016_llm_calls_provider.sql` — Phase 14 / ADR-023.
       Adds `llm_calls.provider` (default `'gemini'`, backfills existing rows).
       **Additive with a default, so it's safe to apply BEFORE the new code
       deploys** — old code simply doesn't write the column. Until applied, the
       new code's every LLM call 500s on insert (it now writes `provider`), so
       apply this one first if you're sequencing.
-- [ ] `server/db/migrations/017_rate_limits.sql` — Phase 14 / ADR-027. Creates
+- [x] `server/db/migrations/017_rate_limits.sql` — Phase 14 / ADR-027. Creates
       `rate_limit_events`. Until applied, the six rate-limited endpoints
       (`/matches/rerank`, `/tailor/{id}`, `/pipeline/run-mine`, `/resume/parse`,
       `/jobs/manual/parse`, `/jobs/from-jd/parse`, `/jobs/refresh`) 500 on their
@@ -43,7 +43,7 @@ Dashboard → SQL Editor → paste and run each file:
 
 ## 1a. Cloud Run / Render — new secret (Phase 14 / ADR-023)
 
-- [ ] Add `DEEPSEEK_API_KEY` to the deploy's secrets (Secret Manager on Cloud
+- [x] Add `DEEPSEEK_API_KEY` to the deploy's secrets (Secret Manager on Cloud
       Run, env var on Render), exactly like `GEMINI_API_KEY`. **Never** ship it
       to the Flutter app. Without it the server still boots and works — every
       DeepSeek-routed task (rerank, extract, followup, skill-growth, forms)
@@ -60,8 +60,8 @@ Dashboard → SQL Editor → paste and run each file:
 These live as env vars on the Cloud Run service, so editing `.env.example` (or
 your local `server/.env`) changes nothing in production until you push them up.
 
-- [ ] `TARGET_ROLES=fullstack developer,frontend developer`
-- [ ] `TARGET_LOCATIONS=hyderabad,bangalore,remote`
+- [x] `TARGET_ROLES=fullstack developer,frontend developer`
+- [x] `TARGET_LOCATIONS=hyderabad,bangalore,remote`
 
 Why they changed: both lists fan out into API calls per refresh — Adzuna is
 `roles × ADZUNA_LOCATIONS × 2`, JSearch is `roles × TARGET_LOCATIONS` against a
