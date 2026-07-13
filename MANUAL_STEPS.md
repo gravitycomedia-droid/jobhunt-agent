@@ -77,38 +77,55 @@ say flutter/python/mobile while ingestion only fetches fullstack/frontend, the
 match board will be scoring the wrong pool against the wrong target — keep the
 two aligned.
 
-## 1c. Apify — account, spend cap, actors (scraping expansion, ADR-003 amended)
+## 1c. Apify — scraped sources (ADR-003 amended). LOCAL DONE, DEPLOY PENDING
 
-**Phase 1 (config + generic client) is merged and inert.** With no
-`APIFY_API_TOKEN` set, the client logs a warning and returns nothing; nothing
-calls Apify yet. Phases 2–3 (the three fetchers + cron wiring) are **blocked on
-these steps** — the actors' field names differ actor-to-actor and can't be
-guessed against a pay-per-result API.
+Phases 1–3 are **built, tested (231 pass), and verified against the live Apify
+API**. Locally it works: a real run inserted 9 Naukri jobs into the pool with
+embeddings and numeric INR salaries. What's left is deploying it.
 
-- [ ] Create an Apify account → Console → Settings → Integrations → copy the API
-      token.
-- [ ] **Set a spend cap first**: Console → Settings → Billing → monthly usage
-      limit. Actors bill per result/compute; an uncapped account plus a
-      misconfigured query is the failure mode that costs money.
-- [ ] Hand-test **one actor per source** in the Apify Console (not in code) with
-      `maxResults` 10–20, one role + one city. Use **no-login** actors only — we
-      never give Apify LinkedIn/Indeed/Naukri credentials, which is what carries
-      the ban risk. Starting candidates (verify, don't trust — actor IDs and
-      pricing churn):
-      - LinkedIn — `bebity/linkedin-jobs-scraper` or
-        `curious_coder/linkedin-jobs-scraper`
-      - Indeed — `misceres/indeed-scraper`
-      - Naukri — `makework36/naukri-scraper` (already parses "6-15 Lacs PA" into
-        `salaryMin`/`salaryMax`/`salaryCurrency` — directly useful for the
-        Indian-salary-shows-`$` bug)
-- [ ] **Then paste me, per actor:** (1) the actor ID in `owner~actor-name` form,
-      (2) the ready request body from the actor page's **API** tab, and (3) one
-      sample output row. Those three unblock Phase 2's field mapping.
-- [ ] Local: add `APIFY_API_TOKEN` + the three `APIFY_*_ACTOR_ID` vars to
-      `server/.env` (see `.env.example` for the block).
-- [ ] Cloud Run: `APIFY_API_TOKEN` → Secret Manager (same as `ADZUNA_APP_KEY`).
-      The three actor IDs and `APIFY_MAX_RESULTS_PER_QUERY` are **not** secrets —
-      plain env vars, so swapping a deprecated actor is a config change.
+Local state (already done — listed so you can reproduce it elsewhere):
+
+- [x] Apify account + API token, in `server/.env` as `APIFY_API_TOKEN`.
+      (You'd pasted it as `APIFY_API_KEY`; the code reads `..._TOKEN`.)
+- [x] Actors hand-tested live and pinned in `.env`:
+      `curious_coder~linkedin-jobs-scraper`, `misceres~indeed-scraper`,
+      `makework36~naukri-scraper` — all no-login.
+- [x] Per-source cadence + caps set (~$4.33/mo, see `.env.example` for the math).
+
+**Still to do:**
+
+- [ ] **Confirm the Apify spend cap.** Console → Settings → Billing. You're on
+      the FREE plan, which hard-caps usage at **$5/month** and returns HTTP 402
+      on everything past it. Current cycle: **$0.91 used** (all of it my
+      testing), resets **2026-08-12**. The shipped config is budgeted to ~$4.33/mo
+      — that fits, but there is not much headroom, so don't raise a cadence or a
+      cap without redoing the math in `.env.example`.
+- [ ] **Cloud Run — add the secret:** `APIFY_API_TOKEN` → Secret Manager, wired
+      in as a secret env var, exactly like `ADZUNA_APP_KEY`/`DEEPSEEK_API_KEY`.
+      Without it the scraped sources no-op (logged) and the daily pipeline still
+      runs on the free sources — a safe degrade, not a crash.
+- [ ] **Cloud Run — add the plain (non-secret) env vars.** These are config, so
+      that swapping a deprecated actor is an env change, not a redeploy of code:
+      `APIFY_LINKEDIN_ACTOR_ID`, `APIFY_INDEED_ACTOR_ID`, `APIFY_NAUKRI_ACTOR_ID`,
+      `APIFY_LINKEDIN_WEEKDAYS`, `APIFY_INDEED_WEEKDAYS`, `APIFY_NAUKRI_WEEKDAYS`,
+      `APIFY_LINKEDIN_MAX_RESULTS`, `APIFY_INDEED_MAX_RESULTS`,
+      `APIFY_NAUKRI_MAX_RESULTS`, `APIFY_MAX_CONCURRENT_RUNS`.
+      Values are in `server/.env`. Note the comma-parsing gotcha from ADR-014 —
+      the weekday lists contain commas, so use the `^:^` alternate-delimiter
+      syntax:
+      `gcloud run services update ... --update-env-vars="^:^APIFY_LINKEDIN_WEEKDAYS=mon,wed,fri:APIFY_INDEED_WEEKDAYS=mon,thu"`
+- [ ] **Deploy.** Per `feedback_verify_deploy_not_just_commit`: a `git push`
+      deploys nothing here. Until you run the `gcloud run deploy`, production is
+      still on the old revision with no scraped sources.
+- [ ] **Watch the first Monday run.** Monday is the only day all three sources
+      fire. Check the logs for the `Scraped sources due today: ...` line, which
+      prints the call count and the billable-result ceiling *before* spending it.
+
+**Known behaviour, not a bug:** `TARGET_LOCATIONS` includes `remote`, and
+LinkedIn's remote search is worldwide — so a remote query legitimately returns
+jobs in Dublin, São Paulo, New York. They're real remote roles; the re-ranker
+scores them against the profile like anything else. Drop `remote` from
+`TARGET_LOCATIONS` if you only want India-based postings.
 
 ## 2. Supabase — fix Google OAuth redirect
 

@@ -1,10 +1,19 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
+from config import settings
 from db.supabase_client import supabase
-from services.job_ingestion import backfill_job_embeddings, refresh_job_pool
+from services.job_ingestion import (
+    backfill_job_embeddings,
+    refresh_job_pool,
+    refresh_scraped_sources,
+    should_scrape_today,
+)
 from services.llm import FollowupError, LlmApiError, generate_followup_draft
 from services.matching import DEFAULT_RERANK_LIMIT, rerank_shortlist
 from services.notify import send_push_notification
+
+logger = logging.getLogger(__name__)
 
 # An application sitting in 'applied' this long with no reply is a
 # follow-up candidate (docs/PROMPTS.md section 4: "no response after
@@ -109,6 +118,42 @@ async def _refresh_and_backfill() -> dict:
     }
 
 
+async def _refresh_scraped_if_due() -> dict:
+    """The paid Apify sources, on their own twice-weekly cadence (ADR-003,
+    amended). Deliberately called ONLY from run_daily_pipeline_for_all — i.e.
+    the cron path — and not from _refresh_and_backfill(), because that helper is
+    shared with run_daily_pipeline_for_profile(), which is what the app's "Run
+    agent now" button hits. Putting scraping in the shared helper would let any
+    user spend real Apify money on demand by tapping a button; the rate limiter
+    would cap the rate, not the fact of it.
+
+    A failure here must not lose the day's re-ranks and follow-ups, so the whole
+    thing is inside a try — the free sources have already been ingested by the
+    time we get here.
+    """
+    if not should_scrape_today():
+        logger.info(
+            "Scraped sources: none due today (linkedin=%s indeed=%s naukri=%s)",
+            settings.apify_linkedin_weekdays or "off",
+            settings.apify_indeed_weekdays or "off",
+            settings.apify_naukri_weekdays or "off",
+        )
+        return {"scraped_fetched": 0, "scraped_inserted": 0}
+
+    try:
+        result = await refresh_scraped_sources()
+    except Exception as e:
+        # Belt-and-braces: refresh_scraped_sources() already swallows per-source
+        # failures, so reaching here means something systemic (Supabase down
+        # mid-upsert, an embedding failure). Log it and let the rest of the
+        # pipeline run — this is exactly the "bad token doesn't crash the daily
+        # pipeline" acceptance criterion.
+        logger.exception("Scraped-source refresh failed, continuing pipeline: %s", e)
+        return {"scraped_fetched": 0, "scraped_inserted": 0}
+
+    return {"scraped_fetched": result["fetched"], "scraped_inserted": result["inserted"]}
+
+
 async def run_daily_pipeline_for_all() -> dict:
     """The Render cron path (Brick 8/9): fetch+dedup+embed today's jobs
     once, then run the per-user half of the loop for every beta user with
@@ -117,6 +162,7 @@ async def run_daily_pipeline_for_all() -> dict:
     a cron job with), but idempotent enough to call manually any time.
     """
     summary = await _refresh_and_backfill()
+    summary.update(await _refresh_scraped_if_due())
 
     profiles = supabase.table("profiles").select("*").execute().data
     matches_reranked = 0

@@ -66,8 +66,41 @@ known, bounded risk for a small personal deployment, not a decision that would
 necessarily hold at public-product scale.
 
 **Implementation:** see `14-scraping-source-expansion-plan.md`. Scraped sources
-run on the daily-cron cadence only, never on the manual "refresh now" button, so
-a user mashing that button cannot run up Apify spend.
+run on the cron path only — never on `POST /jobs/refresh` *or* on "Run agent now"
+(`run_daily_pipeline_for_profile`), both of which are user-triggered. The plan
+only called out the former; the latter shares `_refresh_and_backfill()` with the
+cron, so scraping deliberately lives outside that helper. Otherwise any user
+could spend real money by tapping a button.
+
+### What the live hand-test changed (2026-07-13)
+
+Four things were wrong in the plan's assumptions, all found by running the actors
+for real rather than trusting their store pages:
+
+1. **Pricing.** The plan assumed "a few dollars a month" and pay-per-result for
+   all three. In fact `bebity/linkedin-jobs-scraper` is a **$29.99/mo flat
+   subscription** (rejected — swapped to `curious_coder/linkedin-jobs-scraper` at
+   $0.001/result), and per-job prices differ ~10x: LinkedIn $0.001, Indeed
+   $0.006, Naukri $0.0095 (with full JDs). Daily × 3 sources would have been
+   ~$27/mo against Apify's **$5/mo free-plan hard cap**.
+2. **Cadence and caps are therefore PER SOURCE**, not global — the cheap source
+   runs mon/wed/fri, the priciest runs weekly. ~$4.33/mo, inside the free cap.
+   Crucially, Apify bills per result and dedup runs *after* the charge, so
+   re-scraping daily means re-buying rows we already own.
+3. **HTTP 402 does not mean "out of credit."** An unbounded `asyncio.gather()`
+   over 12+ queries asks for ~48GB of actor memory against the free plan's 16GB
+   ceiling, and Apify rejects the overflow with a 402 — observed live losing 6 of
+   6 LinkedIn calls at $0.84 of a $5 budget. Fixed with a concurrency semaphore
+   (`apify_max_concurrent_runs`). Note a client-side timeout does **not** abort
+   an Apify run: it keeps executing and billing, so bounded concurrency also
+   bounds how many runs we can strand.
+4. **No two actors share an output shape.** Indeed says `positionName`, LinkedIn
+   says `title`, Naukri hides the real description behind `fetchDetails` (90-char
+   stub → 2,219-char JD). Every field name in `job_sources.py` was read off a
+   live run. Locations also disagree on spelling ("Bengaluru East", "Greater
+   Hyderabad Area", "Hybrid - Hyderabad, Chennai"), so `_primary_city()`
+   canonicalizes them — without it the same posting on two boards yields two
+   dedup keys and lands twice.
 
 ---
 

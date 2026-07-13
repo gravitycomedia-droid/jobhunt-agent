@@ -102,11 +102,53 @@ class Settings(BaseSettings):
     apify_indeed_actor_id: str = ""
     apify_naukri_actor_id: str = ""
 
-    # Apify bills per result/compute, unlike the free Adzuna/Greenhouse tiers.
-    # This caps spend per (role × location × source) combo and doubles as a
-    # politeness limit — a low, once-daily volume is a boring traffic pattern,
-    # which matters more for not getting blocked than any code-level trick.
-    apify_max_results_per_query: int = 15
+    # --- Per-source cadence + caps ------------------------------------------
+    # Apify bills per RESULT, not per call, and dedup runs *after* you've paid —
+    # so re-scraping the same listings daily means re-buying rows you already
+    # own. The three sources cost wildly different amounts per job (measured live
+    # on the free tier, 2026-07-13):
+    #
+    #     LinkedIn  $0.001/job   ← cheap: can run often
+    #     Indeed    $0.006/job   ← 6x LinkedIn
+    #     Naukri    $0.0095/job  ← priciest (fetchDetails), but best Indian
+    #                              coverage + pre-parsed INR salaries
+    #
+    # So cadence and cap are per-source, not global: run the cheap source often
+    # and the expensive one weekly, instead of compromising on one shared number.
+    # Weekdays are mon..sun; empty string disables that source (kill switch).
+    #
+    # Budget math for the defaults below, at 2 roles × 3 locations = 6 calls/run:
+    #     LinkedIn  mon,wed,fri × 6 × 10 × $0.001  ≈ $0.78/mo
+    #     Indeed    mon,thu     × 6 ×  5 × $0.006  ≈ $1.57/mo
+    #     Naukri    mon         × 6 ×  8 × $0.0095 ≈ $1.98/mo
+    #                                        total ≈ $4.33/mo
+    # That fits Apify's FREE plan, which HARD-CAPS usage at $5/month and starts
+    # returning 402s the moment you cross it. Raising any of these means paying
+    # for an Apify plan, not just editing a number.
+    apify_linkedin_weekdays: str = "mon,wed,fri"
+    apify_indeed_weekdays: str = "mon,thu"
+    apify_naukri_weekdays: str = "mon"
+
+    apify_linkedin_max_results: int = 10  # actor 400s below 10 — this is its floor
+    apify_indeed_max_results: int = 5
+    apify_naukri_max_results: int = 8
+
+    # Apify's free plan allows 16GB of actor memory in flight, and each run
+    # reserves ~4GB. Firing all 6+ queries at once therefore asks for ~24-48GB
+    # and the overflow is rejected with HTTP 402 — which reads like "out of
+    # credit" but is really "out of memory" (verified live: 402s at $0.84 of a
+    # $5 budget). Cap concurrency so we stay under the ceiling.
+    #
+    # This also limits the blast radius of an abandoned run: our client-side
+    # timeout does NOT abort the actor server-side, so a run we give up on keeps
+    # executing and billing. Fewer in flight = fewer we can strand.
+    apify_max_concurrent_runs: int = 3
+
+    # Naukri's search page only carries a ~90-char truncated description stub.
+    # fetchDetails pulls the full ~2000-char JD (verified live: 90 → 2219 chars)
+    # at a higher per-job price. Worth it: description text is what gets embedded
+    # and re-ranked, so the stub would systematically under-score Naukri jobs.
+    apify_naukri_fetch_details: bool = True
 
     # Brick 9: shared secret the Render cron job sends in X-Pipeline-Secret
     # to trigger the all-users batch run (POST /pipeline/run) — distinct

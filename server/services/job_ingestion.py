@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import logging
 import socket
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,19 @@ from db.supabase_client import supabase
 from models.job import JobExtraction, JobIn
 from services.dedup import is_duplicate, make_dedup_key
 from services.embeddings import embed_text, embed_texts, job_embedding_text
-from services.job_sources import fetch_adzuna, fetch_greenhouse, fetch_jsearch, fetch_lever
+from services.job_sources import (
+    _locations,
+    _roles,
+    fetch_adzuna,
+    fetch_greenhouse,
+    fetch_indeed_apify,
+    fetch_jsearch,
+    fetch_lever,
+    fetch_linkedin_apify,
+    fetch_naukri_apify,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def is_fresh(job: JobIn, now: datetime | None = None) -> bool:
@@ -173,19 +186,15 @@ def insert_manual_job(extraction: JobExtraction, redirect_url: str | None = None
     return supabase.table("jobs").insert(payload).execute().data[0]
 
 
-async def refresh_job_pool() -> dict:
-    """Fetch+dedup+embed+insert today's postings into the shared job pool
-    (Brick 3/4). Plain function (not a route handler) so it can be called
-    both from routers/jobs.py (behind auth) and jobs/daily_pipeline.py
-    (the cron/batch path, which has no per-request auth dependency to
-    resolve) without duplicating the logic in each caller.
+def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
+    """The shared back half of ingestion: freshness gate → dedup → batch-embed →
+    upsert. Split out of refresh_job_pool() so refresh_scraped_sources() runs the
+    identical path (ADR-003's amendment says scraped jobs get the same treatment
+    as everything else — same dedup, same freshness rule, same embeddings), and
+    so a fix to either only has to be made once.
     """
-    adzuna_jobs, jsearch_jobs, greenhouse_jobs, lever_jobs = await asyncio.gather(
-        fetch_adzuna(), fetch_jsearch(), fetch_greenhouse(), fetch_lever()
-    )
-    fetched = adzuna_jobs + jsearch_jobs + greenhouse_jobs + lever_jobs
     # Phase 1D: drop stale postings before dedup/embedding — one gate for
-    # both sources.
+    # every source.
     fetched = [job for job in fetched if is_fresh(job)]
 
     existing = (
@@ -232,6 +241,155 @@ async def refresh_job_pool() -> dict:
         inserted = len(result.data)
 
     return {"fetched": len(fetched), "inserted": inserted}
+
+
+async def refresh_job_pool() -> dict:
+    """Fetch+dedup+embed+insert today's postings into the shared job pool
+    (Brick 3/4). Plain function (not a route handler) so it can be called
+    both from routers/jobs.py (behind auth) and jobs/daily_pipeline.py
+    (the cron/batch path, which has no per-request auth dependency to
+    resolve) without duplicating the logic in each caller.
+
+    Free sources only. The Apify-scraped sources bill per result, so they are
+    deliberately NOT here — see refresh_scraped_sources().
+    """
+    adzuna_jobs, jsearch_jobs, greenhouse_jobs, lever_jobs = await asyncio.gather(
+        fetch_adzuna(), fetch_jsearch(), fetch_greenhouse(), fetch_lever()
+    )
+    return _dedup_embed_insert(adzuna_jobs + jsearch_jobs + greenhouse_jobs + lever_jobs)
+
+
+# Weekday gate for the paid sources. `datetime.weekday()` is 0=Mon..6=Sun.
+_WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _is_due(weekdays: str, now: datetime | None = None) -> bool:
+    """True when today falls in a comma-separated weekday list. Empty → never."""
+    allowed = {d.strip().lower() for d in weekdays.split(",") if d.strip()}
+    if not allowed:
+        return False
+    return _WEEKDAYS[(now or datetime.now(timezone.utc)).weekday()] in allowed
+
+
+def _scraped_sources_due(now: datetime | None = None) -> list[tuple[str, object, int]]:
+    """The (name, fetcher, cap) triples that should run today.
+
+    Each source carries its own cadence and its own result cap, because they
+    cost 10x different amounts per job: LinkedIn is cheap enough to run three
+    times a week, Naukri is priciest and runs weekly. A source is skipped when
+    its actor ID is unset (off) or today isn't one of its weekdays.
+    """
+    configured = [
+        (
+            "linkedin",
+            settings.apify_linkedin_actor_id,
+            fetch_linkedin_apify,
+            settings.apify_linkedin_weekdays,
+            settings.apify_linkedin_max_results,
+        ),
+        (
+            "indeed",
+            settings.apify_indeed_actor_id,
+            fetch_indeed_apify,
+            settings.apify_indeed_weekdays,
+            settings.apify_indeed_max_results,
+        ),
+        (
+            "naukri",
+            settings.apify_naukri_actor_id,
+            fetch_naukri_apify,
+            settings.apify_naukri_weekdays,
+            settings.apify_naukri_max_results,
+        ),
+    ]
+    return [
+        (name, fetcher, cap)
+        for name, actor_id, fetcher, weekdays, cap in configured
+        if actor_id.strip() and _is_due(weekdays, now)
+    ]
+
+
+def should_scrape_today(now: datetime | None = None) -> bool:
+    """True when ANY scraped source is due today — the cheap check the daily
+    pipeline uses to skip the whole paid path without building task lists."""
+    return bool(settings.apify_api_token) and bool(_scraped_sources_due(now))
+
+
+async def refresh_scraped_sources(now: datetime | None = None) -> dict:
+    """The paid half of ingestion: LinkedIn/Indeed/Naukri via Apify (ADR-003,
+    amended). Same fetch→dedup→embed→insert shape as refresh_job_pool(), but on
+    a per-source cadence and never on a user-triggered path.
+
+    Guards on spend, because every result here costs money:
+      1. No token → no-op. (The kill switch: unset APIFY_API_TOKEN.)
+      2. An empty actor ID or an off-cadence weekday skips that source entirely.
+      3. Results per (role × location) are capped per-source.
+      4. Concurrency is bounded — see the semaphore below.
+    """
+    if not settings.apify_api_token:
+        logger.info("Scraped sources skipped: APIFY_API_TOKEN not set")
+        return {"fetched": 0, "inserted": 0, "calls": 0, "skipped": "no_token"}
+
+    due = _scraped_sources_due(now)
+    if not due:
+        logger.info("Scraped sources: none due today")
+        return {"fetched": 0, "inserted": 0, "calls": 0, "skipped": "not_due"}
+
+    roles, locations = _roles(), _locations()
+    per_source_calls = len(roles) * len(locations)
+    calls = per_source_calls * len(due)
+    max_results = sum(per_source_calls * cap for _, _, cap in due)
+
+    # Logged up front (not tallied afterwards) so the bill is predictable from
+    # the logs BEFORE the money is spent, not merely explicable after.
+    logger.info(
+        "Scraped sources due today: %s → %d Apify calls (%d roles × %d locations × %d sources), "
+        "≤%d billable results, ≤%d concurrent",
+        ", ".join(f"{name}(≤{cap})" for name, _, cap in due),
+        calls,
+        len(roles),
+        len(locations),
+        len(due),
+        max_results,
+        settings.apify_max_concurrent_runs,
+    )
+
+    # Each Apify run reserves ~4GB and the free plan ceiling is 16GB in flight.
+    # Unbounded gather() asks for 24-48GB at once and Apify 402s the overflow —
+    # which looks exactly like "out of credit" but isn't (observed live at $0.84
+    # of a $5 budget). The semaphore is what makes the fan-out safe.
+    semaphore = asyncio.Semaphore(settings.apify_max_concurrent_runs)
+
+    async def _guarded(fetcher, role: str, location: str, cap: int) -> list[JobIn]:
+        async with semaphore:
+            return await fetcher(role, location, cap)
+
+    tasks = [
+        _guarded(fetcher, role, location, cap)
+        for _, fetcher, cap in due
+        for role in roles
+        for location in locations
+    ]
+    # return_exceptions=True: run_actor() already swallows HTTP failures, but a
+    # mapping bug on one actor's payload must not lose the other sources' jobs
+    # — one bad source degrades to zero jobs, it doesn't sink the run.
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    fetched: list[JobIn] = []
+    for result in results:
+        if isinstance(result, Exception):
+            logger.warning("A scraped source raised: %s: %s", type(result).__name__, result)
+            continue
+        fetched.extend(result)
+
+    summary = _dedup_embed_insert(fetched)
+    summary["calls"] = calls
+    logger.info(
+        "Scraped sources: %d fetched, %d inserted after dedup/freshness",
+        summary["fetched"],
+        summary["inserted"],
+    )
+    return summary
 
 
 def backfill_job_embeddings() -> dict:

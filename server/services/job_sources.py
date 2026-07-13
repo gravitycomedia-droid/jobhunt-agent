@@ -1,12 +1,16 @@
 import html
 import logging
+import re
 from datetime import datetime, timezone
+from urllib.parse import urlencode
 
 import httpx
 from bs4 import BeautifulSoup
 
 from config import settings
 from models.job import JobIn
+from services.apify_client import run_actor
+from services.salary import infer_currency, parse_salary_text
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +18,13 @@ ADZUNA_BASE = "https://api.adzuna.com/v1/api/jobs"
 JSEARCH_URL = "https://jsearch.p.rapidapi.com/search-v2"
 GREENHOUSE_BASE = "https://boards-api.greenhouse.io/v1/boards"
 LEVER_BASE = "https://api.lever.co/v0/postings"
+LINKEDIN_JOBS_SEARCH = "https://www.linkedin.com/jobs/search/"
+
+# curious_coder~linkedin-jobs-scraper rejects count < 10 with a 400
+# ("Field input.count must be >= 10") — verified live 2026-07-13. So LinkedIn
+# has a hard floor on how cheap a single query can be; asking for 5 doesn't
+# save money, it just fails.
+LINKEDIN_MIN_COUNT = 10
 
 # Phase 1D: Adzuna reports salary_min/max in the search country's currency
 # but doesn't echo the currency back — map the country code we queried
@@ -174,6 +185,268 @@ async def fetch_jsearch() -> list[JobIn]:
                             posted_at=j.get("job_posted_at_datetime_utc"),
                         )
                     )
+    return jobs
+
+
+# ---------------------------------------------------------------------------
+# Apify-scraped sources (ADR-003, amended 2026-07-13)
+#
+# Every field name below was read off a live run against each actor on
+# 2026-07-13, not inferred from its store page — the three actors share no
+# common output shape (Indeed says `positionName`, LinkedIn says `title`,
+# Naukri says `title` but hides the real description behind `fetchDetails`),
+# and a wrong guess against a pay-per-result API bills you for rows that land
+# with an empty title.
+#
+# All three follow fetch_adzuna()'s error contract: run_actor() never raises, so
+# a dead actor yields [] and the other sources still ingest.
+# ---------------------------------------------------------------------------
+
+
+# Metro-area noise the boards wrap city names in. Stripped before the canonical
+# lookup below, so "Greater Bengaluru Area" and "Bengaluru East" both reduce to
+# "bengaluru" and then to "Bangalore".
+_CITY_NOISE = (
+    "greater",
+    "metropolitan region",
+    "metropolitan area",
+    "urban",
+    "division",
+    "district",
+    "area",
+    "east",
+    "west",
+    "north",
+    "south",
+)
+
+# One spelling per city. The pair that actually bites is Bangalore/Bengaluru:
+# Adzuna says one, LinkedIn says the other, and without this they are two
+# different dedup keys for one place — the same job lands twice.
+_CANONICAL_CITIES = {
+    "bengaluru": "Bangalore",
+    "bangalore": "Bangalore",
+    "bangalore city": "Bangalore",
+    "hyderabad": "Hyderabad",
+    "secunderabad": "Hyderabad",
+    "mumbai": "Mumbai",
+    "navi mumbai": "Mumbai",
+    "bombay": "Mumbai",
+    "pune": "Pune",
+    "chennai": "Chennai",
+    "delhi": "Delhi NCR",
+    "new delhi": "Delhi NCR",
+    "noida": "Delhi NCR",
+    "gurgaon": "Delhi NCR",
+    "gurugram": "Delhi NCR",
+    "ncr": "Delhi NCR",
+    "kolkata": "Kolkata",
+    "ahmedabad": "Ahmedabad",
+    "remote": "Remote",
+}
+
+
+def _primary_city(raw: str | None) -> str | None:
+    """Collapse a source's location string to one canonical city.
+
+    Each board spells the same place differently — Indeed "Hyderabad,
+    Telangana", LinkedIn "Greater Hyderabad Area" / "Bengaluru East", Naukri
+    "Hybrid - Hyderabad, Chennai, Delhi / NCR" (all observed live). dedup_key is
+    slugify(title|company|location), so left alone one posting cross-listed on
+    two boards yields two keys and lands twice. Canonicalizing here is what lets
+    the existing exact-match dedup fire ACROSS sources at all.
+
+    An unrecognized place is passed through cleaned-but-unmapped rather than
+    dropped: a job in Kozhikode is still a real job, it just won't cross-dedup.
+    """
+    if not raw:
+        return None
+    text = raw.strip()
+
+    # "Hybrid - Hyderabad" / "Remote - Pune": a Naukri work-mode prefix, not
+    # part of the place name.
+    lowered = text.lower()
+    for prefix in ("hybrid -", "remote -", "work from office -", "on-site -"):
+        if lowered.startswith(prefix):
+            text = text[len(prefix) :].strip()
+            break
+
+    head = text.split(",")[0].strip()
+    if not head:
+        return None
+
+    # Strip metro-area decoration: "Greater Bengaluru Area" → "bengaluru".
+    cleaned = head.lower()
+    for noise in _CITY_NOISE:
+        cleaned = re.sub(rf"(?<![a-z]){re.escape(noise)}(?![a-z])", " ", cleaned)
+    cleaned = " ".join(cleaned.split())
+
+    return _CANONICAL_CITIES.get(cleaned, head)
+
+
+def _linkedin_search_url(role: str, location: str) -> str:
+    # This actor takes LinkedIn search URLs, not role/location fields — so we
+    # build the URL LinkedIn's own job search would produce.
+    return f"{LINKEDIN_JOBS_SEARCH}?{urlencode({'keywords': role, 'location': location})}"
+
+
+async def fetch_linkedin_apify(role: str, location: str, max_results: int) -> list[JobIn]:
+    """LinkedIn via curious_coder~linkedin-jobs-scraper (no-login, $0.001/result).
+
+    Salary arrives as free text (often "") — parsed in Python, per golden rule 2.
+    """
+    count = max(max_results, LINKEDIN_MIN_COUNT)  # actor 400s below 10
+    rows = await run_actor(
+        settings.apify_linkedin_actor_id,
+        {
+            "urls": [_linkedin_search_url(role, location)],
+            "count": count,
+            "scrapeCompany": False,  # company detail costs extra and we don't use it
+        },
+    )
+
+    jobs: list[JobIn] = []
+    for r in rows:
+        external_id = r.get("id")
+        title = r.get("title")
+        if not external_id or not title:
+            # No stable ID or no title → nothing worth deduping or ranking.
+            continue
+        raw_location = r.get("location")
+        salary_min, salary_max, currency = parse_salary_text(r.get("salary"))
+        jobs.append(
+            JobIn(
+                source="linkedin",
+                external_id=str(external_id),
+                title=title,
+                company=r.get("companyName"),
+                location=_primary_city(raw_location),
+                description=r.get("descriptionText"),
+                salary_min=salary_min,
+                salary_max=salary_max,
+                # No source-level default: LinkedIn is global, so an
+                # unrecognized city means "unknown currency", not USD.
+                salary_currency=currency or infer_currency(raw_location),
+                redirect_url=r.get("link"),
+                posted_at=r.get("postedAt"),
+            )
+        )
+    return jobs
+
+
+async def fetch_indeed_apify(role: str, location: str, max_results: int) -> list[JobIn]:
+    """Indeed via misceres~indeed-scraper (no-login, $0.006/result — the priciest
+    of the three, which is why it's disabled by default; see .env.example)."""
+    rows = await run_actor(
+        settings.apify_indeed_actor_id,
+        {
+            "position": role,
+            "location": location,
+            "country": settings.adzuna_country.upper(),  # reuse the existing country config ("in" → "IN")
+            "maxItemsPerSearch": max_results,
+            "parseCompanyDetails": False,
+            "saveOnlyUniqueItems": True,
+        },
+    )
+
+    jobs: list[JobIn] = []
+    for r in rows:
+        external_id = r.get("id")
+        title = r.get("positionName")
+        if not external_id or not title:
+            continue
+        if r.get("isExpired"):
+            # Indeed keeps serving expired postings; ingesting one means the
+            # user clicks through to a dead page. Cheaper to drop it here.
+            continue
+        raw_location = r.get("location")
+        salary_min, salary_max, currency = parse_salary_text(r.get("salary"))
+        jobs.append(
+            JobIn(
+                source="indeed",
+                external_id=str(external_id),
+                title=title,
+                company=r.get("company"),
+                location=_primary_city(raw_location),
+                description=r.get("description"),
+                salary_min=salary_min,
+                salary_max=salary_max,
+                salary_currency=currency or infer_currency(raw_location),
+                redirect_url=r.get("url"),
+                # `postedAt` is relative ("2 days ago"); postingDateParsed is the
+                # ISO timestamp the freshness gate can actually compare.
+                posted_at=r.get("postingDateParsed"),
+            )
+        )
+    return jobs
+
+
+async def fetch_naukri_apify(role: str, location: str, max_results: int) -> list[JobIn]:
+    """Naukri via makework36~naukri-scraper (no-login).
+
+    Two things this actor gets right that the others don't: it splits INR salary
+    strings into numeric salaryMin/salaryMax/salaryCurrency for us, and (with
+    fetchDetails) it returns a full jobDescription. Without fetchDetails the only
+    description is `jobDescriptionPreview` — a ~90-char truncated stub, which
+    would quietly hand Naukri jobs weaker embeddings and worse rerank scores than
+    every other source for reasons having nothing to do with the job.
+
+    Caveat: this actor is young (≈80% success rate). A failed run yields [] and
+    the day simply has no Naukri jobs — verified live, it happens.
+    """
+    rows = await run_actor(
+        settings.apify_naukri_actor_id,
+        {
+            "mode": "keywords",
+            "keywords": [role],
+            "cities": [location.lower()],
+            "maxJobs": max_results,
+            "fetchDetails": settings.apify_naukri_fetch_details,
+        },
+        # fetchDetails opens each JD page in turn, so this actor is far slower
+        # than the other two — it blew the default 120s timeout on a live run
+        # and lost the whole source's jobs. 280s sits just under Apify's 300s
+        # hard cap on run-sync.
+        timeout_s=280 if settings.apify_naukri_fetch_details else 120,
+    )
+
+    jobs: list[JobIn] = []
+    for r in rows:
+        external_id = r.get("jobId")
+        title = r.get("title")
+        if not external_id or not title:
+            continue
+        # `locations` is the parsed array; locationText is the display string
+        # ("Hybrid - Hyderabad, Chennai"). Prefer the array's first entry.
+        locations = r.get("locations") or []
+        raw_location = locations[0] if locations else r.get("locationText")
+
+        salary_min, salary_max = r.get("salaryMin"), r.get("salaryMax")
+        currency = r.get("salaryCurrency")
+        if salary_min is None and salary_max is None:
+            # Actor didn't split it — fall back to parsing salaryText ourselves
+            # ("6-15 Lacs PA").
+            salary_min, salary_max, parsed_currency = parse_salary_text(r.get("salaryText"))
+            currency = currency or parsed_currency
+
+        jobs.append(
+            JobIn(
+                source="naukri",
+                external_id=str(external_id),
+                title=title,
+                company=r.get("companyName"),
+                location=_primary_city(raw_location),
+                # Full description when fetchDetails is on; the stub otherwise.
+                description=r.get("jobDescription") or r.get("jobDescriptionPreview"),
+                salary_min=salary_min,
+                salary_max=salary_max,
+                # Naukri is India-only, so INR is a defensible source-level
+                # default here in a way it would NOT be for LinkedIn/Indeed.
+                salary_currency=currency or infer_currency(raw_location, default="INR"),
+                redirect_url=r.get("jobUrl"),
+                posted_at=r.get("postedDate"),
+            )
+        )
     return jobs
 
 
