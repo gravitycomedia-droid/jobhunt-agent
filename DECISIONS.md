@@ -30,16 +30,44 @@
 
 ---
 
-## ADR-003: Legal job APIs only — no scraping
-**Date:** project start · **Status:** accepted
+## ADR-003: Job APIs + scoped scraping via Apify
+**Date:** project start · **Amended:** 2026-07-13 · **Status:** accepted (amended)
 
 **Context:** LinkedIn/Naukri have the richest listings, but scraping violates ToS, risks account bans, and produces brittle code.
 
-**Decision:** Adzuna API (primary) + JSearch/RapidAPI (secondary, surfaces Google-for-Jobs results legally). Dedup layer merges feeds.
+**Original decision:** Adzuna API (primary) + JSearch/RapidAPI (secondary, surfaces Google-for-Jobs results legally). Dedup layer merges feeds. Legal APIs only — no scraping of LinkedIn/Indeed/Naukri.
 
 **Alternatives considered:** Scraping: legally grey, maintenance nightmare. Manual paste-a-job feature kept as a supplement for postings outside our feeds.
 
 **Consequences:** Slightly narrower coverage, fully compliant and stable. Designing around API limits is itself demonstrable engineering maturity.
+
+### Amendment (2026-07-13) — scoped scraping via Apify
+
+For personal use by a small, known group of friends (not a public or commercial
+product), scraping LinkedIn, Indeed, and Naukri via third-party Apify actors is
+now approved as a **supplementary** source, subject to these constraints:
+
+- Prefer no-login / cookie-free actors (no LinkedIn/Indeed/Naukri account
+  credentials are ever given to Apify or stored anywhere in this project) —
+  this avoids the account-ban risk that login-based scraping carries.
+- Personal-scale usage only: capped result counts per run, no resale,
+  redistribution, or public hosting of the scraped data.
+- This does not change golden rule 1 (secrets server-side only) — the Apify
+  token lives in Secret Manager / server `.env`, never in the Flutter app.
+- Still explicitly rejected: logging into LinkedIn/Indeed/Naukri accounts to
+  scrape, high-volume/aggressive polling, or treating this as a redistributable
+  data product.
+
+**Why the amendment:** Adzuna + JSearch under-cover Indian fresher/intern roles
+specifically, and LinkedIn/Indeed/Naukri are where most of that volume lives.
+Apify actors abstract the scraping mechanics and (for the no-login variants)
+reduce — but do not eliminate — ToS and blocking risk. This is accepted as a
+known, bounded risk for a small personal deployment, not a decision that would
+necessarily hold at public-product scale.
+
+**Implementation:** see `14-scraping-source-expansion-plan.md`. Scraped sources
+run on the daily-cron cadence only, never on the manual "refresh now" button, so
+a user mashing that button cannot run up Apify spend.
 
 ---
 

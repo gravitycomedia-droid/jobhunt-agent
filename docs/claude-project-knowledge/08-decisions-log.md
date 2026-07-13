@@ -16,10 +16,33 @@ Pinecone/Weaviate/Qdrant as unnecessary complexity at thousands (not millions)
 of vectors. One datastore for relational + vector + auth + storage; revisit
 only past ~1M vector rows.
 
-**ADR-003 — Legal job APIs only, no scraping.** Adzuna (primary) + JSearch/
-RapidAPI (secondary) with a dedup layer, plus a manual paste-a-job feature.
-Rejected LinkedIn/Naukri scraping as ToS-violating and brittle. Tradeoff:
-narrower job coverage in exchange for full legal/stability compliance.
+**ADR-003 (amended 2026-07-13) — Job APIs + scoped scraping via Apify.**
+Original decision: Adzuna (primary) + JSearch/RapidAPI (secondary) with a dedup
+layer, legal APIs only, no scraping of LinkedIn/Indeed/Naukri, plus a manual
+paste-a-job feature as a supplement.
+
+**Amendment**: for personal use by a small, known group of friends (not a public
+or commercial product), scraping LinkedIn, Indeed, and Naukri via third-party
+Apify actors is now approved as a supplementary source, subject to these
+constraints:
+- Prefer no-login / cookie-free actors (no LinkedIn/Indeed/Naukri account
+  credentials are ever given to Apify or stored anywhere in this project) — this
+  avoids the account-ban risk that login-based scraping carries.
+- Personal-scale usage only: capped result counts per run, no resale,
+  redistribution, or public hosting of the scraped data.
+- This does not change golden rule 1 (secrets server-side only) — the Apify
+  token lives in Secret Manager / server `.env`, never in the Flutter app.
+- Still explicitly rejected: logging into LinkedIn/Indeed/Naukri accounts to
+  scrape, high-volume/aggressive polling, or treating this as a redistributable
+  data product.
+
+**Why the amendment**: Adzuna + JSearch under-cover Indian fresher/intern roles
+specifically, and LinkedIn/Indeed/Naukri are where most of that volume lives.
+Apify actors abstract the scraping mechanics and (for the no-login variants)
+reduce — but do not eliminate — ToS and blocking risk. This is accepted as a
+known, bounded risk for a small personal deployment, not a decision that would
+necessarily hold at public-product scale. See
+[05-job-ingestion-and-matching.md](05-job-ingestion-and-matching.md).
 
 **ADR-004 — Anti-fabrication guardrail with a deterministic post-check.**
 Tailoring returns `{original, tailored}` bullet pairs; `guardrail.py`

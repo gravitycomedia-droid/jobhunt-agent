@@ -77,6 +77,39 @@ say flutter/python/mobile while ingestion only fetches fullstack/frontend, the
 match board will be scoring the wrong pool against the wrong target — keep the
 two aligned.
 
+## 1c. Apify — account, spend cap, actors (scraping expansion, ADR-003 amended)
+
+**Phase 1 (config + generic client) is merged and inert.** With no
+`APIFY_API_TOKEN` set, the client logs a warning and returns nothing; nothing
+calls Apify yet. Phases 2–3 (the three fetchers + cron wiring) are **blocked on
+these steps** — the actors' field names differ actor-to-actor and can't be
+guessed against a pay-per-result API.
+
+- [ ] Create an Apify account → Console → Settings → Integrations → copy the API
+      token.
+- [ ] **Set a spend cap first**: Console → Settings → Billing → monthly usage
+      limit. Actors bill per result/compute; an uncapped account plus a
+      misconfigured query is the failure mode that costs money.
+- [ ] Hand-test **one actor per source** in the Apify Console (not in code) with
+      `maxResults` 10–20, one role + one city. Use **no-login** actors only — we
+      never give Apify LinkedIn/Indeed/Naukri credentials, which is what carries
+      the ban risk. Starting candidates (verify, don't trust — actor IDs and
+      pricing churn):
+      - LinkedIn — `bebity/linkedin-jobs-scraper` or
+        `curious_coder/linkedin-jobs-scraper`
+      - Indeed — `misceres/indeed-scraper`
+      - Naukri — `makework36/naukri-scraper` (already parses "6-15 Lacs PA" into
+        `salaryMin`/`salaryMax`/`salaryCurrency` — directly useful for the
+        Indian-salary-shows-`$` bug)
+- [ ] **Then paste me, per actor:** (1) the actor ID in `owner~actor-name` form,
+      (2) the ready request body from the actor page's **API** tab, and (3) one
+      sample output row. Those three unblock Phase 2's field mapping.
+- [ ] Local: add `APIFY_API_TOKEN` + the three `APIFY_*_ACTOR_ID` vars to
+      `server/.env` (see `.env.example` for the block).
+- [ ] Cloud Run: `APIFY_API_TOKEN` → Secret Manager (same as `ADZUNA_APP_KEY`).
+      The three actor IDs and `APIFY_MAX_RESULTS_PER_QUERY` are **not** secrets —
+      plain env vars, so swapping a deprecated actor is a config change.
+
 ## 2. Supabase — fix Google OAuth redirect
 
 Still broken as of 2026-07-11, now landing on the *old Render page*

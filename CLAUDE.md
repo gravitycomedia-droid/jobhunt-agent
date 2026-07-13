@@ -35,7 +35,7 @@ jobhunt-agent/
 - **Backend:** FastAPI + Pydantic v2, Python 3.11+
 - **DB:** Supabase Postgres with pgvector extension. Access via `supabase-py` from the server ONLY.
 - **LLM:** two providers behind one validate/retry/log flow (`services/llm.py`, ADR-023). **Gemini** `gemini-2.5-flash` for vision (`parse`) and, by default, `tailor`; `gemini-embedding-001` (768-dim) for embeddings. **DeepSeek** `deepseek-v4-flash` (OpenAI-compatible SDK, thinking disabled) for `rerank`/`extract_job`/`followup`/`skill_growth`/forms. `DEEPSEEK_API_KEY` is server-side only (Golden Rule 1); absent key falls back to Gemini.
-- **Jobs data:** Adzuna API (primary) + JSearch via RapidAPI (secondary). NO scraping — legal APIs only.
+- **Jobs data:** Adzuna API (primary) + JSearch via RapidAPI (secondary) + Greenhouse/Lever public boards. Supplementary: LinkedIn/Indeed/Naukri via no-login **Apify** actors, daily-cron cadence only (ADR-003, amended 2026-07-13). No login-based scraping, ever.
 - **Push:** Firebase Cloud Messaging
 - **Hosting:** Render (web service + cron job)
 
@@ -78,7 +78,7 @@ The builder is learning Flutter/Dart. When writing Dart code:
 ## What NOT to do
 - No LangChain/LangGraph for v1 — plain Python orchestration is simpler and more instructive
 - No Docker for v1 — Render deploys from repo directly
-- No scraping LinkedIn/Naukri/Indeed — ToS violation, account bans
+- No *login-based* scraping of LinkedIn/Naukri/Indeed — never hand those account credentials to Apify or store them here (that's what carries the ban risk). No-login Apify actors are approved for these three sources at personal scale — see ADR-003 (amended). No high-volume polling, no redistributing scraped data.
 - No auto-submitting applications anywhere — human approval gates always
 - No dedicated vector DB (Pinecone/Weaviate) — pgvector is the deliberate choice (see DECISIONS.md)
 - Don't add features not in the current brick, even if easy

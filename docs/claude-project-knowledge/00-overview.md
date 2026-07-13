@@ -71,8 +71,9 @@ documents in this folder:
    validation pass/fail) to a `llm_calls` table — no exceptions. This powers the
    in-app cost dashboard.
 
-Two more product-level rules worth knowing: no scraping of LinkedIn/Naukri/Indeed
-(legal job APIs only), and no auto-submitting applications anywhere — human
+Two more product-level rules worth knowing: no *direct/login* scraping of
+LinkedIn/Naukri/Indeed; scoped Apify-based scraping is approved for personal use
+per ADR-003 (amended). And no auto-submitting applications anywhere — human
 approval gates always.
 
 ## Document index

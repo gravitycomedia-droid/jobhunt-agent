@@ -81,6 +81,33 @@ class Settings(BaseSettings):
     greenhouse_boards: str = "postman,groww,razorpaysoftwareprivatelimited:Razorpay,phonepe"
     lever_companies: str = "cred:CRED,meesho:Meesho,zeta:Zeta,freshworks:Freshworks"
 
+    # Scraping source expansion (ADR-003, amended 2026-07-13): LinkedIn/Indeed/
+    # Naukri via no-login Apify actors. Golden rule 1 holds — the token is read
+    # here and used server-side only; it never reaches the Flutter app.
+    #
+    # The token defaults to "" rather than being a required field on purpose,
+    # even though the plan said "no defaults for the token". A required field
+    # makes Settings() raise at import time, so a missing/rotated token would
+    # take down the whole server — including the Gemini/Adzuna paths that have
+    # nothing to do with Apify. That directly contradicts the plan's own
+    # acceptance criterion ("killing the Apify token doesn't crash the daily
+    # pipeline — it logs and the rest continues"). Empty token → the Apify
+    # fetchers no-op and log, exactly like deepseek_api_key above.
+    apify_api_token: str = ""
+
+    # Actor IDs are config, not code (format: "owner~actor-name"). Apify actors
+    # get deprecated/replaced often, so swapping one is an env-var change and a
+    # redeploy, not a code edit. Empty → that source is skipped.
+    apify_linkedin_actor_id: str = ""
+    apify_indeed_actor_id: str = ""
+    apify_naukri_actor_id: str = ""
+
+    # Apify bills per result/compute, unlike the free Adzuna/Greenhouse tiers.
+    # This caps spend per (role × location × source) combo and doubles as a
+    # politeness limit — a low, once-daily volume is a boring traffic pattern,
+    # which matters more for not getting blocked than any code-level trick.
+    apify_max_results_per_query: int = 15
+
     # Brick 9: shared secret the Render cron job sends in X-Pipeline-Secret
     # to trigger the all-users batch run (POST /pipeline/run) — distinct
     # from the per-user POST /pipeline/run-mine, which uses the caller's

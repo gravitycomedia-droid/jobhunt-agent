@@ -10,8 +10,12 @@ Two legal job-board APIs, fetched in parallel (`asyncio.gather`):
 - `fetch_jsearch()` — `GET https://jsearch.p.rapidapi.com/search-v2` (RapidAPI).
 
 Both swallow per-query HTTP errors (log a warning, continue) so one flaky query
-never sinks the whole refresh. No scraping of LinkedIn/Naukri/Indeed anywhere —
-see ADR-003 in [08-decisions-log.md](08-decisions-log.md).
+never sinks the whole refresh. Two legal APIs (Adzuna, JSearch) plus three
+supplementary Apify-scraped sources (LinkedIn, Indeed, Naukri) — see ADR-003
+(amended) in [08-decisions-log.md](08-decisions-log.md) and
+`14-scraping-source-expansion-plan.md`. The scraped sources run on the daily-cron
+cadence only, never on the manual "refresh now" path, because Apify runs are
+slower and cost money per call.
 
 A third, user-driven source exists: **manual job add**. The user pastes a job
 URL in `add_job_screen.dart`; the server (`services/job_ingestion.py::

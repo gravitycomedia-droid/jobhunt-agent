@@ -51,7 +51,7 @@ and screenshots live there.
 | Database | Supabase Postgres + pgvector extension | Accessed only from the server, via `supabase-py`, using the **service-role key** (bypasses RLS — the server itself is the authorization boundary, not Postgres RLS). |
 | LLM (generation) | Google Gemini `gemini-2.5-flash` | All text/vision generation tasks — resume parsing, re-ranking, tailoring, follow-up drafts, job extraction, skill-growth clustering. |
 | LLM (embeddings) | Google Gemini `gemini-embedding-001` | Pinned to 768-dim output (`output_dimensionality=768`) to match `vector(768)` Postgres columns. (Switched from `text-embedding-004`, which 404'd on this API key — see ADR-006.) |
-| Jobs data | Adzuna API (primary) + JSearch via RapidAPI (secondary) | No scraping, anywhere, ever — legal APIs only (ADR-003). |
+| Jobs data | Adzuna API (primary) + JSearch via RapidAPI (secondary) + Greenhouse/Lever boards + Apify-scraped LinkedIn/Indeed/Naukri | No scraping via logged-in sessions; Apify-based no-login scraping of LinkedIn/Indeed/Naukri approved for personal-scale use (ADR-003, amended 2026-07-13). |
 | Auth | Supabase Auth (Google OAuth + email/password) | Server never decodes JWTs itself; delegates verification to Supabase's Auth API per request. |
 | Push notifications | Firebase Cloud Messaging | Android-only by design (no iOS APNs key provisioned yet — ADR-007). |
 | Transactional email | Resend | Used only for follow-up email sending, gated behind explicit user approval. |
