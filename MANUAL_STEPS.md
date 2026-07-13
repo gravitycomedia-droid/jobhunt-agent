@@ -94,32 +94,38 @@ Local state (already done — listed so you can reproduce it elsewhere):
 
 **Still to do:**
 
+- [x] **Secret created:** `APIFY_API_TOKEN` in Secret Manager (version 1).
+- [x] **Cloud Run plain env vars set** (revision `00010`): the three actor IDs,
+      three weekday lists, three per-source caps, `APIFY_MAX_CONCURRENT_RUNS`.
+      Note the ADR-014 comma gotcha applies — the weekday lists contain commas,
+      so they were set with the `^:^` alternate-delimiter syntax.
+- [x] **Code deployed** (revision `00011`, `gcloud run deploy --source .`).
+      `/health` returns 200.
+
+- [ ] **⚠️ ONLY REMAINING STEP — grant the runtime SA access to the secret, then
+      attach it.** A new secret does NOT inherit the other secrets' IAM bindings,
+      so until this runs, `APIFY_API_TOKEN` is unreadable and the scraped sources
+      no-op (logged, safe degrade — the free sources still ingest daily).
+
+      ```bash
+      gcloud secrets add-iam-policy-binding APIFY_API_TOKEN \
+        --member="serviceAccount:380742808186-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor"
+
+      gcloud run services update jobhunt-agent-server --region=asia-south1 \
+        --update-secrets=APIFY_API_TOKEN=APIFY_API_TOKEN:latest
+      ```
+      (Same SA and role the other seven secrets already use.)
+
 - [ ] **Confirm the Apify spend cap.** Console → Settings → Billing. You're on
       the FREE plan, which hard-caps usage at **$5/month** and returns HTTP 402
-      on everything past it. Current cycle: **$0.91 used** (all of it my
-      testing), resets **2026-08-12**. The shipped config is budgeted to ~$4.33/mo
-      — that fits, but there is not much headroom, so don't raise a cadence or a
-      cap without redoing the math in `.env.example`.
-- [ ] **Cloud Run — add the secret:** `APIFY_API_TOKEN` → Secret Manager, wired
-      in as a secret env var, exactly like `ADZUNA_APP_KEY`/`DEEPSEEK_API_KEY`.
-      Without it the scraped sources no-op (logged) and the daily pipeline still
-      runs on the free sources — a safe degrade, not a crash.
-- [ ] **Cloud Run — add the plain (non-secret) env vars.** These are config, so
-      that swapping a deprecated actor is an env change, not a redeploy of code:
-      `APIFY_LINKEDIN_ACTOR_ID`, `APIFY_INDEED_ACTOR_ID`, `APIFY_NAUKRI_ACTOR_ID`,
-      `APIFY_LINKEDIN_WEEKDAYS`, `APIFY_INDEED_WEEKDAYS`, `APIFY_NAUKRI_WEEKDAYS`,
-      `APIFY_LINKEDIN_MAX_RESULTS`, `APIFY_INDEED_MAX_RESULTS`,
-      `APIFY_NAUKRI_MAX_RESULTS`, `APIFY_MAX_CONCURRENT_RUNS`.
-      Values are in `server/.env`. Note the comma-parsing gotcha from ADR-014 —
-      the weekday lists contain commas, so use the `^:^` alternate-delimiter
-      syntax:
-      `gcloud run services update ... --update-env-vars="^:^APIFY_LINKEDIN_WEEKDAYS=mon,wed,fri:APIFY_INDEED_WEEKDAYS=mon,thu"`
-- [ ] **Deploy.** Per `feedback_verify_deploy_not_just_commit`: a `git push`
-      deploys nothing here. Until you run the `gcloud run deploy`, production is
-      still on the old revision with no scraped sources.
+      on everything past it. Current cycle: **$0.91 used** (all of it hand-test
+      verification), resets **2026-08-12**. The shipped config budgets ~$4.33/mo
+      — it fits, but there is little headroom, so don't raise a cadence or a cap
+      without redoing the math in `.env.example`.
 - [ ] **Watch the first Monday run.** Monday is the only day all three sources
-      fire. Check the logs for the `Scraped sources due today: ...` line, which
-      prints the call count and the billable-result ceiling *before* spending it.
+      fire. Look for the `Scraped sources due today: ...` log line — it prints
+      the call count and the billable-result ceiling *before* the money is spent.
 
 **Known behaviour, not a bug:** `TARGET_LOCATIONS` includes `remote`, and
 LinkedIn's remote search is worldwide — so a remote query legitimately returns
