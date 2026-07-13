@@ -199,6 +199,57 @@ def test_linkedin_builds_a_search_url_not_role_fields():
     assert "location=Hyderabad" in urls[0]
 
 
+# --- internship / fresher targeting ------------------------------------------
+# The point of these three: surface internships WITHOUT a second query per role.
+# A separate "<role> intern" call (what fetch_adzuna does) would double the Apify
+# call count and push the bill over the free plan's $5/mo cap.
+
+
+def test_linkedin_biases_keywords_toward_interns_not_f_E():
+    spy = AsyncMock(return_value=[])
+    with patch("services.job_sources.run_actor", new=spy):
+        asyncio.run(fetch_linkedin_apify("fullstack developer", "Hyderabad", 10))
+
+    url = spy.call_args[0][1]["urls"][0]
+    assert "keywords=fullstack+developer+intern" in url
+    # f_E (LinkedIn's experience-level filter) is deliberately NOT used: the
+    # actor ignores it. Verified live — f_E=1 ("internships only") still returned
+    # a Mid-Senior "Senior Full-Stack Software Engineer". Asserting its absence
+    # so nobody "helpfully" re-adds a param that silently does nothing.
+    assert "f_E" not in url
+    # And it stays ONE call — a second "<role> intern" query would double the bill.
+    assert len(spy.call_args_list) == 1
+
+
+def test_naukri_caps_experience_years():
+    spy = AsyncMock(return_value=[])
+    with patch("services.job_sources.run_actor", new=spy):
+        asyncio.run(fetch_naukri_apify("fullstack developer", "Hyderabad", 8))
+
+    run_input = spy.call_args[0][1]
+    assert run_input["experienceMin"] == 0
+    # 0..2 years, so genuine fresher full-time roles survive alongside interns.
+    assert run_input["experienceMax"] == 2
+
+
+def test_indeed_appends_intern_to_the_query():
+    # Indeed's actor has no experience filter, so the query text is the only lever.
+    spy = AsyncMock(return_value=[])
+    with patch("services.job_sources.run_actor", new=spy):
+        asyncio.run(fetch_indeed_apify("fullstack developer", "Hyderabad", 5))
+
+    assert spy.call_args[0][1]["position"] == "fullstack developer intern"
+
+
+def test_indeed_suffix_is_configurable_off(monkeypatch):
+    monkeypatch.setattr(settings, "apify_indeed_query_suffix", "")
+    spy = AsyncMock(return_value=[])
+    with patch("services.job_sources.run_actor", new=spy):
+        asyncio.run(fetch_indeed_apify("fullstack developer", "Hyderabad", 5))
+
+    assert spy.call_args[0][1]["position"] == "fullstack developer"
+
+
 def test_naukri_maps_real_row_and_prefers_full_description():
     with patch("services.job_sources.run_actor", new=_rows([NAUKRI_ROW])):
         job = asyncio.run(fetch_naukri_apify("fullstack developer", "Hyderabad", 10))[0]

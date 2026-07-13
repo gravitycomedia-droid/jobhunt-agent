@@ -133,6 +133,34 @@ class Settings(BaseSettings):
     apify_indeed_max_results: int = 5
     apify_naukri_max_results: int = 8
 
+    # --- Internship / fresher targeting -------------------------------------
+    # fetch_adzuna() surfaces internships by running a SECOND query per role
+    # ("<role>" and "<role> intern"), because Adzuna India has no internship
+    # filter. Doing that here would double the Apify call count and the bill
+    # (~$4.33/mo → ~$8.70/mo, over the free plan's $5 hard cap).
+    #
+    # So the scraped sources filter at the source instead — same call count, no
+    # extra cost. This WIDENS what we keep rather than narrowing it: internships
+    # and fresher full-time roles both come back, and only senior postings (which
+    # would never match a fresher's resume) are dropped.
+    #
+    # Query-text suffix per source. Set to "" to search the bare role.
+    #
+    # NOT LinkedIn's f_E experience-level URL param, which would have been the
+    # elegant answer: tested live 2026-07-13, the curious_coder actor IGNORES it.
+    # Even f_E=1 ("internships only") still returned "Senior Full-Stack Software
+    # Engineer" at seniority=Mid-Senior. It would have looked right in the code
+    # and quietly done nothing. The query text is the only lever that actually
+    # moves this actor's results.
+    apify_linkedin_query_suffix: str = "intern"
+    apify_indeed_query_suffix: str = "intern"
+
+    # Naukri DOES filter natively on years of experience (verified: returns
+    # seniority=fresher/junior rows). It's an overlap filter — a "1-4 yrs" job
+    # matches a 0..2 window — which is what we want, since those are still real
+    # fresher postings.
+    apify_naukri_max_experience_years: int = 2
+
     # Apify's free plan allows 16GB of actor memory in flight, and each run
     # reserves ~4GB. Firing all 6+ queries at once therefore asks for ~24-48GB
     # and the overflow is rejected with HTTP 402 — which reads like "out of

@@ -285,9 +285,21 @@ def _primary_city(raw: str | None) -> str | None:
 
 
 def _linkedin_search_url(role: str, location: str) -> str:
-    # This actor takes LinkedIn search URLs, not role/location fields — so we
-    # build the URL LinkedIn's own job search would produce.
-    return f"{LINKEDIN_JOBS_SEARCH}?{urlencode({'keywords': role, 'location': location})}"
+    """This actor takes LinkedIn search URLs, not role/location fields — so we
+    build the URL LinkedIn's own job search would produce.
+
+    The internship bias rides on the KEYWORDS, not on LinkedIn's `f_E`
+    experience-level param. f_E was the obvious answer and it does not work:
+    tested live, this actor ignores it entirely (f_E=1, "internships only",
+    still returned a Mid-Senior "Senior Full-Stack Software Engineer"). Putting
+    it in the URL would have been code that reads correctly and does nothing.
+
+    Keeping it to one query per role is deliberate — a separate "<role> intern"
+    call, which is what fetch_adzuna() does, would double the Apify call count
+    and the bill.
+    """
+    keywords = f"{role} {settings.apify_linkedin_query_suffix}".strip()
+    return f"{LINKEDIN_JOBS_SEARCH}?{urlencode({'keywords': keywords, 'location': location})}"
 
 
 async def fetch_linkedin_apify(role: str, location: str, max_results: int) -> list[JobIn]:
@@ -337,10 +349,17 @@ async def fetch_linkedin_apify(role: str, location: str, max_results: int) -> li
 async def fetch_indeed_apify(role: str, location: str, max_results: int) -> list[JobIn]:
     """Indeed via misceres~indeed-scraper (no-login, $0.006/result — the priciest
     of the three, which is why it's disabled by default; see .env.example)."""
+    # This actor has no experience-level input (unlike LinkedIn's f_E and
+    # Naukri's experienceMax), so the only lever is the query text itself.
+    # Appending "intern" biases the same single call toward internships/fresher
+    # roles rather than spending a second call on a separate intern query, which
+    # would double Indeed's spend — and Indeed is the priciest per job of the
+    # sources we run.
+    position = f"{role} {settings.apify_indeed_query_suffix}".strip()
     rows = await run_actor(
         settings.apify_indeed_actor_id,
         {
-            "position": role,
+            "position": position,
             "location": location,
             "country": settings.adzuna_country.upper(),  # reuse the existing country config ("in" → "IN")
             "maxItemsPerSearch": max_results,
@@ -402,6 +421,12 @@ async def fetch_naukri_apify(role: str, location: str, max_results: int) -> list
             "cities": [location.lower()],
             "maxJobs": max_results,
             "fetchDetails": settings.apify_naukri_fetch_details,
+            # Naukri filters by years of experience natively, so capping it here
+            # surfaces internships and fresher roles on the SAME call — no second
+            # "<role> intern" query, and Naukri is the priciest source per job.
+            # 0..2 years keeps genuine fresher full-time roles in, not just interns.
+            "experienceMin": 0,
+            "experienceMax": settings.apify_naukri_max_experience_years,
         },
         # fetchDetails opens each JD page in turn, so this actor is far slower
         # than the other two — it blew the default 120s timeout on a live run
