@@ -1,6 +1,11 @@
 # --- secrets ---
 .env
 server/.env
+# Variants that would otherwise slip past the two exact paths above — a
+# hand-made .env.bak or .env.local holds the same live keys.
+.env.*
+server/.env.*
+!.env.example
 server/firebase-service-account.json
 
 # --- Python ---
