@@ -109,10 +109,18 @@ async def fetch_adzuna() -> list[JobIn]:
         for role in _roles():
             for location in _adzuna_locations():
                 # Adzuna has no internship category/filter for India (verified
-                # empirically against /v1/api/jobs/in/categories) — appending
-                # "intern" to the free-text query is the only way to surface
-                # internship-labeled postings alongside full-time ones.
-                for query in (role, f"{role} intern"):
+                # empirically against /v1/api/jobs/in/categories) — appending the
+                # keyword to the free-text query is the only lever.
+                #
+                # The BARE role query stays, even though the pool is now
+                # internships/fresher only. Dropping it (tried, 2026-07-13)
+                # collapsed Adzuna to 5 postings: very few Indian listings put
+                # "intern" in the TITLE, but plenty say "0-2 years" in the body —
+                # and job_filter's entry-level test reads the description too. So
+                # the bare query is what actually surfaces fresher roles here;
+                # the relevance gate does the filtering, not the query string.
+                # Adzuna is free, so three wordings cost nothing.
+                for query in (role, f"{role} intern", f"{role} fresher"):
                     url = f"{ADZUNA_BASE}/{settings.adzuna_country}/search/1"
                     params = {
                         "app_id": settings.adzuna_app_id,
@@ -158,7 +166,11 @@ async def fetch_jsearch() -> list[JobIn]:
         for role in _roles():
             for location in _locations():
                 params = {
-                    "query": f"{role} in {location}",
+                    # One query per role×location, NOT two — JSearch's free
+                    # RapidAPI tier caps at 200 requests/MONTH (ADR-018), so an
+                    # extra "fresher" wording here would blow the quota by
+                    # mid-cycle. "intern" is the higher-yield of the two.
+                    "query": f"{role} intern in {location}",
                     "country": settings.adzuna_country,
                     "page": 1,
                     "num_pages": 1,

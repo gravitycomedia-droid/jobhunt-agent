@@ -229,6 +229,27 @@ class ApiClient {
         .toList();
   }
 
+  /// Every job in the pool, not just the first page.
+  ///
+  /// The Jobs tab shows the whole pool — the server already returns it
+  /// unfiltered, but `GET /jobs` caps `limit` at 100, so one call could only
+  /// ever show the newest 100. This walks the pages until one comes back short.
+  ///
+  /// `maxPages` is a safety stop, not a feature: the ingestion relevance gate
+  /// keeps the pool to fresher/intern roles in two cities, so it should sit in
+  /// the tens. If it ever grew past 1,000 the loop stops rather than paging
+  /// forever on a mobile connection.
+  Future<List<Job>> fetchAllJobs({int pageSize = 100, int maxPages = 10}) async {
+    final all = <Job>[];
+    for (var page = 0; page < maxPages; page++) {
+      final batch = await fetchJobs(limit: pageSize, offset: page * pageSize);
+      all.addAll(batch);
+      // A short page means we've reached the end.
+      if (batch.length < pageSize) break;
+    }
+    return all;
+  }
+
   /// Add Job step 1 (frontend rebuild Phase 2): fetches the pasted URL
   /// server-side and asks Gemini to extract job fields — nothing is
   /// created yet, this is just for the user to review/edit.

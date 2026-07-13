@@ -89,7 +89,10 @@ class _JobsListBodyState extends State<JobsListBody> {
 
     if (!painted && mounted) setState(() => _isLoading = true);
     try {
-      final results = await Future.wait([_apiClient.fetchJobs(limit: 50), _apiClient.fetchApplications()]);
+      // fetchAllJobs (not fetchJobs(limit: 50)): the Jobs tab shows the entire
+      // pool, whatever the target role. The old 50-cap silently hid everything
+      // past the newest 50 postings.
+      final results = await Future.wait([_apiClient.fetchAllJobs(), _apiClient.fetchApplications()]);
       if (!mounted) return;
       setState(() {
         _jobs = results[0] as List<Job>;

@@ -14,6 +14,7 @@ from db.supabase_client import supabase
 from models.job import JobExtraction, JobIn
 from services.dedup import is_duplicate, make_dedup_key
 from services.embeddings import embed_text, embed_texts, job_embedding_text
+from services.job_filter import is_relevant
 from services.job_sources import (
     _locations,
     _roles,
@@ -187,15 +188,35 @@ def insert_manual_job(extraction: JobExtraction, redirect_url: str | None = None
 
 
 def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
-    """The shared back half of ingestion: freshness gate → dedup → batch-embed →
-    upsert. Split out of refresh_job_pool() so refresh_scraped_sources() runs the
-    identical path (ADR-003's amendment says scraped jobs get the same treatment
-    as everything else — same dedup, same freshness rule, same embeddings), and
-    so a fix to either only has to be made once.
+    """The shared back half of ingestion: freshness + relevance gates → dedup →
+    batch-embed → upsert. Split out of refresh_job_pool() so
+    refresh_scraped_sources() runs the identical path (ADR-003's amendment says
+    scraped jobs get the same treatment as everything else — same dedup, same
+    freshness rule, same embeddings), and so a fix to either only has to be made
+    once.
     """
     # Phase 1D: drop stale postings before dedup/embedding — one gate for
     # every source.
-    fetched = [job for job in fetched if is_fresh(job)]
+    fresh = [job for job in fetched if is_fresh(job)]
+
+    # Relevance gate (services/job_filter.py): fullstack/frontend/cloud-architect
+    # internships and fresher roles, in Hyderabad/Bengaluru. It lives HERE rather
+    # than in each fetcher because the sources have wildly different filtering
+    # powers — Naukri filters by experience server-side, LinkedIn/Indeed only via
+    # keywords, and Greenhouse/Lever not at all (they return a company's entire
+    # board, every role and city). One gate, applied uniformly, is the only way
+    # the pool means the same thing regardless of where a job came from.
+    relevant = [job for job in fresh if is_relevant(job.title, job.location, job.description)]
+
+    if len(fetched) != len(relevant):
+        logger.info(
+            "Ingestion gate: %d fetched → %d fresh (≤%dd) → %d relevant (role+entry-level+city)",
+            len(fetched),
+            len(fresh),
+            settings.max_job_age_days,
+            len(relevant),
+        )
+    fetched = relevant
 
     existing = (
         supabase.table("jobs")
