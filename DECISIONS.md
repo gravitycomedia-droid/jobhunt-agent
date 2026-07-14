@@ -465,3 +465,86 @@ The JD-paste path (text-extract only) runs the magic-byte + size gates. All rais
 - A muted **"Updated Xm ago"** line per tab keeps the 5-minute window legible (`lastUpdatedLabel`).
 
 **Verified:** `flutter analyze` clean (only 2 pre-existing `anonKey` deprecation infos), all 12 Flutter tests pass. **Not** verified on-device or against prototype screenshots — no Android SDK here, can't launch the app, so the throttling *logic* is analyzer/unit-verified but the on-screen result is unconfirmed. Consistent with this repo's standing constraint that Flutter UI changes here are code-verified, not device-verified.
+
+---
+
+## ADR-029: The app ships as "FirstRole", not "JobHunt Agent"
+
+**Date:** 2026-07-14 · **Status:** Accepted · **Brick:** 10
+
+**Context.** Brick 10 needed a Play Store identity. The working name "JobHunt
+Agent" turned out to be unusable: there is an established incumbent on Play
+literally called *"JobHunt — Job Search AI Agent"* (`work.jobhunt`, ~380k
+installs, actively updated). Shipping under that name would bury us beneath an
+app we cannot outrank and invites a brand-confusion complaint.
+
+The broader ASO reality also forced the choice. Head terms — "job search", "AI
+resume" — are owned by Internshala, Unstop, Naukri and Kickresume, all with
+millions of installs. Play ranks on install velocity, retention and ratings; a
+new app with 12 testers has none of those. The only things a new listing can win
+on day one are (a) its own brand name and (b) long-tail keywords.
+
+**Decision.** Ship as **FirstRole**, store title `FirstRole: AI Fresher Jobs`.
+
+- The brand word *means* entry-level, so it reinforces the keyword rather than
+  competing with it — and it matches what the pipeline actually returns
+  (fresher/intern only, per ADR on the relevance gate).
+- We target the winnable long tail ("fresher", "intern") and concede the head
+  terms deliberately.
+- Checked against Play: no collision. (`Foothold`, `Tailr`, `Hyre`, `Offerly`
+  and `Landr` were all rejected as taken — `Foothold` is itself a career app.)
+
+**What did NOT change, on purpose:**
+
+- **Package ID stays `com.jobhuntagent.jobhunt_agent`.** It is permanent once
+  uploaded, and it is baked into `google-services.json` (FCM) and the Supabase
+  OAuth redirect scheme in `AndroidManifest.xml`. Renaming it would mean a
+  different app and a broken sign-in flow, for zero user-visible benefit.
+- **Dart package name stays `jobhunt_agent`** — it appears in every
+  `import 'package:jobhunt_agent/...'` and is invisible to users.
+
+So "JobHunt" survives as an internal identifier and "FirstRole" is the entire
+user-facing surface. That split is intentional, not an oversight.
+
+**Consequence.** Anything user-visible must say FirstRole. Caught during
+on-device verification: the welcome screen still rendered "JobHunt Agent" —
+fixed in `splash_screen.dart` and `main.dart` (`MaterialApp.title`). The splash
+still uses the old *target* glyph rather than the new staircase mark; cosmetic,
+tracked in `docs/PLAY_CONSOLE.md` §10.
+
+---
+
+## ADR-030: Release signing, R8, and why the release build is verified on-device
+
+**Date:** 2026-07-14 · **Status:** Accepted · **Brick:** 10
+
+**Context.** The Android release config was untouched Flutter template: it signed
+release with the **debug key** (Play rejects this outright), had no keystore, and
+no minification.
+
+**Decision.**
+
+1. **Upload key** — RSA-4096, valid to 2053 (Play requires validity past Oct
+   2033), at `~/keys/firstrole-upload.jks`, i.e. **outside the repo** so that no
+   `git add -A` can ever capture it. Credentials live in gitignored
+   `app/android/key.properties`.
+2. **key.properties is optional at configure time, mandatory for release.** A
+   fresh clone has neither file, so a hard `load()` would break even debug builds.
+   Instead the Gradle config treats the key as optional, then fails the build
+   loudly via `gradle.taskGraph.whenReady` if a *release* task runs without it.
+   The failure mode we are engineering against is a debug-signed AAB silently
+   reaching a tester.
+3. **R8 on** (`isMinifyEnabled` + `isShrinkResources`). `proguard-rules.pro` is
+   deliberately near-empty — Flutter/Firebase/plugins ship consumer rules — with
+   one `-dontwarn com.google.android.play.core.**` because the engine references
+   deferred-components classes we don't bundle.
+
+**Verified — and this is the point.** R8 is the classic "builds green, crashes on
+launch" change, so a successful `flutter build` proves nothing. The release APK
+was installed on the `jobhunt_pixel` emulator and launched: process alive, zero
+`FATAL EXCEPTION`, zero `ClassNotFoundException`, welcome screen renders, new
+launcher icon correct on the home screen. The merged release manifest was also
+inspected directly: `targetSdk 36`, `minSdk 24`, and `usesCleartextTraffic`
+**absent** — confirming the debug-only cleartext overlay does not leak into
+release. The AAB's signer was checked with `jarsigner -verify` and is `CN=FirstRole`,
+not the Android debug key.

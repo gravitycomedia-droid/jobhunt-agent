@@ -39,7 +39,7 @@ class JobHuntAgentApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Job-Hunt Agent',
+      title: 'FirstRole',
       theme: AppTheme.light,
       // Phase 2: TaskCenter's completion toasts fire through this global
       // key so they show on whatever screen/tab the user is on when a

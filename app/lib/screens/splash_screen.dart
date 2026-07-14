@@ -39,14 +39,14 @@ class SplashScreen extends StatelessWidget {
                       text: TextSpan(
                         style: const TextStyle(fontSize: 33, fontWeight: FontWeight.w800, letterSpacing: -0.4, color: Colors.white),
                         children: [
-                          const TextSpan(text: 'JobHunt '),
-                          TextSpan(text: 'Agent', style: TextStyle(fontWeight: FontWeight.w400, color: Colors.white.withValues(alpha: 0.82))),
+                          const TextSpan(text: 'First'),
+                          TextSpan(text: 'Role', style: TextStyle(fontWeight: FontWeight.w400, color: Colors.white.withValues(alpha: 0.82))),
                         ],
                       ),
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Your AI job-search partner — from resume to signed offer.',
+                      'Your AI agent for fresher & intern roles — from resume to signed offer.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 15, height: 1.45, color: Colors.white.withValues(alpha: 0.86)),
                     ),
