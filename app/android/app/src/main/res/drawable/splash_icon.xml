@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icon for the Android 12+ splash screen.
+     The platform masks the splash icon to a circle and only reliably shows its
+     inner region, so ic_launcher_foreground (whose mark fills ~89% of its layer,
+     sized for the launcher's own 16% inset) would get its arrow clipped. Inset it
+     further here rather than shrinking the launcher icon, which is correct as-is. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_launcher_foreground"
+    android:inset="24%" />

@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
+import '../widgets/app_loader.dart';
 
 /// Onboarding step 5 (frontend rebuild Phase 1, prototype `ui.isMatching`):
 /// the transitional screen between submitting target roles and landing on
@@ -67,11 +68,7 @@ class _MatchingLoadingScreenState extends State<MatchingLoadingScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(
-                width: 132,
-                height: 132,
-                child: CircularProgressIndicator(strokeWidth: 8, color: AppColors.brand600),
-              ),
+              const AppLoader(size: 96),
               const SizedBox(height: AppSpacing.space5),
               Text('Finding your matches', style: AppTypography.title),
               const SizedBox(height: 6),

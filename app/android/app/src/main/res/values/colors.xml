@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- brand600 (#5647E0), mirroring AppColors.brand600 in lib/theme/app_tokens.dart.
+         Used by the native launch screen so the very first frame the OS draws is
+         already brand-coloured — the template's plain white flashed before
+         Flutter's first frame landed on the brand background. -->
+    <color name="brand600">#5647E0</color>
+</resources>

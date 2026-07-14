@@ -10,7 +10,7 @@ import '../services/cache_service.dart';
 import '../services/match_feed.dart';
 import '../services/push_service.dart';
 import '../services/task_center.dart';
-import '../theme/app_tokens.dart';
+import '../widgets/app_loader.dart';
 import 'auth_screen.dart';
 import 'main_tab_screen.dart';
 import 'onboarding_flow.dart';
@@ -154,7 +154,7 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (!_profileChecked) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.brand)));
+      return const Scaffold(body: Center(child: AppLoader()));
     }
 
     // Phase 3B routing: no profile → onboarding from the top; profile with

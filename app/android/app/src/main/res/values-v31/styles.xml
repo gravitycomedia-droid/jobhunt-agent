@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (API 31+) launch screen.
+     From API 31 the platform IGNORES android:windowBackground/@drawable/launch_background
+     for the cold-start splash and uses the SplashScreen API instead: it fills the
+     screen with windowSplashScreenBackground and centres windowSplashScreenAnimatedIcon.
+     Without these two attributes you get the platform default — a WHITE screen with the
+     circular-masked launcher icon — no matter what launch_background.xml says. The
+     legacy drawable is still the one that runs on API < 31, so both must be kept in sync. -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/brand600</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <!-- Still the background behind the Flutter UI while it initialises. -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">?android:colorBackground</item>
+    </style>
+</resources>
