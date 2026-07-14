@@ -548,3 +548,73 @@ inspected directly: `targetSdk 36`, `minSdk 24`, and `usesCleartextTraffic`
 **absent** — confirming the debug-only cleartext overlay does not leak into
 release. The AAB's signer was checked with `jarsigner -verify` and is `CN=FirstRole`,
 not the Android debug key.
+
+---
+
+## ADR-031: The OAuth deep-link scheme must not match applicationId (underscores are illegal in a URI scheme)
+
+**Date:** 2026-07-14 · **Status:** Accepted · **Brick:** 10
+
+**Context.** Every Google sign-in failed. After the user picked their account,
+the browser landed on a raw `{"code":500,"error_code":"unexpected_failure"}` from
+GoTrue and never returned to the app. Supabase's auth log named the cause exactly:
+
+```
+parse "com.jobhuntagent.jobhunt_agent://login-callback/":
+first path segment in URL cannot contain colon
+```
+
+The redirect scheme had been copied from `applicationId`
+(`com.jobhuntagent.jobhunt_agent`). But RFC 3986 restricts a URI scheme to
+`ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` — **an underscore is not legal**, and
+`jobhunt_agent` has one. Android package names *do* allow underscores, so the two
+namespaces look interchangeable and are not.
+
+What made this expensive to find: **Android tolerates the illegal scheme.** The
+intent-filter matched, and firing the deep link with `adb` launched the app
+perfectly — which is exactly the evidence that made the app side look innocent.
+GoTrue is written in Go, and Go's `net/url.Parse` obeys the RFC strictly: it
+refuses to read the string as having a scheme, falls back to parsing the whole
+thing as a *path*, and errors on the colon. So the client worked, the server
+500'd, and the two facts seemed to contradict each other.
+
+**Decision.** The deep-link scheme is now `com.jobhuntagent.firstrole` —
+reverse-DNS (a bare `firstrole://` could be hijacked by any other app that claims
+it) and free of underscores. `applicationId` is deliberately left alone: it is
+permanent on Play and wired into FCM.
+
+So the scheme and the applicationId now differ *on purpose*. Both
+`supabase_config.dart` and `AndroidManifest.xml` carry a comment saying so, since
+"these don't match, let me fix that" is the obvious wrong instinct.
+
+**Consequence.** Supabase → Authentication → URL Configuration must list the new
+scheme; the old one is now unroutable (verified: `am start` on the old scheme
+returns `unable to resolve Intent`).
+
+**Verified.** Reproduced the parse failure against the RFC scheme grammar (old
+string yields no scheme and is read as a path; new one yields
+`scheme=com.jobhuntagent.firstrole host=login-callback`). On-device, the
+`app_links` plugin logs `Handled intent: com.jobhuntagent.firstrole://login-callback/`,
+so the redirect now routes back into the app.
+
+---
+
+## ADR-032: Duplicate signups fail silently unless you check `identities`
+
+**Date:** 2026-07-14 · **Status:** Accepted · **Brick:** 10
+
+**Context.** An existing user who tapped **Sign up** instead of **Sign in** got no
+error and no session — the form simply appeared to do nothing.
+
+Supabase does not raise an error for a duplicate signup when "Confirm email" is
+enabled: erroring would leak which email addresses have accounts. Instead it
+returns a **decoy user with an empty `identities` list** and no session. Code that
+only watches for a thrown `AuthException` therefore sees success.
+
+**Decision.** `_submitPassword` treats `user.identities == []` as "already
+registered", shows *"That email already has an account. Sign in instead."* and
+flips the form to sign-in with the typed email preserved. The thrown-error path
+(what Supabase does when "Confirm email" is OFF) is handled too, so the behaviour
+is identical whichever way the project is configured. `_friendlyAuthMessage` also
+rewrites `invalid login credentials` to point Google-signup users at the Google
+button — the likeliest reason a real user's password "doesn't work".

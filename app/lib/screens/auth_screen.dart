@@ -50,20 +50,64 @@ class _AuthScreenState extends State<AuthScreen> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       if (_isSignUp) {
-        await Supabase.instance.client.auth.signUp(email: email, password: password);
+        final res = await Supabase.instance.client.auth.signUp(email: email, password: password);
+
+        // An existing user who lands on Sign up must be told to sign in instead.
+        // Supabase makes that harder than it sounds: when "Confirm email" is ON it
+        // does NOT raise an error for a duplicate signup — that would leak which
+        // emails have accounts — and instead returns a decoy user with an EMPTY
+        // `identities` list and no session. Without this check the form looks like
+        // it succeeded and then simply never signs the user in.
+        // (With "Confirm email" OFF, Supabase *does* throw — handled in the catch.)
+        final identities = res.user?.identities;
+        if (identities != null && identities.isEmpty) {
+          if (!mounted) return;
+          setState(() {
+            _errorMessage = 'That email already has an account. Sign in instead.';
+            _isSignUp = false; // flip to sign-in; the typed email is kept
+          });
+          return;
+        }
+
+        // Signed up, but the account needs email confirmation before a session exists.
+        if (res.session == null) {
+          if (!mounted) return;
+          setState(() => _errorMessage = 'Check your inbox to confirm your email, then sign in.');
+          return;
+        }
       } else {
         await Supabase.instance.client.auth.signInWithPassword(email: email, password: password);
       }
       // AuthGate's session listener takes it from here once the session lands.
     } on AuthException catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.message);
+      setState(() => _errorMessage = _friendlyAuthMessage(e));
     } catch (e) {
       if (!mounted) return;
       setState(() => _errorMessage = e.toString());
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  /// Turns Supabase's raw auth errors into something a user can act on.
+  ///
+  /// Side effect: a duplicate signup also flips the form to sign-in, so the fix
+  /// is one tap away rather than something the user has to work out.
+  String _friendlyAuthMessage(AuthException e) {
+    final raw = e.message.toLowerCase();
+
+    if (raw.contains('already registered') || raw.contains('already exists')) {
+      _isSignUp = false; // caller is inside setState
+      return 'That email already has an account. Sign in instead.';
+    }
+    if (raw.contains('invalid login credentials')) {
+      return 'Wrong email or password. If you signed up with Google, use "Continue with Google".';
+    }
+    if (raw.contains('email not confirmed')) {
+      return 'Confirm your email first — check your inbox for the link.';
+    }
+    return e.message;
   }
 
   Future<void> _signInWithGoogle() async {
@@ -74,7 +118,7 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       // Phase 1B: on Android, externalApplication forces a real browser
       // (not an in-app custom tab some OEMs break) so the
-      // com.jobhuntagent.jobhunt_agent:// deep link reliably routes back
+      // com.jobhuntagent.firstrole:// deep link reliably routes back
       // into the app. On web, platformDefault navigates THIS tab to Google
       // and back — a new tab would leave the original page waiting forever.
       // The Supabase project's URL Configuration must allow-list

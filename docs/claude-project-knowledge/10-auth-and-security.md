@@ -6,7 +6,7 @@ Two, both via **Supabase Auth**, both handled entirely client-side in Flutter
 (`auth_screen.dart`):
 - Email/password (`signInWithPassword` / `signUp`)
 - Google OAuth (`signInWithOAuth`), returning to the app via a custom URL
-  scheme redirect: `com.jobhuntagent.jobhunt_agent://login-callback/`
+  scheme redirect: `com.jobhuntagent.firstrole://login-callback/`
   (configured in `SupabaseConfig.redirectUrl`, and matched by an
   `AndroidManifest.xml` intent-filter with `android:scheme=
   "com.jobhuntagent.jobhunt_agent"` / `android:host="login-callback"`).

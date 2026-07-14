@@ -57,8 +57,8 @@ Work phase by phase, in order. Commit at the end of each phase with a descriptiv
 
 **Fix:**
 1. In `auth_screen.dart`, ensure `signInWithOAuth(OAuthProvider.google, redirectTo: SupabaseConfig.redirectUrl, authScreenLaunchMode: LaunchMode.externalApplication)`.
-2. Verify `SupabaseConfig.redirectUrl == 'com.jobhuntagent.jobhunt_agent://login-callback/'` and that `AndroidManifest.xml` has the matching intent-filter (`android:scheme="com.jobhuntagent.jobhunt_agent"`, `android:host="login-callback"`, `android:autoVerify` not required, `BROWSABLE` + `DEFAULT` categories present).
-3. Print clear manual instructions for the Supabase dashboard (cannot be done from code): Authentication → URL Configuration → add `com.jobhuntagent.jobhunt_agent://login-callback/` to **Additional Redirect URLs**; set Site URL to the production URL or the deep link, not localhost.
+2. Verify `SupabaseConfig.redirectUrl == 'com.jobhuntagent.firstrole://login-callback/'` and that `AndroidManifest.xml` has the matching intent-filter (`android:scheme="com.jobhuntagent.firstrole"`, `android:host="login-callback"`, `android:autoVerify` not required, `BROWSABLE` + `DEFAULT` categories present).
+3. Print clear manual instructions for the Supabase dashboard (cannot be done from code): Authentication → URL Configuration → add `com.jobhuntagent.firstrole://login-callback/` to **Additional Redirect URLs**; set Site URL to the production URL or the deep link, not localhost.
 4. Confirm `AuthGate` reacts to the auth-state change fired by the deep-link return (Supabase Flutter handles the token exchange; verify `onAuthStateChange` triggers profile lookup and `PushService.initAndRegister()`).
 
 **Acceptance:** documented dashboard steps + code verified; email/password flow untouched.

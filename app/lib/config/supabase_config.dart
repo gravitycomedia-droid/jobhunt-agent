@@ -19,11 +19,23 @@ class SupabaseConfig {
   ///   browser gives GoTrue an un-openable target and surfaces as its raw
   ///   `unexpected_failure` JSON instead of returning to the app. The
   ///   origin must be in Supabase's Additional Redirect URLs.
-  /// - **Android**: the custom URL scheme (matches applicationId in
-  ///   android/app/build.gradle.kts); AndroidManifest.xml declares the
-  ///   matching intent-filter so the OS routes it back into the app.
+  /// - **Android**: the custom URL scheme below. AndroidManifest.xml declares
+  ///   the matching intent-filter so the OS routes it back into the app.
+  ///
+  /// The scheme deliberately does NOT match `applicationId`
+  /// (`com.jobhuntagent.jobhunt_agent`). A URI scheme may contain only letters,
+  /// digits, `+`, `-` and `.` (RFC 3986) — an **underscore is illegal**. Android
+  /// tolerates one anyway, so the deep link appeared to work locally, but
+  /// GoTrue is written in Go: `url.Parse` refuses to read
+  /// `com.jobhuntagent.jobhunt_agent://…` as having a scheme, treats the whole
+  /// string as a path, and dies on the colon —
+  /// `first path segment in URL cannot contain colon` — which surfaced to users
+  /// as a 500 `unexpected_failure` after they picked their Google account.
+  ///
+  /// Whatever this value is, it must be allow-listed in Supabase →
+  /// Authentication → URL Configuration, or GoTrue falls back to Site URL.
   static String get redirectUrl {
     if (kIsWeb) return Uri.base.origin;
-    return 'com.jobhuntagent.jobhunt_agent://login-callback/';
+    return 'com.jobhuntagent.firstrole://login-callback/';
   }
 }

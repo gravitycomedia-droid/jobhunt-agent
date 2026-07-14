@@ -26,12 +26,18 @@
             </intent-filter>
             <!-- Brick 9: Supabase's Google OAuth flow redirects back to this
                  custom scheme after sign-in completes in the browser — must
-                 match SupabaseConfig.redirectUrl in lib/config/supabase_config.dart. -->
+                 match SupabaseConfig.redirectUrl in lib/config/supabase_config.dart.
+
+                 NOTE: this scheme intentionally differs from applicationId
+                 (com.jobhuntagent.jobhunt_agent). A URI scheme may not contain an
+                 underscore (RFC 3986). Android accepts one regardless, but GoTrue
+                 (Go) cannot parse such a URL and returned a 500 to every Google
+                 sign-in. Do not "fix" this back to match applicationId. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="com.jobhuntagent.jobhunt_agent" android:host="login-callback"/>
+                <data android:scheme="com.jobhuntagent.firstrole" android:host="login-callback"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
