@@ -90,6 +90,16 @@ def test_monthly_stipend_is_annualized_as_inr():
     assert job.salary_currency == "INR"
 
 
+def test_missing_pay_in_defaults_to_monthly():
+    # Regression: an Unstop stipend with no pay_in must annualize as monthly (x12),
+    # not render ₹12,000/month as a ₹12,000/YEAR salary. All rows here are interns.
+    row = _row(jobDetail={**_row()["jobDetail"], "pay_in": None, "min_salary": 12000, "max_salary": 12000})
+    with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_page([row]))):
+        job = asyncio.run(fetch_unstop_internships(10))[0]
+    assert job.salary_min == 144_000
+    assert job.salary_max == 144_000
+
+
 def test_yearly_pay_in_is_not_multiplied():
     row = _row(jobDetail={**_row()["jobDetail"], "pay_in": "yearly", "min_salary": 600000, "max_salary": 900000})
     with patch("httpx.AsyncClient.get", new=AsyncMock(return_value=_page([row]))):

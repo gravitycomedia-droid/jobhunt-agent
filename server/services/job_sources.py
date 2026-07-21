@@ -649,7 +649,12 @@ def _unstop_row_to_job(r: dict) -> JobIn | None:
     salary_min = detail.get("min_salary") if paid else None
     salary_max = detail.get("max_salary") if paid else None
 
-    mult = _UNSTOP_PERIOD_MULTIPLIER.get((detail.get("pay_in") or "").lower(), 1)
+    # Unstop opportunities here are all internships, whose stipends are
+    # effectively always monthly — so a MISSING pay_in defaults to monthly (x12),
+    # not x1, which would render a ₹12,000/month stipend as a ₹12,000/YEAR salary.
+    # A present-but-unrecognized period (a one-time/lump-sum prize) is left as-is.
+    period = (detail.get("pay_in") or "").strip().lower()
+    mult = 12 if not period else _UNSTOP_PERIOD_MULTIPLIER.get(period, 1)
     if salary_min is not None:
         salary_min *= mult
     if salary_max is not None:
