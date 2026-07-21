@@ -131,6 +131,18 @@ class _CostStatsScreenState extends State<CostStatsScreen> {
             message: 'Once the agent matches, tailors, or drafts something, its cost shows up here.',
           )
         else ...[
+          // Phase 14 / ADR-023: Gemini vs DeepSeek spend split. Only shown
+          // once a call has actually run on each — a single-provider month
+          // (e.g. DeepSeek key not yet deployed) just shows the one bar.
+          if (stats.byProvider.isNotEmpty) ...[
+            Text('BY PROVIDER', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+            const SizedBox(height: AppSpacing.space3),
+            for (var i = 0; i < stats.byProvider.length; i++) ...[
+              _providerRow(stats.byProvider[i]),
+              if (i != stats.byProvider.length - 1) const SizedBox(height: AppSpacing.space4),
+            ],
+            const SizedBox(height: AppSpacing.space5),
+          ],
           Text('BY ACTIVITY', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
           const SizedBox(height: AppSpacing.space3),
           for (var i = 0; i < stats.breakdown.length; i++) ...[
@@ -186,6 +198,42 @@ class _CostStatsScreenState extends State<CostStatsScreen> {
           Text(label, style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
         ],
       ),
+    );
+  }
+
+  Widget _providerRow(CostProviderItem item) {
+    // Brand-ish accents so the split reads at a glance: Gemini a warm amber,
+    // DeepSeek the app brand, anything else a neutral fallback.
+    final color = switch (item.provider) {
+      'gemini' => AppColors.warningFill,
+      'deepseek' => AppColors.brand600,
+      _ => AppColors.neutral400,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(item.label, style: AppTypography.body.copyWith(fontWeight: FontWeight.w600))),
+            Text('${item.calls} call${item.calls == 1 ? '' : 's'}', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+            const SizedBox(width: AppSpacing.space3),
+            Text(
+              '\$${item.cost.toStringAsFixed(item.cost < 0.01 && item.cost > 0 ? 4 : 2)}',
+              style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 14, color: AppColors.textPrimary),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: AppRadius.pillRadius,
+          child: LinearProgressIndicator(
+            value: (item.pct / 100).clamp(0.0, 1.0),
+            minHeight: 8,
+            backgroundColor: AppColors.neutral200,
+            valueColor: AlwaysStoppedAnimation(color),
+          ),
+        ),
+      ],
     );
   }
 
