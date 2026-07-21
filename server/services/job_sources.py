@@ -20,6 +20,30 @@ GREENHOUSE_BASE = "https://boards-api.greenhouse.io/v1/boards"
 LEVER_BASE = "https://api.lever.co/v0/postings"
 LINKEDIN_JOBS_SEARCH = "https://www.linkedin.com/jobs/search/"
 
+# Unstop's public opportunity-search API — the endpoint its own frontend calls,
+# no auth/cookies (confirmed by live recon 2026-07-20, docs/UNSTOP_ENDPOINT.md).
+UNSTOP_SEARCH_URL = "https://unstop.com/api/public/opportunity/search-result"
+# Recon tested per_page up to 100 without issue. We never pull the whole 800-item
+# catalogue — UNSTOP_MAX_RESULTS caps it — so a single page usually suffices.
+UNSTOP_PAGE_SIZE = 100
+
+# Browser-like headers mirroring what unstop.com's own frontend fetch() sends —
+# a real Chrome UA, a JSON Accept, same-origin Referer/Origin. Defensive against
+# a WAF that reputation-scores a datacenter IP + a "JobHuntAgent/1.0" UA; the
+# actual 2026-07-21 "0 jobs" bug turned out to be date parsing, not the WAF, but
+# these are cheap insurance and cost nothing when the endpoint is already open.
+UNSTOP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://unstop.com/internships",
+    "Origin": "https://unstop.com",
+    "X-Requested-With": "XMLHttpRequest",
+}
+
 # curious_coder~linkedin-jobs-scraper rejects count < 10 with a 400
 # ("Field input.count must be >= 10") — verified live 2026-07-13. So LinkedIn
 # has a hard floor on how cheap a single query can be; asking for 5 doesn't
@@ -484,6 +508,262 @@ async def fetch_naukri_apify(role: str, location: str, max_results: int) -> list
                 posted_at=r.get("postedDate"),
             )
         )
+    return jobs
+
+
+def _internshala_salary(r: dict) -> tuple[float | None, float | None, str | None]:
+    """Internshala stipend → (min, max, currency), annualized.
+
+    This actor is like Naukri, not LinkedIn: it hands us structured
+    salaryMin/salaryMax/salaryCurrency ints plus a salaryPeriod word, and a
+    stipendText fallback ("₹10,000 /month", "Unpaid"). Prefer the structured
+    ints; annualize a monthly stipend (×12) so it sits on the same axis as a
+    per-year salary. Unpaid comes through as 0/0 → nulls, never a real ₹0.
+    """
+    salary_min = r.get("salaryMin") or None  # 0 (unpaid) → None
+    salary_max = r.get("salaryMax") or None
+    currency = r.get("salaryCurrency")
+    period = (r.get("salaryPeriod") or "").lower()
+
+    if (salary_min or salary_max) and period:
+        mult = 12 if "month" in period else 1
+        salary_min = salary_min * mult if salary_min else salary_min
+        salary_max = salary_max * mult if salary_max else salary_max
+        return salary_min, salary_max, currency
+
+    # No structured amount, or an amount with no period to trust: parse the text,
+    # which carries its own period ("/month" is handled by salary.py now).
+    p_min, p_max, p_cur = parse_salary_text(r.get("stipendText"))
+    if p_min or p_max:
+        return p_min, p_max, currency or p_cur
+    return salary_min, salary_max, currency
+
+
+async def fetch_internshala_apify(role: str, location: str, max_results: int) -> list[JobIn]:
+    """Internshala via blackfalcondata~internshala-scraper (no-login, $0.0015/result).
+
+    Schema verified against a live run on 2026-07-21 (docs — see the .env.example
+    note), same as the other three actors were on 2026-07-13. This actor is the
+    good kind: it pre-parses INR stipends into salaryMin/salaryMax/salaryCurrency
+    and already canonicalizes the city ("Bangalore"), so the mapping is mostly
+    a rename.
+
+    listingType is fixed to "internship" — Internshala also has a "job" (fresher
+    full-time) mode, but querying both would be a second paid call per role, so we
+    take the internship pool and let the shared relevance gate keep the fresher
+    full-time roles it finds. Same "don't double the bill" logic as the LinkedIn/
+    Indeed single-query decision.
+    """
+    rows = await run_actor(
+        settings.apify_internshala_actor_id,
+        {
+            "query": role,
+            "location": location,
+            "listingType": "internship",
+            "country": settings.adzuna_country.upper(),  # reuse existing country config ("in" → "IN")
+            "maxResults": max_results,
+            "includeDetails": True,  # full JD text for embeddings, like Naukri's fetchDetails
+            "emitExpired": False,  # don't ingest postings past their apply-by date
+        },
+    )
+
+    jobs: list[JobIn] = []
+    for r in rows:
+        # jobKey is Internshala's stable numeric listing id; jobId is a content
+        # hash that shifts when the posting is edited, so it's the fallback.
+        external_id = r.get("jobKey") or r.get("jobId")
+        title = r.get("title")
+        if not external_id or not title:
+            continue
+        raw_location = r.get("location")
+        salary_min, salary_max, currency = _internshala_salary(r)
+        jobs.append(
+            JobIn(
+                source="internshala",
+                external_id=str(external_id),
+                title=title,
+                company=r.get("company"),
+                location=_primary_city(raw_location),
+                description=r.get("description") or r.get("descriptionMarkdown"),
+                salary_min=salary_min,
+                salary_max=salary_max,
+                # India-only source, so a missing currency defaults to INR, not $.
+                salary_currency=currency or infer_currency(raw_location, default="INR"),
+                redirect_url=r.get("applyUrl") or r.get("canonicalUrl") or r.get("sourceUrl"),
+                posted_at=r.get("postedAt"),
+            )
+        )
+    return jobs
+
+
+# Unstop hands us a period word rather than a suffix on a string. Monthly stipends
+# must be annualized (×12) so an internship's "₹15,000/month" sits on the same
+# axis as an Adzuna per-year salary — the same normalization salary.py does for
+# text. Only 'monthly' is multiplied: an unknown/lump-sum period is left as-is
+# rather than guessed, matching salary.py's refusal to invent a period.
+_UNSTOP_PERIOD_MULTIPLIER = {"monthly": 12, "yearly": 1, "annually": 1, "annual": 1}
+
+
+def _unstop_posted_at(raw) -> datetime | None:
+    """Unstop's approved_date is "2026-07-08 01:21:36 GMT+0530" — the literal
+    "GMT" before the offset makes it unparseable by pydantic and by strptime's
+    %z alike, so every Unstop row failed JobIn validation and got dropped (the
+    2026-07-21 "0 jobs" incident). Strip the "GMT" and parse; fall back to the
+    date alone, then to None. Never raises."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    cleaned = raw.replace("GMT", "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S %z", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.strptime(cleaned[:10], "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _unstop_row_to_job(r: dict) -> JobIn | None:
+    """Map one Unstop opportunity object into JobIn, or None if it lacks a stable
+    id/title. Field paths are from the Phase B recon (docs/UNSTOP_ENDPOINT.md),
+    captured off a live call — not guessed like the Internshala actor's."""
+    external_id = r.get("id")
+    title = r.get("title")
+    if not external_id or not title:
+        return None
+
+    # locations[] can be empty for remote-only postings; take the first city.
+    city = next((loc.get("city") for loc in (r.get("locations") or []) if isinstance(loc, dict) and loc.get("city")), None)
+
+    detail = r.get("jobDetail") or {}
+    # A work-from-home posting has no city but IS eligible (remote is location-
+    # independent). Tag it "Remote" from Unstop's structured work-mode so the
+    # relevance gate's remote path catches it reliably — better than hoping the
+    # JD text says "work from home".
+    if not city and (detail.get("type") == "wfh" or r.get("isWorkFromHome") is True):
+        city = "Remote"
+    # min_salary/max_salary are clean ints ALREADY — no salary.py text parse here
+    # (that's Naukri's "6-15 Lacs PA" job). They're null when the posting is unpaid.
+    paid = detail.get("paid_unpaid") == "paid"
+    salary_min = detail.get("min_salary") if paid else None
+    salary_max = detail.get("max_salary") if paid else None
+
+    mult = _UNSTOP_PERIOD_MULTIPLIER.get((detail.get("pay_in") or "").lower(), 1)
+    if salary_min is not None:
+        salary_min *= mult
+    if salary_max is not None:
+        salary_max *= mult
+
+    # currency is a Font Awesome icon class ("fa-rupee"), NOT free text — map it
+    # directly. Unstop is India-only, so an unmapped/missing value still defaults
+    # to INR (never "$" by omission), same posture as Naukri/Internshala.
+    raw_currency = detail.get("currency")
+    currency = "INR" if raw_currency == "fa-rupee" else infer_currency(city, default="INR")
+
+    return JobIn(
+        source="unstop",
+        external_id=str(external_id),
+        title=title,
+        company=(r.get("organisation") or {}).get("name"),
+        location=_primary_city(city),
+        description=_strip_html(r.get("details")),  # `details` is HTML, like Greenhouse's content
+        salary_min=salary_min,
+        salary_max=salary_max,
+        salary_currency=currency,
+        redirect_url=r.get("seo_url"),
+        posted_at=_unstop_posted_at(r.get("approved_date")),
+    )
+
+
+async def fetch_unstop_internships(max_results: int) -> list[JobIn]:
+    """Unstop internships via its public search API (ADR-003 v2, no login).
+
+    Direct httpx, not Apify: the endpoint carries no per-result cost, so unlike
+    the Apify sources there's no cost-cadence to schedule around — it's capped by
+    UNSTOP_MAX_RESULTS purely to stay a light, non-aggressive caller (ADR-003's
+    "no high-volume polling"). Follows fetch_adzuna()'s error contract: a failed
+    page logs and stops the loop, never raises, so a bad response yields whatever
+    was already collected rather than sinking the pipeline.
+    """
+    if max_results <= 0:
+        return []
+    per_page = min(max_results, UNSTOP_PAGE_SIZE)
+
+    # searchTerm biases the catalogue toward our roles. Without it Unstop returns
+    # all 760+ open internships newest-first (finance, marketing, campus-ambassador
+    # …) and almost none survive the fullstack/frontend/cloud relevance gate, so
+    # the source would fetch fine and still land ~0 jobs. One search per role,
+    # each capped at max_results — Unstop is free, so this is a per-role cap like
+    # the Apify sources' per-call cap. No roles configured → one unfiltered pass.
+    # (Unstop has no working server-side city filter, verified live — the gate
+    # handles Hyd/Blr.)
+    search_terms = _roles() or [None]
+
+    jobs: list[JobIn] = []
+    # follow_redirects: a WAF may 302 a suspicious request to a challenge/login
+    # page; following it lets response.json() fail cleanly (→ skip) instead of us
+    # misreading a 302 body. The URL is a fixed constant, not user input, so
+    # there's no SSRF concern in following redirects here.
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for term in search_terms:
+            collected = 0
+            page = 1
+            while collected < max_results:
+                params = {
+                    "opportunity": "internships",
+                    "page": page,
+                    "per_page": per_page,
+                    "oppstatus": "open",  # currently-open internships only
+                }
+                if term:
+                    params["searchTerm"] = term
+                try:
+                    response = await client.get(UNSTOP_SEARCH_URL, params=params, headers=UNSTOP_HEADERS)
+                    response.raise_for_status()
+                    payload = response.json()
+                except (httpx.HTTPError, ValueError) as e:
+                    logger.warning("Unstop %r page %d request failed: %s", term, page, e)
+                    break
+
+                # Scraped frontend API we don't control: from some networks (a
+                # datacenter IP, a WAF challenge) it can 200 with a different shape
+                # than the recon captured, so every level is type-checked rather
+                # than trusted. A wrong shape logs WHAT it got and stops — never
+                # raises, so the pipeline and the Phase F health row survive.
+                paginator = payload.get("data") if isinstance(payload, dict) else None
+                if not isinstance(paginator, dict):
+                    logger.warning(
+                        "Unstop %r page %d: unexpected response shape (data=%s) — possible WAF/IP block",
+                        term,
+                        page,
+                        type(paginator).__name__,
+                    )
+                    break
+
+                rows = paginator.get("data")
+                if not isinstance(rows, list) or not rows:
+                    break
+                for r in rows:
+                    if not isinstance(r, dict):
+                        continue
+                    try:
+                        job = _unstop_row_to_job(r)
+                    except Exception as e:
+                        # One malformed row must not lose the page — skip and log.
+                        logger.warning("Unstop row skipped (mapping error): %s", e)
+                        continue
+                    if job:
+                        jobs.append(job)
+                        collected += 1
+                    if collected >= max_results:
+                        break
+
+                last_page = paginator.get("last_page")
+                if not isinstance(last_page, int) or page >= last_page:
+                    break
+                page += 1
+
     return jobs
 
 

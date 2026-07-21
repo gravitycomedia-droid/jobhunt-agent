@@ -23,6 +23,7 @@ from config import settings
 from services.job_sources import (
     _primary_city,
     fetch_indeed_apify,
+    fetch_internshala_apify,
     fetch_linkedin_apify,
     fetch_naukri_apify,
 )
@@ -105,12 +106,34 @@ NAUKRI_ROW = {
 }
 
 
+# REAL row, captured live from blackfalcondata~internshala-scraper on 2026-07-21
+# (trimmed, not reshaped) — this actor was chosen over the plan's guessed
+# automation-lab actor after checking store pricing. Note it hands us STRUCTURED
+# salary (salaryMin/Max/Currency/Period), not free text, like Naukri.
+INTERNSHALA_ROW = {
+    "jobKey": "3204648",
+    "jobId": "779c19e62acb109e72e5b0ccfe3b559350ff90eb5a4f737ccade233220ee1c8f",
+    "title": "Full-Stack Development - Internship (Part Time)",
+    "company": "Parivartana Foundation",
+    "location": "Bangalore",  # actor already canonicalizes the city
+    "description": "About the internship: Selected intern's day-to-day responsibilities include building a React app...",
+    "salaryMin": 0,  # unpaid → 0/0, must become nulls not a real ₹0
+    "salaryMax": 0,
+    "salaryCurrency": "INR",
+    "salaryPeriod": None,
+    "stipendText": "Unpaid",
+    "applyUrl": "https://internshala.com/internship/detail/full-stack-development-parivartana-1783668246",
+    "postedAt": "2026-07-10",
+}
+
+
 @pytest.fixture(autouse=True)
 def _configured(monkeypatch):
     monkeypatch.setattr(settings, "apify_api_token", "test-token")
     monkeypatch.setattr(settings, "apify_linkedin_actor_id", "curious_coder~linkedin-jobs-scraper")
     monkeypatch.setattr(settings, "apify_indeed_actor_id", "misceres~indeed-scraper")
     monkeypatch.setattr(settings, "apify_naukri_actor_id", "makework36~naukri-scraper")
+    monkeypatch.setattr(settings, "apify_internshala_actor_id", "blackfalcondata~internshala-scraper")
     monkeypatch.setattr(settings, "apify_naukri_fetch_details", True)
 
 
@@ -295,10 +318,76 @@ def test_naukri_honours_fetch_details_toggle(monkeypatch):
     assert spy.call_args[0][1]["fetchDetails"] is False
 
 
+# --- internshala (ADR-003 v2) — mapping against the SYNTHETIC row -------------
+
+
+def test_internshala_maps_row():
+    with patch("services.job_sources.run_actor", new=_rows([INTERNSHALA_ROW])):
+        job = asyncio.run(fetch_internshala_apify("fullstack developer", "Bengaluru", 10))[0]
+
+    assert job.source == "internshala"
+    assert job.external_id == "3204648"  # jobKey (stable), not the jobId content hash
+    assert job.title == "Full-Stack Development - Internship (Part Time)"
+    assert job.company == "Parivartana Foundation"
+    assert job.location == "Bangalore"
+    assert job.description.startswith("About the internship")
+    assert job.redirect_url.startswith("https://internshala.com/internship/")  # applyUrl
+    assert job.posted_at.year == 2026 and job.posted_at.month == 7  # postedAt
+
+
+def test_internshala_uses_jobkey_not_content_hash():
+    # jobId is a content hash that shifts on edit; jobKey is the stable listing id.
+    assert INTERNSHALA_ROW["jobKey"] != INTERNSHALA_ROW["jobId"]
+    with patch("services.job_sources.run_actor", new=_rows([INTERNSHALA_ROW])):
+        job = asyncio.run(fetch_internshala_apify("dev", "Bengaluru", 10))[0]
+    assert job.external_id == INTERNSHALA_ROW["jobKey"]
+
+
+def test_internshala_annualizes_structured_monthly_stipend():
+    # A paid internship: structured ints + salaryPeriod "month" → ×12, currency
+    # straight from salaryCurrency (never $).
+    paid = {
+        **INTERNSHALA_ROW,
+        "salaryMin": 10000,
+        "salaryMax": 15000,
+        "salaryPeriod": "month",
+        "stipendText": "₹10,000 - 15,000 /month",
+    }
+    with patch("services.job_sources.run_actor", new=_rows([paid])):
+        job = asyncio.run(fetch_internshala_apify("dev", "Bengaluru", 10))[0]
+
+    assert job.salary_min == 120_000
+    assert job.salary_max == 180_000
+    assert job.salary_currency == "INR"
+
+
+def test_internshala_unpaid_is_null_salary_but_still_inr():
+    # The real captured row is unpaid (0/0) — must become nulls, not a real ₹0,
+    # and currency still defaults to INR (India-only source), never USD.
+    with patch("services.job_sources.run_actor", new=_rows([INTERNSHALA_ROW])):
+        job = asyncio.run(fetch_internshala_apify("dev", "Bengaluru", 10))[0]
+
+    assert (job.salary_min, job.salary_max) == (None, None)
+    assert job.salary_currency == "INR"
+
+
+def test_internshala_sends_internship_listing_type_and_cap():
+    spy = AsyncMock(return_value=[])
+    with patch("services.job_sources.run_actor", new=spy):
+        asyncio.run(fetch_internshala_apify("fullstack developer", "Bengaluru", 7))
+
+    run_input = spy.call_args[0][1]
+    assert run_input["query"] == "fullstack developer"
+    assert run_input["listingType"] == "internship"  # one paid call, not internship+job
+    assert run_input["maxResults"] == 7
+
+
 # --- isolation: every failure mode yields [], never raises --------------------
 
 
-@pytest.mark.parametrize("fetcher", [fetch_linkedin_apify, fetch_indeed_apify, fetch_naukri_apify])
+@pytest.mark.parametrize(
+    "fetcher", [fetch_linkedin_apify, fetch_indeed_apify, fetch_naukri_apify, fetch_internshala_apify]
+)
 def test_actor_failure_returns_empty(fetcher):
     # run_actor already swallows HTTP errors and returns [] — assert the fetcher
     # doesn't then blow up on the empty list.
@@ -306,7 +395,9 @@ def test_actor_failure_returns_empty(fetcher):
         assert asyncio.run(fetcher("dev", "Hyderabad", 10)) == []
 
 
-@pytest.mark.parametrize("fetcher", [fetch_linkedin_apify, fetch_indeed_apify, fetch_naukri_apify])
+@pytest.mark.parametrize(
+    "fetcher", [fetch_linkedin_apify, fetch_indeed_apify, fetch_naukri_apify, fetch_internshala_apify]
+)
 def test_malformed_rows_are_skipped_not_fatal(fetcher):
     # Rows missing the ID/title an actor is supposed to always send. A posting we
     # can't identify or name is worthless downstream — drop it, keep the rest.
@@ -315,7 +406,9 @@ def test_malformed_rows_are_skipped_not_fatal(fetcher):
         assert asyncio.run(fetcher("dev", "Hyderabad", 10)) == []
 
 
-@pytest.mark.parametrize("fetcher", [fetch_linkedin_apify, fetch_indeed_apify, fetch_naukri_apify])
+@pytest.mark.parametrize(
+    "fetcher", [fetch_linkedin_apify, fetch_indeed_apify, fetch_naukri_apify, fetch_internshala_apify]
+)
 def test_timeout_does_not_raise(fetcher):
     # The real client turns this into []; assert the fetcher surfaces no exception
     # to asyncio.gather() either way.

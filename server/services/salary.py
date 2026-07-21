@@ -62,16 +62,38 @@ _PERIOD_MULTIPLIERS: list[tuple[str, int]] = [
     ("per annum", 1),
     ("a year", 1),
     ("per year", 1),
+    ("/year", 1),
+    ("/yr", 1),
     ("yearly", 1),
     ("annually", 1),
     ("p.a.", 1),
     ("pa", 1),
     ("a month", 12),
     ("per month", 12),
+    # Slash forms ("₹10,000 /month", "12 K/Month") are how Internshala and many
+    # Indian stipend strings write the period. Without these the period defaults
+    # to 1 and a monthly stipend renders as a yearly salary 12x too low — the
+    # exact catastrophic-undercount this module exists to prevent. "/month"
+    # sits before "/mo" so the longer token wins the first-match scan.
+    ("/month", 12),
+    ("/mo", 12),
     ("monthly", 12),
     ("p.m.", 12),
 ]
-_UNSUPPORTED_PERIODS = ("an hour", "per hour", "hourly", "a day", "per day", "a week", "per week")
+_UNSUPPORTED_PERIODS = (
+    "an hour",
+    "per hour",
+    "hourly",
+    "/hour",
+    "/hr",
+    "a day",
+    "per day",
+    "/day",
+    "a week",
+    "per week",
+    "/week",
+    "/wk",
+)
 
 _NUMBER = re.compile(r"\d[\d,.]*")
 

@@ -3,10 +3,12 @@ from datetime import datetime, timedelta, timezone
 
 from config import settings
 from db.supabase_client import supabase
+from services.ingestion_health import record_and_alert_ingestion
 from services.job_ingestion import (
     backfill_job_embeddings,
     refresh_job_pool,
     refresh_scraped_sources,
+    refresh_unstop,
     should_scrape_today,
 )
 from services.llm import FollowupError, LlmApiError, generate_followup_draft
@@ -14,6 +16,18 @@ from services.matching import DEFAULT_RERANK_LIMIT, rerank_shortlist
 from services.notify import send_push_notification
 
 logger = logging.getLogger(__name__)
+
+# Per-source detail the ingestion health log consumes internally. Stripped from
+# the pipeline's returned summary so it never leaks into the API response — the
+# app's summary stays the flat counts it already renders.
+_INTERNAL_SUMMARY_KEYS = ("free_by_source", "free_errors", "scraped_by_source", "scraped_errors")
+
+
+def _strip_internal(summary: dict) -> dict:
+    for key in _INTERNAL_SUMMARY_KEYS:
+        summary.pop(key, None)
+    return summary
+
 
 # An application sitting in 'applied' this long with no reply is a
 # follow-up candidate (docs/PROMPTS.md section 4: "no response after
@@ -115,43 +129,63 @@ async def _refresh_and_backfill() -> dict:
         "jobs_fetched": refresh_result["fetched"],
         "jobs_inserted": refresh_result["inserted"],
         "embeddings_backfilled": backfill_result["backfilled"],
+        # Per-source detail for the cron's ingestion health log (plan 15,
+        # Phase F). Carried through but ignored by the per-user path, which
+        # doesn't log health — see run_daily_pipeline_for_all.
+        "free_by_source": refresh_result.get("by_source", {}),
+        "free_errors": refresh_result.get("errors", {}),
     }
 
 
 async def _refresh_scraped_if_due() -> dict:
-    """The paid Apify sources, on their own twice-weekly cadence (ADR-003,
-    amended). Deliberately called ONLY from run_daily_pipeline_for_all — i.e.
-    the cron path — and not from _refresh_and_backfill(), because that helper is
-    shared with run_daily_pipeline_for_profile(), which is what the app's "Run
-    agent now" button hits. Putting scraping in the shared helper would let any
-    user spend real Apify money on demand by tapping a button; the rate limiter
-    would cap the rate, not the fact of it.
+    """The scraped sources, gathered here so they run ONLY from
+    run_daily_pipeline_for_all — the cron path — and never from
+    _refresh_and_backfill(), which is shared with run_daily_pipeline_for_profile()
+    (the app's "Run agent now" button). Putting scraping in the shared helper
+    would let any user spend real Apify money — or hit Unstop — on demand by
+    tapping a button; the rate limiter would cap the rate, not the fact of it.
 
-    A failure here must not lose the day's re-ranks and follow-ups, so the whole
-    thing is inside a try — the free sources have already been ingested by the
-    time we get here.
+    Two independently-gated sub-paths, each wrapped so its failure loses only its
+    own jobs, never the day's re-ranks and follow-ups:
+      - Apify (LinkedIn/Indeed/Naukri/Internshala): per-source weekday cadence,
+        because each result costs money.
+      - Unstop: free/direct, so no cost-cadence — runs every cron day when
+        enable_india_sources is on. refresh_unstop() self-gates on that flag.
     """
-    if not should_scrape_today():
+    summary = {"scraped_fetched": 0, "scraped_inserted": 0, "scraped_by_source": {}, "scraped_errors": {}}
+
+    def _merge(result: dict) -> None:
+        summary["scraped_fetched"] += result.get("fetched", 0)
+        summary["scraped_inserted"] += result.get("inserted", 0)
+        summary["scraped_by_source"].update(result.get("by_source", {}))
+        summary["scraped_errors"].update(result.get("errors", {}))
+
+    # --- Apify sources (cost-gated by weekday cadence) ---
+    if should_scrape_today():
+        try:
+            _merge(await refresh_scraped_sources())
+        except Exception as e:
+            # refresh_scraped_sources() already swallows per-source failures, so
+            # reaching here means something systemic (Supabase down mid-upsert, an
+            # embedding failure). Log and continue — the "bad token doesn't crash
+            # the daily pipeline" acceptance criterion.
+            logger.exception("Apify scraped-source refresh failed, continuing pipeline: %s", e)
+    else:
         logger.info(
-            "Scraped sources: none due today (linkedin=%s indeed=%s naukri=%s)",
+            "Apify scraped sources: none due today (linkedin=%s indeed=%s naukri=%s internshala=%s)",
             settings.apify_linkedin_weekdays or "off",
             settings.apify_indeed_weekdays or "off",
             settings.apify_naukri_weekdays or "off",
+            settings.apify_internshala_weekdays if settings.enable_india_sources else "off",
         )
-        return {"scraped_fetched": 0, "scraped_inserted": 0}
 
+    # --- Unstop (free/direct, India-source-gated) ---
     try:
-        result = await refresh_scraped_sources()
+        _merge(await refresh_unstop())
     except Exception as e:
-        # Belt-and-braces: refresh_scraped_sources() already swallows per-source
-        # failures, so reaching here means something systemic (Supabase down
-        # mid-upsert, an embedding failure). Log it and let the rest of the
-        # pipeline run — this is exactly the "bad token doesn't crash the daily
-        # pipeline" acceptance criterion.
-        logger.exception("Scraped-source refresh failed, continuing pipeline: %s", e)
-        return {"scraped_fetched": 0, "scraped_inserted": 0}
+        logger.exception("Unstop refresh failed, continuing pipeline: %s", e)
 
-    return {"scraped_fetched": result["fetched"], "scraped_inserted": result["inserted"]}
+    return summary
 
 
 async def run_daily_pipeline_for_all() -> dict:
@@ -162,7 +196,23 @@ async def run_daily_pipeline_for_all() -> dict:
     a cron job with), but idempotent enough to call manually any time.
     """
     summary = await _refresh_and_backfill()
-    summary.update(await _refresh_scraped_if_due())
+    scraped = await _refresh_scraped_if_due()
+    summary.update(scraped)
+
+    # Ingestion health (plan 15, Phase F) — cron-only, ON PURPOSE. This is the
+    # one authoritative daily run where "a source returned nothing" is a real
+    # signal; logging it from the per-user "Run agent now" path instead would
+    # both spam the ops inbox and pollute the trailing-average baseline with
+    # partial intra-day runs. Wrapped so a health-check failure can never sink
+    # the pipeline it exists to monitor.
+    try:
+        record_and_alert_ingestion(
+            run_date=datetime.now(timezone.utc).date(),
+            by_source={**summary.get("free_by_source", {}), **scraped.get("scraped_by_source", {})},
+            errored={**summary.get("free_errors", {}), **scraped.get("scraped_errors", {})},
+        )
+    except Exception:
+        logger.exception("Ingestion health check failed (non-fatal)")
 
     profiles = supabase.table("profiles").select("*").execute().data
     matches_reranked = 0
@@ -175,7 +225,7 @@ async def run_daily_pipeline_for_all() -> dict:
     summary["profiles_processed"] = len(profiles)
     summary["matches_reranked"] = matches_reranked
     summary["followups_drafted"] = followups_drafted
-    return summary
+    return _strip_internal(summary)
 
 
 async def run_daily_pipeline_for_profile(profile: dict) -> dict:
@@ -185,4 +235,4 @@ async def run_daily_pipeline_for_profile(profile: dict) -> dict:
     """
     summary = await _refresh_and_backfill()
     summary.update(_process_profile(profile))
-    return summary
+    return _strip_internal(summary)

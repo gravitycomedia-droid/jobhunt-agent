@@ -44,6 +44,21 @@ known, bounded risk for a small personal deployment, not a decision that would
 necessarily hold at public-product scale. See
 [05-job-ingestion-and-matching.md](05-job-ingestion-and-matching.md).
 
+**Amendment v2 (2026-07-20) — ACCEPTED**: extends approval to two new no-login
+sources — **Internshala** (Apify) and **Unstop** (direct public JSON endpoint,
+no Apify) — under the same constraints as the 2026-07-13 amendment (no-login,
+capped, cron-path only, no redistribution). Also sets an explicit scale ceiling
+framed by WHO not just HOW MANY: **invite-only to known individuals, no public
+signup or marketing** (public signup is out of scope — a boundary, not a deferred
+roadmap item), with a soft ~100-user ceiling underneath that qualitative bound.
+Key point kept separate on purpose: **scraping volume is decoupled from user
+count** — the job pool is shared, so one daily refresh serves 5 or 100 users
+alike; more users never automatically means more Apify spend (what scales with
+users is Stage-2 LLM rerank, watched via `GET /stats/costs`). Each new source
+still makes zero live calls until `ENABLE_INDIA_SOURCES=true`; Unstop also waits
+on a one-time manual endpoint recon (Plan 15 Phase B). Full text in
+`DECISIONS.md`.
+
 **ADR-004 — Anti-fabrication guardrail with a deterministic post-check.**
 Tailoring returns `{original, tailored}` bullet pairs; `guardrail.py`
 fuzzy-verifies every `original` exists in the stored resume (threshold ≥85,

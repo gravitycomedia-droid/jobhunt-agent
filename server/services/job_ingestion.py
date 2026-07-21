@@ -21,10 +21,12 @@ from services.job_sources import (
     fetch_adzuna,
     fetch_greenhouse,
     fetch_indeed_apify,
+    fetch_internshala_apify,
     fetch_jsearch,
     fetch_lever,
     fetch_linkedin_apify,
     fetch_naukri_apify,
+    fetch_unstop_internships,
 )
 
 logger = logging.getLogger(__name__)
@@ -264,6 +266,17 @@ def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
     return {"fetched": len(fetched), "inserted": inserted}
 
 
+# The free sources, as (name, fetcher) pairs. Named here so refresh_job_pool()
+# can report a per-source raw count for the ingestion health log (plan 15,
+# Phase F) instead of the opaque aggregate it used to return.
+_FREE_SOURCES = [
+    ("adzuna", fetch_adzuna),
+    ("jsearch", fetch_jsearch),
+    ("greenhouse", fetch_greenhouse),
+    ("lever", fetch_lever),
+]
+
+
 async def refresh_job_pool() -> dict:
     """Fetch+dedup+embed+insert today's postings into the shared job pool
     (Brick 3/4). Plain function (not a route handler) so it can be called
@@ -273,11 +286,31 @@ async def refresh_job_pool() -> dict:
 
     Free sources only. The Apify-scraped sources bill per result, so they are
     deliberately NOT here — see refresh_scraped_sources().
+
+    Returns the usual {fetched, inserted} plus `by_source` (raw count per source
+    before dedup) and `errors` (source → message for any that raised), which the
+    cron feeds to the ingestion health log. return_exceptions keeps one source
+    crashing from sinking the others — each fetch_* already swallows its own HTTP
+    errors, so a raise here is unexpected, but the pool shouldn't die for it.
     """
-    adzuna_jobs, jsearch_jobs, greenhouse_jobs, lever_jobs = await asyncio.gather(
-        fetch_adzuna(), fetch_jsearch(), fetch_greenhouse(), fetch_lever()
-    )
-    return _dedup_embed_insert(adzuna_jobs + jsearch_jobs + greenhouse_jobs + lever_jobs)
+    results = await asyncio.gather(*(fetcher() for _, fetcher in _FREE_SOURCES), return_exceptions=True)
+
+    fetched: list[JobIn] = []
+    by_source: dict[str, int] = {}
+    errors: dict[str, str] = {}
+    for (name, _), result in zip(_FREE_SOURCES, results):
+        if isinstance(result, Exception):
+            logger.warning("Free source %s raised: %s: %s", name, type(result).__name__, result)
+            by_source[name] = 0
+            errors[name] = f"{type(result).__name__}: {result}"
+            continue
+        by_source[name] = len(result)
+        fetched.extend(result)
+
+    summary = _dedup_embed_insert(fetched)
+    summary["by_source"] = by_source
+    summary["errors"] = errors
+    return summary
 
 
 # Weekday gate for the paid sources. `datetime.weekday()` is 0=Mon..6=Sun.
@@ -323,6 +356,22 @@ def _scraped_sources_due(now: datetime | None = None) -> list[tuple[str, object,
             settings.apify_naukri_max_results,
         ),
     ]
+
+    # India source expansion (ADR-003 v2, 2026-07-20): Internshala only enters
+    # the rotation when the master switch is on, even if its actor ID and
+    # weekdays are set. This is the ADR sign-off gate expressed in code — the
+    # source cannot go live by config alone.
+    if settings.enable_india_sources:
+        configured.append(
+            (
+                "internshala",
+                settings.apify_internshala_actor_id,
+                fetch_internshala_apify,
+                settings.apify_internshala_weekdays,
+                settings.internshala_max_results,
+            )
+        )
+
     return [
         (name, fetcher, cap)
         for name, actor_id, fetcher, weekdays, cap in configured
@@ -385,6 +434,10 @@ async def refresh_scraped_sources(now: datetime | None = None) -> dict:
         async with semaphore:
             return await fetcher(role, location, cap)
 
+    # Track the source name alongside each task so per-source counts survive the
+    # flattened fan-out — the ingestion health log (plan 15, Phase F) needs to
+    # know WHICH source went quiet, not just the aggregate total.
+    task_sources = [name for name, _, _ in due for _ in roles for _ in locations]
     tasks = [
         _guarded(fetcher, role, location, cap)
         for _, fetcher, cap in due
@@ -397,19 +450,61 @@ async def refresh_scraped_sources(now: datetime | None = None) -> dict:
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     fetched: list[JobIn] = []
-    for result in results:
+    by_source: dict[str, int] = {name: 0 for name, _, _ in due}
+    errors: dict[str, str] = {}
+    for name, result in zip(task_sources, results):
         if isinstance(result, Exception):
-            logger.warning("A scraped source raised: %s: %s", type(result).__name__, result)
+            logger.warning("Scraped source %s raised: %s: %s", name, type(result).__name__, result)
+            # First error per source wins — enough to alert on; the rest are the
+            # same failure repeated across role×location calls.
+            errors.setdefault(name, f"{type(result).__name__}: {result}")
             continue
+        by_source[name] += len(result)
         fetched.extend(result)
 
     summary = _dedup_embed_insert(fetched)
     summary["calls"] = calls
+    summary["by_source"] = by_source
+    summary["errors"] = errors
     logger.info(
         "Scraped sources: %d fetched, %d inserted after dedup/freshness",
         summary["fetched"],
         summary["inserted"],
     )
+    return summary
+
+
+async def refresh_unstop() -> dict:
+    """Unstop internships (ADR-003 v2) — free, direct-fetch, cron-only.
+
+    Deliberately NOT part of refresh_scraped_sources(): that path is gated on the
+    Apify token and shaped around per-result billing / weekday cost-cadence, none
+    of which apply to a free public endpoint. Unstop is still *scraping* under
+    ADR-003 v2, though, so it keeps the two constraints that matter — behind
+    enable_india_sources (the sign-off gate) and callable only from the cron
+    batch (never refresh_job_pool / "Run agent now"). Same fetch→dedup→embed→
+    insert back-half as every other source.
+    """
+    if not settings.enable_india_sources:
+        logger.info("Unstop skipped: ENABLE_INDIA_SOURCES is false")
+        return {"fetched": 0, "inserted": 0, "by_source": {}, "errors": {}, "skipped": "disabled"}
+
+    # fetch_unstop_internships() is written to never raise, but wrap it anyway:
+    # if it somehow does, Unstop must still land in the health log as an ERROR
+    # row (by_source={"unstop":0} + an errors entry) rather than being swallowed
+    # by the pipeline's outer handler and vanishing — a dead source the ops alert
+    # can't see is worse than a dead source. This is the fix for the 2026-07-21
+    # incident where an Unstop exception left NO row at all.
+    try:
+        jobs = await fetch_unstop_internships(settings.unstop_max_results)
+    except Exception as e:
+        logger.exception("Unstop fetch raised")
+        return {"fetched": 0, "inserted": 0, "by_source": {"unstop": 0}, "errors": {"unstop": f"{type(e).__name__}: {e}"}}
+
+    logger.info("Unstop: fetched %d internships (cap %d)", len(jobs), settings.unstop_max_results)
+    summary = _dedup_embed_insert(jobs)
+    summary["by_source"] = {"unstop": len(jobs)}
+    summary["errors"] = {}
     return summary
 
 

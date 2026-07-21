@@ -102,6 +102,74 @@ for real rather than trusting their store pages:
    canonicalizes them — without it the same posting on two boards yields two
    dedup keys and lands twice.
 
+### Amendment v2 (2026-07-20) — Internshala + Unstop, and a scale ceiling
+
+> **Status: ACCEPTED (2026-07-20).** Plan 15 (`docs/15-india-source-expansion-and-ingestion-alerting-plan.md`)
+> gated all new scraping on this amendment; it is now signed off. Internshala
+> (Apify) and Unstop (direct-fetch) code may be built and wired in, but each
+> source still makes zero live calls until `ENABLE_INDIA_SOURCES=true` is set
+> (default `false`). Unstop additionally waits on its Phase B endpoint recon.
+> Phase F ingestion-health observability was never gated by this — it only
+> measures sources already approved under the 2026-07-13 amendment.
+
+The 2026-07-13 amendment approved LinkedIn/Indeed/Naukri via no-login Apify
+actors for "personal use by a small, known group of friends." Plan 15 widens
+that boundary on two independent axes, and this amendment governs both.
+
+**1. Two new scraped sources.** Approval extends to:
+- **Internshala** via a no-login Apify actor (internships + fresher jobs).
+- **Unstop** via its own public JSON endpoint (the one its web frontend calls),
+  fetched directly with `httpx` — no Apify actor, no login, no credentials.
+
+Both inherit every constraint of the 2026-07-13 amendment unchanged: no-login
+only, capped result counts per run, cron-path only (never a user-tappable
+button), no resale/redistribution/public hosting of the scraped data.
+
+**2. A scale ceiling, framed by WHO not just HOW MANY.** The original wording
+("a small, known group of friends") is what keeps the ToS-risk framing —
+"personal, non-commercial" — defensible. Growing the user base doesn't
+automatically erode that, so this amendment states the boundary explicitly:
+
+- **Access is invite-only to known individuals.** No public signup, no
+  marketing, no open registration. This constraint — not the headcount — is
+  what actually keeps "personal/small-batch" honest.
+- **Soft ceiling of ~100 users** sits underneath that qualitative bound, not
+  the other way around. Crossing it is a prompt to revisit this ADR, not a hard
+  stop.
+
+**3. Scraping volume is a SEPARATE dial from user count — decoupled on purpose.**
+The job pool is shared: one daily refresh serves every reader, whether that's 5
+users or 100. So more users does **not** imply more Apify spend. Widening
+coverage (more role×location combos, higher per-query caps) is an independent
+decision with its own cost, made deliberately — never automatic fallout from
+onboarding more people. The per-source caps, cadence weekdays, and concurrency
+ceiling from the 2026-07-13 amendment remain the spend control and are unchanged
+by this one.
+
+**What actually scales with users is Stage-2 LLM rerank, not scraping** — ~20
+jobs/user/day through Gemini, so ~2,000 rerank calls/day at 100 users vs. a
+handful today. That's a cost to watch via `GET /stats/costs` once a few dozen
+real users are on, with real numbers rather than an estimate — and it's an LLM
+cost, wholly separate from the Apify/scraping budget this ADR governs.
+
+**Why accept the wider boundary:** Indian fresher/intern coverage is still the
+gap ADR-003 has been chipping at since 2026-07-13; Internshala and Unstop are
+where a lot of the genuinely entry-level Indian volume lives, and neither
+requires a login. The residual ToS/blocking risk is the same *kind* already
+accepted for LinkedIn/Indeed/Naukri, held bounded by the same mechanisms
+(no-login, capped, cron-only) plus the explicit invite-only ceiling above.
+Public signup is **out of scope** — not a roadmap item this ADR defers, but a
+boundary it draws: this deployment stays invite-only to known individuals with
+no public registration or marketing. Opening it to the public would be a
+different product with a different risk profile, and would require a fresh ADR
+before any of this scraping could carry over.
+
+**Implementation gate:** `ENABLE_INDIA_SOURCES` (default `false`) is the master
+kill switch for both new sources; the code lands and is unit-tested against
+mocked responses behind it, and makes zero live calls to Internshala or Unstop
+until this amendment is accepted AND the flag is flipped. Unstop additionally
+waits on a one-time manual endpoint-recon step (Plan 15 Phase B).
+
 ---
 
 ## ADR-004: Anti-fabrication guardrail with deterministic post-check

@@ -8,7 +8,7 @@ at the bottom are the ones that actually bite in practice.
 
 import pytest
 
-from services.job_filter import in_target_city, is_entry_level, is_relevant, matches_target_role
+from services.job_filter import in_target_city, is_entry_level, is_relevant, is_remote, matches_target_role
 
 # Real titles observed in the live pool on 2026-07-13.
 KEEP = [
@@ -32,9 +32,16 @@ DROP = [
     # Entry-level and in-city, but not a role we hunt.
     ("Marketing Intern", "Hyderabad"),
     ("HR Trainee", "Bangalore"),
-    # Right role and entry-level, wrong city.
+    # Right role and entry-level, wrong city (and NOT remote — those are kept now).
     ("Frontend Developer Intern", "Pune"),
-    ("Full Stack Intern", "Remote"),
+    ("Full Stack Intern", "Chennai"),
+]
+
+# Remote roles are accepted regardless of city (2026-07-21) — a fresher can take
+# a remote internship from anywhere. Unstop tags WFH postings "Remote".
+REMOTE_KEEP = [
+    ("Full Stack Developer Internship", "Remote"),
+    ("Frontend Developer Intern (WFH)", None),
 ]
 
 
@@ -46,6 +53,24 @@ def test_keeps_fresher_and_intern_roles(title, location):
 @pytest.mark.parametrize("title,location", DROP)
 def test_drops_senior_wrong_role_or_wrong_city(title, location):
     assert is_relevant(title, location) is False
+
+
+@pytest.mark.parametrize("title,location", REMOTE_KEEP)
+def test_keeps_remote_roles_regardless_of_city(title, location):
+    assert is_relevant(title, location) is True
+
+
+def test_remote_from_description_keeps_the_role():
+    # No city, but the JD states work-from-home → kept (title is a target role).
+    assert is_relevant("Full Stack Developer Intern", None, "This is a fully remote, work from home internship.") is True
+
+
+def test_bare_remote_in_prose_does_not_flip_an_offsite_job():
+    # A Pune office internship whose JD merely mentions a "remote git repository"
+    # must NOT be rescued by the remote path — the strict text pattern ignores it,
+    # and Pune isn't a target city, so it stays dropped.
+    assert is_remote(None, None, "You'll push to our remote git repository daily.") is False
+    assert is_relevant("Frontend Developer Intern", "Pune", "Work with our remote team's repo.") is False
 
 
 def test_senior_veto_beats_an_entry_keyword_in_the_title():

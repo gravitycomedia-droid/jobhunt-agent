@@ -25,6 +25,12 @@ from services.salary import infer_currency, parse_salary_text
         #     to Adzuna's per-year numbers
         ("₹50,000 a month", (600_000, 600_000, "INR")),
         ("₹40,000 - ₹60,000 per month", (480_000, 720_000, "INR")),
+        # --- slash-period forms (Internshala stipends, ADR-003 v2): "/month" must
+        #     annualize the same as "a month" or a stipend reads 12x too low
+        ("₹10,000 /month", (120_000, 120_000, "INR")),
+        ("12 K/Month", (144_000, 144_000, None)),  # the plan's named acceptance case
+        ("₹15,000 - ₹25,000 /month", (180_000, 300_000, "INR")),
+        ("₹8,00,000 /year", (800_000, 800_000, "INR")),
         # --- western formats still work
         ("$120,000 - $150,000 a year", (120_000, 150_000, "USD")),
         ("$90k - $110k a year", (90_000, 110_000, "USD")),
@@ -55,7 +61,7 @@ def test_unparseable_yields_all_none(text):
 
 @pytest.mark.parametrize(
     "text",
-    ["₹500 an hour", "$50 per hour", "₹2,000 a day", "£300 per day"],
+    ["₹500 an hour", "$50 per hour", "₹2,000 a day", "£300 per day", "₹5,000 /week", "₹800 /day"],
 )
 def test_hourly_and_daily_are_dropped_not_annualized(text):
     # Annualizing an hourly rate needs an hours-per-week assumption we don't

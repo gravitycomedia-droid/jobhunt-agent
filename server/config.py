@@ -181,6 +181,32 @@ class Settings(BaseSettings):
     # and re-ranked, so the stub would systematically under-score Naukri jobs.
     apify_naukri_fetch_details: bool = True
 
+    # --- India source expansion (plan 15) -----------------------------------
+    # New scraped sources beyond ADR-003's original three. These stay INERT
+    # until two independent gates are both satisfied: (1) enable_india_sources
+    # flipped true, and (2) ADR-003 v2 signed off (see DECISIONS.md). The caps
+    # are settings-driven from day one so turning a source on is an env change,
+    # never a code edit — same posture as the existing Apify knobs above.
+    #
+    # enable_india_sources is the master kill switch for BOTH Internshala and
+    # Unstop. Default false: nothing new scrapes on a fresh deploy, so the ADR
+    # sign-off gate can't be bypassed by simply shipping the code.
+    enable_india_sources: bool = False
+    apify_internshala_actor_id: str = ""
+    # Same per-source cadence pattern as the other Apify sources — blank = never
+    # runs (an independent gate on top of enable_india_sources and the actor ID).
+    apify_internshala_weekdays: str = "tue,fri"
+    internshala_max_results: int = 10
+    unstop_max_results: int = 20
+
+    # --- Ingestion health alerting (plan 15, Phase F) -----------------------
+    # Ops mailbox for "a source stopped returning data" alerts — NOT a
+    # user-facing address. Empty → health is still logged to
+    # source_ingestion_log, but no email is sent (the alert no-ops, same
+    # graceful-degrade posture as resend_api_key). Golden rule 1: server-side
+    # only, lives in Secret Manager / .env.
+    ops_alert_email: str = ""
+
     # Brick 9: shared secret the Render cron job sends in X-Pipeline-Secret
     # to trigger the all-users batch run (POST /pipeline/run) — distinct
     # from the per-user POST /pipeline/run-mine, which uses the caller's

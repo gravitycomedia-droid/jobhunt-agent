@@ -56,6 +56,20 @@ _ENTRY = re.compile(
 # --- location -----------------------------------------------------------------
 _CITY = re.compile(r"hyderabad|bangalore|bengaluru|secunderabad|hyd\b|blr\b", re.I)
 
+# Remote is location-independent — a fresher in Hyderabad can take a remote
+# internship based anywhere, so remote roles pass the location gate without a
+# Hyd/Blr mention (added 2026-07-21; Unstop internships are heavily WFH).
+# Two patterns on purpose: the LOCATION field is a controlled value, so a bare
+# "Remote" there is trustworthy; free text is not, so a JD must use a strong
+# phrase ("work from home", "fully remote", "remote internship") — a bare
+# "remote" in a JD usually means "remote team/repo", not the job's work mode.
+_REMOTE_LOCATION = re.compile(r"\bremote\b|work\s*from\s*home|work-from-home|\bwfh\b", re.I)
+_REMOTE_TEXT = re.compile(
+    r"work\s*from\s*home | work-from-home | \bwfh\b | fully\s+remote | 100%\s+remote"
+    r" | remote\s+(intern(ship)?|role|position|job|opportunity) | work\s+from\s+anywhere",
+    re.I | re.X,
+)
+
 
 def _head(description: str | None, chars: int = 1200) -> str:
     """Only the top of a JD is worth scanning: the seniority and years-of-
@@ -87,10 +101,27 @@ def in_target_city(location: str | None, description: str | None = None) -> bool
     return bool(_CITY.search(location or "") or _CITY.search(_head(description, 400)))
 
 
+def is_remote(location: str | None, title: str | None = None, description: str | None = None) -> bool:
+    """True for work-from-home / fully-remote roles — accepted regardless of city.
+    The location field gets the lenient pattern (it's a controlled value); title
+    and description get the strict one (a bare 'remote' in prose is too noisy)."""
+    return bool(
+        _REMOTE_LOCATION.search(location or "")
+        or _REMOTE_TEXT.search(title or "")
+        or _REMOTE_TEXT.search(_head(description, 400))
+    )
+
+
+def in_target_location(location: str | None, title: str | None = None, description: str | None = None) -> bool:
+    """Hyd/Blr OR remote. Remote is location-independent, so it satisfies the
+    location requirement on its own."""
+    return in_target_city(location, description) or is_remote(location, title, description)
+
+
 def is_relevant(title: str | None, location: str | None, description: str | None = None) -> bool:
     """The single gate every ingested posting passes through, whatever its source."""
     return (
         matches_target_role(title, description)
         and is_entry_level(title, description)
-        and in_target_city(location, description)
+        and in_target_location(location, title, description)
     )
