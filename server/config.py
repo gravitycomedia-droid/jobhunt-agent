@@ -36,6 +36,27 @@ class Settings(BaseSettings):
     # rates against the Gemini baseline first (see DECISIONS.md ADR-023).
     tailor_provider: str = "gemini"
 
+    # --- Phase 4 (frontend rebuild v2): entitlements, chat, cosmetic wallet ---
+    # The ONLY real entitlement seam. services/entitlements.py::require_tier
+    # reads a profile's subscription_tier, but falls back to THIS when a row
+    # predates migration 022 — so flipping default_tier="free" makes every
+    # pro-gated endpoint return 402 across the board (the Phase 4 acceptance
+    # test does exactly this). "pro" keeps the whole beta unrestricted.
+    default_tier: str = "pro"
+
+    # Which provider services/chat.py routes the grounded assistant through.
+    # "deepseek" per the plan (cheap, thinking disabled per ADR-023); an absent
+    # DEEPSEEK_API_KEY still falls back to Gemini via llm.py::_provider_for, so
+    # chat works on a Gemini-only deploy.
+    chat_provider: str = "deepseek"
+
+    # R-C: when a new user has no llm_calls history to derive a mean per-action
+    # cost from, /wallet computes actions_remaining against this constant and
+    # marks "estimated": true inside data. ~₹1/action → ~200 actions on a full
+    # ₹200 wallet. Once real rows exist the derived mean takes over. Never a
+    # hardcoded action COUNT — always balance ÷ a per-action cost.
+    wallet_fallback_cost_paise: int = 100
+
     supabase_url: str
     supabase_service_key: str
     supabase_anon_key: str = ""
@@ -233,6 +254,16 @@ class Settings(BaseSettings):
     rate_limit_resume_parse: int = 3  # POST /resume/parse
     rate_limit_manual_parse: int = 5  # POST /jobs/manual/parse & /jobs/from-jd/parse
     rate_limit_jobs_refresh: int = 10  # POST /jobs/refresh
+    # Phase 4: the grounded chat is an LLM call, so it gets the same coarse guard.
+    rate_limit_chat: int = 10  # POST /chat
+    # Phase 4 security fixes: LLM/URL-fetch endpoints that were previously
+    # unthrottled. /forms/parse fetches a remote URL AND calls the vision model;
+    # /forms/fill and /applications/{id}/followup are both LLM generations;
+    # /stats/skill-growth fans out to the LLM for course suggestions.
+    rate_limit_forms_parse: int = 5  # POST /forms/parse
+    rate_limit_forms_fill: int = 5  # POST /forms/fill
+    rate_limit_followup: int = 5  # POST /applications/{id}/followup
+    rate_limit_skill_growth: int = 10  # GET /stats/skill-growth
 
     model_config = SettingsConfigDict(env_file=".env")
 
