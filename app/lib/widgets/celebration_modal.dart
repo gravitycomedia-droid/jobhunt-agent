@@ -43,10 +43,8 @@ class _CelebrationModalState extends State<CelebrationModal> with TickerProvider
     super.initState();
     HapticService.instance.heavy(); // policy: celebration = one heavy tick
     final rnd = math.Random(7); // fixed seed → deterministic gallery/tests
-    const palette = [
-      Color(0xFFF5842B), Color(0xFFE0B33A), Color(0xFF2E9E6B), // gauge gradient
-      Color(0xFF5750E8), Color(0xFF4B78C9),
-    ];
+    // Colour is a palette INDEX resolved from theme tokens at paint time
+    // (see build); the 5-slot palette is gaugeGradient(3) + accent + info.
     _pieces = List.generate(40, (i) {
       return _Confetto(
         x: rnd.nextDouble(),
@@ -54,7 +52,7 @@ class _CelebrationModalState extends State<CelebrationModal> with TickerProvider
         drift: (rnd.nextDouble() - 0.5) * 0.25,
         rotSpeed: (rnd.nextDouble() - 0.5) * 8,
         size: 6 + rnd.nextDouble() * 6,
-        color: palette[rnd.nextInt(palette.length)],
+        colorIndex: rnd.nextInt(5),
       );
     });
   }
@@ -75,7 +73,13 @@ class _CelebrationModalState extends State<CelebrationModal> with TickerProvider
           child: IgnorePointer(
             child: AnimatedBuilder(
               animation: _fall,
-              builder: (_, _) => CustomPaint(painter: _ConfettiPainter(_pieces, _fall.value)),
+              builder: (_, _) => CustomPaint(
+                painter: _ConfettiPainter(
+                  _pieces,
+                  _fall.value,
+                  [...AppColors.gaugeGradient, c.accent, c.info],
+                ),
+              ),
             ),
           ),
         ),
@@ -152,7 +156,7 @@ class _Confetto {
     required this.drift,
     required this.rotSpeed,
     required this.size,
-    required this.color,
+    required this.colorIndex,
   });
 
   final double x; // 0..1 start column
@@ -160,14 +164,15 @@ class _Confetto {
   final double drift; // horizontal drift fraction
   final double rotSpeed;
   final double size;
-  final Color color;
+  final int colorIndex; // slot into the theme-resolved palette
 }
 
 class _ConfettiPainter extends CustomPainter {
-  _ConfettiPainter(this.pieces, this.t);
+  _ConfettiPainter(this.pieces, this.t, this.palette);
 
   final List<_Confetto> pieces;
   final double t;
+  final List<Color> palette;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -180,7 +185,7 @@ class _ConfettiPainter extends CustomPainter {
       canvas.save();
       canvas.translate(dx, dy);
       canvas.rotate(p.rotSpeed * eased);
-      final paint = Paint()..color = p.color.withValues(alpha: 1 - eased * 0.3);
+      final paint = Paint()..color = palette[p.colorIndex].withValues(alpha: 1 - eased * 0.3);
       canvas.drawRect(
         Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.5),
         paint,
@@ -190,5 +195,5 @@ class _ConfettiPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_ConfettiPainter o) => o.t != t;
+  bool shouldRepaint(_ConfettiPainter o) => o.t != t || o.palette != palette;
 }
