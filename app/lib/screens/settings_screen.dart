@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
+import '../services/theme_controller.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
@@ -133,6 +134,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.space4),
+          Text('APPEARANCE', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          const SizedBox(height: AppSpacing.space2),
+          Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              border: Border.all(color: AppColors.border),
+              borderRadius: AppRadius.lgRadius,
+              boxShadow: AppElevation.e1,
+            ),
+            child: ValueListenableBuilder<ThemeMode>(
+              valueListenable: ThemeController.instance.mode,
+              builder: (context, mode, _) {
+                final isDark = mode == ThemeMode.dark ||
+                    (mode == ThemeMode.system &&
+                        MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Dark mode', style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text('Follows your system setting until you choose here', style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.space2),
+                      Switch(
+                        value: isDark,
+                        onChanged: (v) => ThemeController.instance.set(v ? ThemeMode.dark : ThemeMode.light),
+                        activeThumbColor: AppColors.brand600,
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
           const SizedBox(height: AppSpacing.space4),

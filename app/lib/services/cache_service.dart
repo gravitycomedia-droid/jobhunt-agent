@@ -45,6 +45,23 @@ class CacheService {
   /// pull-to-refresh ignores this and always refetches — see [RefreshThrottle].
   static const freshFor = Duration(minutes: 5);
 
+  /// Phase 2: the app-wide theme mode is a **device-level** preference, so it
+  /// is stored un-namespaced (survives sign-out, applies before any user is
+  /// known). Still the same SharedPreferences layer — no second storage layer.
+  /// The `app:` prefix can never collide with a user id namespace (UUIDs), so
+  /// [clearForUser] leaves it untouched.
+  static const _keyThemeMode = 'app:theme_mode';
+
+  Future<String?> readThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyThemeMode);
+  }
+
+  Future<void> writeThemeMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyThemeMode, mode);
+  }
+
   String? get _userId => Supabase.instance.client.auth.currentUser?.id;
 
   /// When the entry for [key] was last written, or null if there's no cache
