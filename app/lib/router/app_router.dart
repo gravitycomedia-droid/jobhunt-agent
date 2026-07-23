@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -6,6 +7,7 @@ import '../screens/add_job_screen.dart';
 import '../screens/applications_body.dart';
 import '../screens/auth_screen.dart';
 import '../screens/cost_stats_screen.dart';
+import '../screens/debug_gallery_screen.dart';
 import '../screens/form_fill_screen.dart';
 import '../screens/home_body.dart';
 import '../screens/jd_resume_screen.dart';
@@ -50,6 +52,10 @@ final GoRouter appRouter = GoRouter(
   redirect: (context, state) {
     final n = appRouterNotifier;
     final loc = state.matchedLocation;
+
+    // Debug-only widget gallery is always reachable, signed in or not.
+    if (kDebugMode && loc == '/debug/gallery') return null;
+
     final preAuth = loc == '/splash' || loc == '/auth' || loc == '/signup';
 
     if (!n.isSignedIn) {
@@ -178,6 +184,14 @@ final GoRouter appRouter = GoRouter(
         return ResumePreviewScreen(jobId: args.jobId, jobTitle: args.jobTitle);
       },
     ),
+
+    // --- debug-only signature-widget gallery (Phase 3) ------------------
+    if (kDebugMode)
+      GoRoute(
+        parentNavigatorKey: _rootNavigatorKey,
+        path: '/debug/gallery',
+        builder: (context, state) => const DebugGalleryScreen(),
+      ),
   ],
 );
 
