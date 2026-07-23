@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../models/resume_profile.dart';
@@ -12,11 +13,8 @@ import '../widgets/empty_state.dart';
 import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
 import '../widgets/stale_banner.dart';
-import 'cost_stats_screen.dart';
 import 'profile_review_screen.dart';
-import 'resume_upload_screen.dart';
 import 'settings_screen.dart';
-import 'skill_growth_screen.dart';
 import 'target_roles_screen.dart';
 
 /// The Profile tab's content (Brick 9 polish) — the account-level home
@@ -193,17 +191,13 @@ class _ProfileBodyState extends State<ProfileBody> {
           _navRow(
             icon: AppIconName.dollarSign,
             label: 'LLM cost & usage',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const CostStatsScreen()),
-            ),
+            onTap: () => context.push('/cost'),
             showDivider: true,
           ),
           _navRow(
             icon: AppIconName.trendingUp,
             label: 'Skill growth',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SkillGrowthScreen()),
-            ),
+            onTap: () => context.push('/skill-growth'),
             showDivider: true,
           ),
           _navRow(
@@ -311,9 +305,7 @@ class _ProfileBodyState extends State<ProfileBody> {
         title: 'No resume uploaded yet',
         message: 'Upload a resume to start matching and tailoring against jobs.',
         actionLabel: 'Upload Resume',
-        onAction: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ResumeUploadScreen()),
-        ),
+        onAction: () => context.push('/resume-upload'),
       );
     }
 

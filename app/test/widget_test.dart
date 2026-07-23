@@ -29,7 +29,11 @@ void main() {
   testWidgets('Splash screen leads to the auth screen', (WidgetTester tester) async {
     await tester.pumpWidget(const JobHuntAgentApp());
     await tester.tap(find.text('Get started'));
+    // go_router navigation is an async route transition (the old AuthGate
+    // switched synchronously via setState). Pump through the transition rather
+    // than pumpAndSettle, which would hang on the splash's continuous animation.
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('Continue with Google'), findsOneWidget);
   });

@@ -1,8 +1,10 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/match_item.dart';
+import '../router/route_args.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/match_feed.dart';
@@ -17,7 +19,6 @@ import '../widgets/match_card.dart';
 import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
 import '../widgets/stale_banner.dart';
-import 'resume_diff_screen.dart';
 
 /// The Matches tab's content (Brick 9 polish: chrome comes from
 /// [MainTabScreen] / [AppShell], this is just the body). Two-stage RAG
@@ -284,9 +285,7 @@ class _MatchesBodyState extends State<MatchesBody> {
       // no collapse affordance — MatchCard already supported this via
       // defaultExpanded, just unused until now.
       defaultExpanded: true,
-      onTailor: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ResumeDiffScreen(jobId: job.id, jobTitle: job.title)),
-      ),
+      onTailor: () => context.push('/tailor', extra: TailorArgs(jobId: job.id, jobTitle: job.title)),
     );
   }
 }

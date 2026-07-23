@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/application_item.dart';
 import '../models/job.dart';
@@ -15,9 +16,6 @@ import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
 import '../widgets/stale_banner.dart';
 import '../widgets/task_toast.dart';
-import 'add_job_screen.dart';
-import 'form_fill_screen.dart';
-import 'jd_resume_screen.dart';
 import 'shortlist_screen.dart';
 
 /// The Jobs tab's content (frontend rebuild Phase 1, prototype `ui.isJobs`)
@@ -167,22 +165,18 @@ class _JobsListBodyState extends State<JobsListBody> {
             HeaderActionButton(
               icon: AppIconName.autoAwesome,
               tooltip: 'Customize resume for a JD',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const JdResumeScreen()),
-              ),
+              onPressed: () => context.push('/jd-resume'),
             ),
             HeaderActionButton(
               icon: AppIconName.fileText,
               tooltip: 'Fill an application form',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const FormFillScreen()),
-              ),
+              onPressed: () => context.push('/form-fill'),
             ),
             HeaderActionButton(
               icon: AppIconName.plus,
               tooltip: 'Add a job manually',
               onPressed: () async {
-                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddJobScreen()));
+                await context.push('/add-job');
                 if (mounted) unawaited(_loadJobs(force: true));
               },
             ),

@@ -50,6 +50,7 @@ dependencies:
   # Phase 5: stale-while-revalidate cache (was wrongly in dev_dependencies —
   # runtime code can't import dev deps in a release build).
   shared_preferences: ^2.3.2
+  go_router: ^17.3.0
 
 dev_dependencies:
   flutter_test:

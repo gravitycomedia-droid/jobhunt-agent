@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'config/supabase_config.dart';
-import 'screens/auth_gate.dart';
+import 'router/app_router.dart';
 import 'services/api_client.dart';
 import 'services/theme_controller.dart';
 import 'theme/app_theme.dart';
@@ -47,7 +47,7 @@ class JobHuntAgentApp extends StatelessWidget {
     // the FlutterFlow-equivalent of binding a widget to an App State field.
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeController.instance.mode,
-      builder: (context, mode, _) => MaterialApp(
+      builder: (context, mode, _) => MaterialApp.router(
         title: 'FirstRole',
         theme: appLight,
         darkTheme: appDark,
@@ -56,7 +56,7 @@ class JobHuntAgentApp extends StatelessWidget {
         // show on whatever screen/tab the user is on when a background task
         // finishes.
         scaffoldMessengerKey: appScaffoldMessengerKey,
-        home: const AuthGate(),
+        routerConfig: appRouter,
       ),
     );
   }

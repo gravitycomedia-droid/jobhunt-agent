@@ -1,16 +1,17 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/form_fill.dart';
+import '../router/route_args.dart';
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
-import 'resume_diff_screen.dart';
 
 /// Phase 6: "Fill an application form".
 ///
@@ -235,12 +236,11 @@ class _FormFillScreenState extends State<FormFillScreen> {
                   title: 'Job description detected',
                   message: 'This form includes a JD — tailor your resume for it before applying.',
                   actionLabel: 'Tailor resume',
-                  onAction: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ResumeDiffScreen(
-                        jobId: _parsed!.jobId!,
-                        jobTitle: _parsed!.jobTitle ?? _parsed!.form.title,
-                      ),
+                  onAction: () => context.push(
+                    '/tailor',
+                    extra: TailorArgs(
+                      jobId: _parsed!.jobId!,
+                      jobTitle: _parsed!.jobTitle ?? _parsed!.form.title,
                     ),
                   ),
                 ),
