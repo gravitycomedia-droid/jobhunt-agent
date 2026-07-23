@@ -62,7 +62,7 @@ of being lost, and before Brick 10 work begins on top of it.
   cost dashboard.
 - A real, token-based design system (`lib/theme/`) driving 25 screens and 16
   reusable widgets — not just ad-hoc styling per screen.
-- Backend deployed and live on Render; first APK built (sideloadable, debug-signed).
+- Backend deployed and live on Google Cloud Run (`asia-south1`); release APK signed with a real upload keystore (ADR-030).
 
 ## Known gaps / open risks
 
@@ -71,9 +71,10 @@ of being lost, and before Brick 10 work begins on top of it.
    upload, and general touch/scroll UX are all unverified. This is the top
    priority before any Play Store submission.
 2. **Uncommitted frontend rebuild** (see above) — needs to be committed.
-3. **Release signing** — the Android release build currently uses the debug
-   keystore (`TODO: Add your own signing config` in `build.gradle.kts`); a real
-   upload keystore is required for Play Store submission.
+3. **Release signing** — ✅ resolved (ADR-030). The release build signs with a
+   real upload keystore via `android/key.properties`, R8 on, and `build.gradle.kts`
+   hard-fails if `key.properties` is absent (no debug-cert fallback). The keystore
+   lives outside the repo and is unbacked-up.
 4. **No CI** — no `.github/workflows/`; all verification has been manual/
    scripted against the live stack. `server/tests/` (6 pytest files covering
    `activity`, `cost_stats`, `dedup`, `embeddings`, `guardrail`, `matching`) and
@@ -82,12 +83,13 @@ of being lost, and before Brick 10 work begins on top of it.
 5. **No root README** — `app/README.md` is still Flutter's unmodified
    boilerplate. Explicitly scoped into Brick 10 ("Play Store launch + README +
    demo video"), so this is expected, not an oversight.
-6. **No `render.yaml`** — the Render service and its environment variables were
-   configured directly through Render's dashboard/API, not as code in the
-   repo. The deployment is not currently reproducible from the repo alone.
-7. **`docs/PROMPTS.md` embeddings section is stale** — still references
-   `text-embedding-004`, not updated after ADR-006's switch to
-   `gemini-embedding-001`.
+6. **No infra-as-code for Cloud Run** — the service and its env/secret wiring
+   were set up interactively (ADR-014), not as code in the repo, and deploys are
+   a manual `gcloud run deploy --source .`. The deployment is not fully
+   reproducible from the repo alone.
+7. **`docs/PROMPTS.md` embeddings section** — ✅ resolved; now correctly names
+   `gemini-embedding-001` (the stale `text-embedding-004` reference was fixed in
+   Phase-7 housekeeping).
 8. **iOS is entirely out of scope so far** — no Firebase iOS app, no APNs key,
    `firebase_options.dart` throws `UnsupportedError` for every non-Android
    platform. This project is Android-first/Android-only for now.
@@ -114,8 +116,8 @@ than forgotten:
   "Brick 5+" but it was never introduced; the app still uses plain
   `StatefulWidget`/`setState` throughout. Worth revisiting once screen-to-screen
   state sharing gets unwieldy.
-- A `render.yaml` (or equivalent) to make the Render deployment reproducible
-  from the repo.
+- Infra-as-code (e.g. a Terraform/`gcloud` script or `service.yaml`) to make the
+  Cloud Run deployment reproducible from the repo.
 - CI (GitHub Actions) running `pytest` and `flutter test`/`flutter analyze` on
   every push.
 - Expanding job source coverage (more legal job-board APIs) if Adzuna+JSearch

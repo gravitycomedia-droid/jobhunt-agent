@@ -27,8 +27,8 @@ jobhunt-agent/
 │   │                            activity.py, cost_stats.py, email.py, notify.py,
 │   │                            skill_growth.py
 │   ├── models/                ← Pydantic schemas (single source of truth for shapes)
-│   ├── db/                     ← supabase_client.py, migrations/*.sql (8 migrations)
-│   ├── jobs/daily_pipeline.py  ← the agent loop, triggered by Render cron
+│   ├── db/                     ← supabase_client.py, migrations/*.sql (018 is head)
+│   ├── jobs/daily_pipeline.py  ← the agent loop, triggered by Cloud Scheduler (OIDC)
 │   ├── tests/                  ← 6 pytest files
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -49,13 +49,13 @@ and screenshots live there.
 | Mobile client | Flutter (Dart) | No Riverpod/Provider/Bloc yet — plain `StatefulWidget` + `setState` throughout. No routing package (no `go_router`) — imperative `Navigator.push/pop`. |
 | Backend | FastAPI + Pydantic v2, Python 3.11+ | Async endpoints, response envelope `{"data": ..., "error": null}` everywhere. |
 | Database | Supabase Postgres + pgvector extension | Accessed only from the server, via `supabase-py`, using the **service-role key** (bypasses RLS — the server itself is the authorization boundary, not Postgres RLS). |
-| LLM (generation) | Google Gemini `gemini-2.5-flash` | All text/vision generation tasks — resume parsing, re-ranking, tailoring, follow-up drafts, job extraction, skill-growth clustering. |
+| LLM (generation) | Google Gemini `gemini-2.5-flash` **+** DeepSeek `deepseek-v4-flash` | Two providers behind one validate/retry/log flow (ADR-023). Gemini serves vision `parse` and default `tailor`; DeepSeek serves `rerank`/`extract_job`/`followup`/`skill_growth`/forms. See `_TASK_PROVIDERS` in `services/llm.py`. |
 | LLM (embeddings) | Google Gemini `gemini-embedding-001` | Pinned to 768-dim output (`output_dimensionality=768`) to match `vector(768)` Postgres columns. (Switched from `text-embedding-004`, which 404'd on this API key — see ADR-006.) |
-| Jobs data | Adzuna API (primary) + JSearch via RapidAPI (secondary) + Greenhouse/Lever boards + Apify-scraped LinkedIn/Indeed/Naukri | No scraping via logged-in sessions; Apify-based no-login scraping of LinkedIn/Indeed/Naukri approved for personal-scale use (ADR-003, amended 2026-07-13). |
+| Jobs data | Adzuna API (primary) + JSearch via RapidAPI (secondary) + Greenhouse/Lever boards + Apify no-login LinkedIn/Indeed/Naukri/Internshala + Unstop internships | Never via logged-in sessions; no-login Apify + Unstop approved for personal-scale use, daily-cron cadence only (ADR-003, amended 2026-07-13, v2 2026-07-20). |
 | Auth | Supabase Auth (Google OAuth + email/password) | Server never decodes JWTs itself; delegates verification to Supabase's Auth API per request. |
 | Push notifications | Firebase Cloud Messaging | Android-only by design (no iOS APNs key provisioned yet — ADR-007). |
 | Transactional email | Resend | Used only for follow-up email sending, gated behind explicit user approval. |
-| Hosting | Render | Web service (Dockerfile-based, not the native Python buildpack, because `pdf2image` needs `poppler-utils`) + a cron-triggered pipeline endpoint. No `render.yaml` — service/env vars configured directly in the Render dashboard/API (not currently reproducible from the repo alone). |
+| Hosting | Google Cloud Run (`asia-south1`) | Container web service (Dockerfile bundles `poppler-utils` for `pdf2image`) + a Cloud Scheduler OIDC-triggered pipeline endpoint. Migrated off Render (ADR-014). Deploys are manual `gcloud run deploy --source .`; no infra-as-code file yet, so not fully reproducible from the repo alone. |
 
 ## High-level data flow
 
@@ -86,6 +86,6 @@ Golden Rule 1 in [00-overview.md](00-overview.md).
   auth + storage. Revisit only past ~1M vector rows.
 - **No LangChain/LangGraph**: plain Python orchestration is simpler and more
   instructive for a first hand-rolled agent system.
-- **No Docker for the Flutter side, Docker only for the server**: Render deploys
-  the Flutter app's backend from a Dockerfile (needed for `poppler-utils`); the
-  app itself ships as an APK/IPA, not containerized.
+- **No Docker for the Flutter side, Docker only for the server**: Cloud Run deploys
+  the backend from a Dockerfile (needed for `poppler-utils`); the app itself
+  ships as an APK, not containerized.

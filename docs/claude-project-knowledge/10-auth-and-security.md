@@ -59,9 +59,10 @@ who knew (or guessed) it.
 
 ## Cron authentication (a deliberately separate path)
 
-`POST /pipeline/run` (the Render cron target, processes *all* users) does
-**not** use the JWT flow at all — a cron job has no per-user session to
-authenticate with. Instead it requires a static shared secret in the
+`POST /pipeline/run` (the Cloud Scheduler cron target, processes *all* users)
+does **not** use the JWT flow at all — a cron job has no per-user session to
+authenticate with. Instead it accepts a Google-signed OIDC token (Cloud
+Scheduler's service account) or, for the transition, a static shared secret in the
 `X-Pipeline-Secret` header, matched against `settings.pipeline_secret`
 (`PIPELINE_SECRET` in `.env`). The parallel authenticated endpoint,
 `POST /pipeline/run-mine`, uses the normal JWT flow and only ever processes the

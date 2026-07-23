@@ -4,7 +4,8 @@
 
 | Purpose | Model | Where configured |
 |---|---|---|
-| All generative tasks (text + vision) | `gemini-2.5-flash` | `Settings.gemini_model`, `server/config.py` — read from config, never hardcoded in a prompt function |
+| Vision `parse` + default `tailor` | `gemini-2.5-flash` | `Settings.gemini_model`, `server/config.py` |
+| `rerank` / `extract_job` / `followup` / `skill_growth` / forms | DeepSeek `deepseek-v4-flash` (OpenAI-compatible SDK, thinking disabled) | `_TASK_PROVIDERS` in `services/llm.py` (ADR-023); absent `DEEPSEEK_API_KEY` falls back to Gemini |
 | Embeddings | `gemini-embedding-001`, pinned to `output_dimensionality=768` | `Settings.gemini_embed_model` |
 
 Both were changed mid-project after live API-key quota/availability issues —
@@ -50,10 +51,9 @@ the code) is **`docs/PROMPTS.md`**, which also documents 5 "prompt engineering
 working rules": consistent temperature conventions per task type, schema
 declared in both the prompt text and the Pydantic model, one retry maximum,
 prefer few-shot examples before switching models, and document every prompt
-change. Note: as of the last inventory, `docs/PROMPTS.md`'s embeddings section
-still references the old `text-embedding-004` model name and hasn't been
-updated to reflect ADR-006's switch to `gemini-embedding-001` — worth fixing
-when next touching that file.
+change. Note: `docs/PROMPTS.md`'s embeddings section now correctly names
+`gemini-embedding-001` (the old `text-embedding-004` reference was fixed in
+Phase-7 housekeeping, with an inline comment recording the change).
 
 ## Embeddings (`server/services/embeddings.py`)
 
@@ -86,7 +86,7 @@ Every attempt — success, validation failure, or API failure — is logged via
 ## Cost dashboard (`server/services/cost_stats.py`, `GET /stats/costs`)
 
 Pure Python, no LLM involved:
-- `_PRICING_PER_MILLION_TOKENS = {"gemini-2.5-flash": (0.30, 2.50), "gemini-embedding-001": (0.15, 0.0)}` (USD per 1M tokens, in/out), with a fallback rate for unknown models.
+- `_PRICING_PER_MILLION_TOKENS` (USD per 1M tokens, in/out) covers **seven** models: `gemini-2.5-flash` `(0.30, 2.50)`, `gemini-2.5-flash-lite` and `gemini-3.1-flash-lite` `(0.10, 0.40)`, `gemini-embedding-001` `(0.15, 0.0)`, `deepseek-v4-flash` `(0.14, 0.28)`, `deepseek-v4-pro` `(0.435, 0.87)` — plus a `_FALLBACK_PRICING = (0.30, 2.50)` for unknown models. DeepSeek rates verified against api-docs.deepseek.com 2026-07-12.
 - `summarize_costs(rows)` aggregates the current month's `llm_calls` rows into
   `{total_cost, total_calls, total_tokens, breakdown: [...]}`, with per-task
   percentages computed from unrounded cost *before* rounding (a real rounding

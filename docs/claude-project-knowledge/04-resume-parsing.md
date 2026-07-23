@@ -14,8 +14,8 @@ that isn't actually on the page.
 2. **Server** (`routers/resume.py` → `services/llm.py::parse_resume`):
    - The PDF is converted to page images via `pdf2image.convert_from_bytes`
      (requires the `poppler-utils` system package — this is exactly why the
-     server's Dockerfile installs it explicitly, since Render's native Python
-     buildpack doesn't include it).
+     server's Dockerfile installs it explicitly; the slim Python base image
+     doesn't include it).
    - The page images are sent to Gemini (`gemini-2.5-flash`, vision-capable) with
      the parser system prompt: *"You are a resume parser. Extract information
      EXACTLY as written. Never infer, embellish, or add skills that are not

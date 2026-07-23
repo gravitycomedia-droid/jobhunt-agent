@@ -60,7 +60,8 @@ or add via "remember this":
 ```
 Remember these project facts:
 - I'm building the Job-Hunt Agent: Flutter app + FastAPI server + Gemini
-  (gemini-2.0-flash + text-embedding-004) + Supabase Postgres with pgvector.
+  (gemini-2.5-flash + gemini-embedding-001) and DeepSeek (deepseek-v4-flash,
+  per-task — ADR-023) + Supabase Postgres with pgvector.
 - Monorepo: /app (Flutter), /server (FastAPI), /docs. Claude Code handles
   both Dart and Python.
 - My pace: 10-20 hrs/week, 10 bricks over ~10 weeks. Budget ₹500-1000/month;
@@ -70,8 +71,10 @@ Remember these project facts:
 - Core interview stories I'm building: two-stage RAG (embeddings filter →
   LLM re-rank), anti-fabrication guardrail with deterministic post-check,
   legal-APIs-only data sourcing, LLM-vs-code responsibility boundary.
-- No scraping, no auto-apply, no LangChain in v1, no Docker in v1,
-  pgvector over dedicated vector DBs (ADR-002).
+- No *login-based* scraping, no auto-apply, no LangChain in v1; no-login Apify +
+  Unstop scraping approved daily-cron-only (ADR-003 v2); Docker is used for the
+  server (poppler on Cloud Run, ADR-010/014); pgvector over dedicated vector DBs
+  (ADR-002).
 ```
 
 ## 6. Suggested weekly rhythm

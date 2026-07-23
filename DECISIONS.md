@@ -278,6 +278,7 @@ waits on a one-time manual endpoint-recon step (Plan 15 Phase B).
 Verified end-to-end with the same throwaway-test-user pattern as every prior phase, plus a direct unit-level check of the pipeline gating (mocked `_draft_pending_followups`/`send_push_notification`, confirmed both skip when prefs are off, both run when on or absent) since triggering real "prefs off, nothing sent" behavior through the full pipeline would need unpredictable real job-pool data. Screenshotted all three new/changed screens via the Playwright-over-static-build pattern from the HomeBody fix above — this surfaced that Skill Growth's real latency (~50s) reads as a stuck loading skeleton without a bound, which is what led to catching the missing timeout. This closes out the frontend rebuild (ADR-009) — Brick 10 (Play Store launch) is next in CLAUDE.md's checklist.
 
 ## ADR-010: Render deployment + first working APK build
+**Date:** 2026-07-10 · **Status:** accepted
 
 **Context:** The user asked for a working APK with real login and API calls. Two blockers surfaced immediately: (1) `ApiClient._baseUrl` still pointed at `localhost`/`10.0.2.2`, which only ever resolves back to the emulator's own host machine — a real phone has no way to reach either address; (2) Bricks 4-9's entire server implementation (`routers/matches.py`, `tailor.py`, `applications.py`, `pipeline.py`, `stats.py`, `services/auth.py`, `matching.py`, `guardrail.py`, `embeddings.py`, `job_ingestion.py`, `notify.py`, `email.py`, `activity.py`, `cost_stats.py`, `skill_growth.py`, all 7 migrations after 001) existed only in the local working tree — never committed, so GitHub (and therefore Render, which deploys from GitHub) had nothing past Brick 3 to build.
 
@@ -294,6 +295,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** First release APK built successfully — `app-release.apk`, 53.5MB, `minSdkVersion 24`/`targetSdkVersion 36`, `INTERNET` permission present, verified signed (debug cert). Verified server-side only via `curl`: `/health` returns 200, an authenticated-only route (`/jobs`) correctly 401s rather than 500ing, confirming the full Brick 4-9 router set imports and boots cleanly on Render. **Not verified**: the actual on-device login flow, resume upload, matching, or any other screen — no physical Android device or emulator was available in this environment to install and click through the APK. Google Sign-In's redirect URL (`com.jobhuntagent.jobhunt_agent://login-callback/`) being registered in Supabase's Auth dashboard is also unverified from code — if Google sign-in fails on-device but email/password works, that dashboard setting is the first thing to check. This is the same category of gap ADR-008/009 already flagged repeatedly: code-level and server-level verification happened, human-in-hand device verification did not.
 
 ## ADR-011: Async background-task pattern for long LLM endpoints (202 + poll)
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** `POST /matches/rerank` ran up to 20 sequential Gemini calls (~20-25s each) while the phone held one HTTP connection open for minutes. Android's network stack / Render's free tier dropped the socket — the observed `ClientException: Software caused connection abort`. The client's 10-minute timeout was masking the symptom, not fixing the cause. `POST /pipeline/run-mine` (full agent loop) and `POST /tailor/{job_id}` (single 20-60s call) had the same shape.
 
@@ -304,6 +306,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** Re-rank/agent-run/tailor return instantly; normal 30s client timeouts everywhere; the aborted-connection failure mode is gone by construction. The stuck-`running` case surfaces as a client-side timeout message with Retry.
 
 ## ADR-012: ATS resume PDF via ReportLab (deterministic, server-side)
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** Phase 4B needs "Create Resume PDF" — compiling the human-approved tailored bullets + stored profile into a file recruiters' ATS parsers can actually read.
 
@@ -312,6 +315,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Alternatives considered:** client-side Dart `pdf` package (would duplicate the accepted-bullets compilation logic client-side and drift from the server's single source of truth); HTML→PDF via headless Chrome (heavy system dependency on Render); LaTeX (ditto).
 
 ## ADR-013: Form autofill = prefill URL + human submit, deterministic Google Forms parse
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** Phase 6's "the agent fills, the human reviews and taps submit". Two design questions: how to read a form, and how to hand the user a filled one without ever submitting on their behalf.
 
@@ -325,6 +329,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** Fills persist to `form_fills` (migration 012) for history. The whole flow degrades honestly: unparseable → clear error; sign-in-required → browser fallback; unanswerable questions → visibly empty rows the user completes themselves.
 
 ## ADR-014: Migrated Render → Google Cloud Run
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** ADR-010 accepted Render free-tier cold-start spin-down "for now." That tradeoff started actually hurting: re-rank/tailor calls routinely hit `TimeoutException after 0:00:30` when the server had spun down, and general app responsiveness was inconsistent. Render free-tier cold start is ~30-60s; Cloud Run's is ~2-5s because it's a proper container runtime rather than a suspended VM, and it has a genuinely-free (not trial-credit) tier. Considered Oracle Cloud's Always-Free VM too (zero cold start at all) but rejected it — real ops burden (self-managed systemd/nginx/crontab) plus a documented reputation for reclaiming "idle" free resources, a bad trade for an app about to onboard real Play Store beta users.
 
@@ -341,6 +346,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** `/health` and an authenticated-only route (`/jobs` → 401) verified against the live Cloud Run URL, same bar ADR-010 used for Render. The Cloud Scheduler → OIDC → `/pipeline/run` path was verified for real (not just curl-shaped): manually triggered the job twice, caught the trailing-newline bug from the first run's JSearch failures, fixed it, and confirmed a clean `200 OK` on the second run. **Render is still live** — not paused or deleted, kept as a fallback until the user has run the app against Cloud Run for a few real days. `PIPELINE_SECRET` and the `X-Pipeline-Secret` code path should be removed once Render is decommissioned, since the OIDC path fully supersedes it. Not verified on-device (same standing gap as every ADR since -007): the actual phone app talking to the new URL.
 
 ## ADR-015: Bug batch — job-match relevance, tailoring concurrency, stale OAuth fallback
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** Three separate "feels broken" reports investigated together: (1) jobs shown looked unrelated to the uploaded resume, (2) tailored resumes looked identical across different jobs, (3) Google sign-in was landing on a live Render page instead of returning to the app.
 
@@ -353,6 +359,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** The tailoring fix is a pure code change, applied. The relevance fix and OAuth fix both require a manual step outside this repo (SQL migration; Supabase dashboard setting) — flagged in MANUAL_STEPS.md, not yet confirmed applied. None of the three were re-verified on-device.
 
 ## ADR-016: Onboarding — student/experienced + USN/college; form-fill answer reuse
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** Two feature requests bundled with the ADR-015 bug batch: (1) onboarding never asked whether the user is a student or an experienced professional, or collected a student's USN/college when the resume itself didn't have one; (2) the form auto-fill feature (ADR-013) re-derived every answer from scratch on every form, even for questions the user had already answered identically on a previous form (phone number, visa sponsorship, notice period, expected salary...).
 
@@ -365,6 +372,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** Both are additive, backward-compatible changes — `014_student_info.sql` needs manual Supabase application (MANUAL_STEPS.md §1) like every migration in this project. `flutter analyze` and the expanded `test_form_parser.py` (4 new cases covering normalization, fuzzy reuse, and the re-verification-after-reuse edge case) pass; neither was exercised on-device or against a live form.
 
 ## ADR-017: JD-paste resume builder — a standalone entry point into the existing tailoring pipeline
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** Requested: a page to paste a JD as text or upload it as a PDF, generate a resume tailored to it, and download it — without needing the JD to already exist as a matched job — using a cheaper LLM tier than the rest of the app.
 
@@ -377,6 +385,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** `flutter analyze` and the full server test suite (51 tests) pass. Not exercised on-device or against a real PDF/pasted JD — the PDF-text-extraction path in particular (pypdf against arbitrary user-uploaded JD PDFs, not resumes) is unverified beyond code review.
 
 ## ADR-018: Job source expansion — Adzuna India-tuning + Greenhouse/Lever fetchers
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** Coverage for Indian students was thin. A companion planning doc proposed three additive workstreams inside ADR-003's "legal APIs only" boundary: confirm the Render→Cloud Run infra story (ADR-014) has no gaps, tune Adzuna/JSearch for India, and add Greenhouse/Lever public job-board fetchers.
 
@@ -399,6 +408,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequences:** Dart needed zero changes — `Job.source` is a plain string and `jobs_list_body.dart`'s filter chips are derived dynamically from whatever source values are present. Cloud Run infra parity (Phase 0) and the currency bug were already correct going in; this session's real net-new surface is the Adzuna intern/location tuning and the two new fetchers.
 
 ## ADR-019: Resume tailoring framework — JD analysis, layout selection, gap disclosure
+**Date:** 2026-07-11 · **Status:** accepted
 
 **Context:** The tailoring flow (Brick 6) only rephrased experience bullets. The user supplied a real tailoring methodology — analyze the JD (role type, ordered hard requirements, culture signal, exact title), reframe a summary line, reorder bullets and skills toward the JD, pick a layout, vary an accent color, and disclose skill gaps honestly — and asked to apply it to both the matched-job tailoring path and the JD-paste "custom resume maker." Both paths already share `tailor_and_store` → `tailor_resume` → `verify_bullets` → PDF (ADR-017), so this is one change, not two.
 
@@ -416,6 +426,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Verification:** 62/62 server tests pass (7 new — skill subsetting, invented-skill rejection, light-recasing match, gap flagging incl. the whole-word fix, JD-title/summary/two-column extraction, and one-page auto-fit for a long profile). `flutter analyze` clean on the two changed Dart files. **Not** exercised against a live Gemini call or on-device — the actual LLM output shape, real two-column PDFs from real profiles, and the migration apply are unverified beyond tests and code review.
 
 ## ADR-020: Gemini thinking disabled on every task — the invisible majority of the bill
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context:** The user reported Gemini usage was "so much." The `llm_calls` table said otherwise: 247 calls, ~140K input and ~60K output tokens over four days — pennies. The table was lying, and not by a little.
 
@@ -428,6 +439,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Consequence:** historical `llm_calls` rows under-report output and are not comparable with post-ADR-020 rows. This is accepted — a cost dashboard that is honest going forward beats one that stays consistently wrong.
 
 ## ADR-021: Batched, role-aware re-ranking — cost and match quality had the same root cause
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context:** Two complaints that turned out to be one bug. (1) Re-ranking was **137 of 247 Gemini calls and ~87% of all input tokens** — by far the dominant spend. (2) Matches ignored the user's target role: a profile with `target_roles = ['frontend developer', 'Full stack developer']` was being scored against "Key Account Director" postings. `target_roles` was **write-only** — the onboarding screen stored it, `PATCH /resume/profile/target-roles` saved it, and *nothing in `matching.py`, `embeddings.py`, or `llm.py` ever read it.* The agent never knew what job the user wanted. Both problems are the same waste: LLM calls spent on jobs that were never plausible.
 
@@ -446,6 +458,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Known limit:** on the *current* pool the prescreen drops 0 of the top-40 shortlist — similarity already floats developer jobs above the sales ones, so it acts as a guard rather than a saver here. Its value shows up as the pool grows and as `target_roles` diverge from the resume. The batching is what delivers today's saving.
 
 ## ADR-022: The tailored-resume PDF bug was a stale deploy, not a code bug
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context:** The user reported that the resume PDF "is still not updated to the latest PDF maker with new rules and structured formatting" — after ADR-019 shipped exactly that.
 
@@ -456,6 +469,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Verified:** ran `tailor_and_store` + `compile_ats_pdf` against the real profile and a real Flutter job on the current code. `analysis` populated (`role_type: mobile`, `culture_signal: startup`, `jd_title: "Flutter Developer"`, reframed summary, JD-priority `skills_ordered`, `gaps: ['Flutter SDK', 'Dart programming language', 'RESTful APIs']`, `guardrail_flags: 0`), and the compiled PDF rendered to PNG and inspected: two-column startup layout, exact JD title under the name, one page. The framework works end-to-end. **The fix is a redeploy, not a code change.**
 
 ## ADR-023: DeepSeek as a second provider — one validate/retry/log flow, per-task routing, thinking disabled
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context (Phase 14):** Gemini served every LLM task. Most — job re-ranking, page extraction, follow-up drafting, skill-gap clustering, form extraction/fill — are structured extraction or scoring against an explicit JSON schema, not work needing Gemini's quality. DeepSeek V4 Flash does that class of task at roughly a fifth of the price. The goal: add it *behind the existing validate → retry-once → log discipline* (Golden Rules 3 & 5), not as a parallel path that could drift.
 
@@ -480,6 +494,7 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Verified:** 72 pre-existing server tests still pass; 16 new (`test_deepseek_provider.py`; `test_cost_stats.py` DeepSeek pricing/provider-split/pre-migration backfill). A live `deepseek-v4-flash` call returned schema-conforming JSON through both the raw client and `_call_deepseek`. **Not** verified: real guardrail-pass rates on DeepSeek `tailor` output (the A5 gate, deliberately deferred), and the migration apply (manual, pending).
 
 ## ADR-024: Input validation hardening — SSRF, length caps, strict request models
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context (Phase 14):** three request-surface weaknesses. (1) `POST /jobs/manual/parse` fetches a user-pasted URL **server-side** — a textbook SSRF vector. (2) Free-text fields had no length cap, so a megabyte of text flowed into an LLM prompt and got truncated silently deep in `llm.py` — the user billed for tokens, never told why. (3) Request models silently ignored unexpected fields.
 
@@ -490,12 +505,14 @@ Verified end-to-end with the same throwaway-test-user pattern as every prior pha
 **Verified:** 24 new tests (`test_ssrf.py`, `test_request_validation.py`). All prior tests pass.
 
 ## ADR-025: Prompt injection stays a documented residual risk, not a solved problem
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context:** user-supplied text (fetched job page, pasted JD, scraped form) is forwarded into LLM prompts. Unlike fabrication — where `guardrail.py` runs a **deterministic Python post-check** and is an actual guarantee — no post-check can prove an injection didn't steer the output.
 
 **Decision:** `wrap_untrusted(text)` wraps attacker-controllable text in a delimited block with an explicit "treat this as data, not instructions" instruction, applied to every user-text-into-prompt path (`rerank` JD bodies, `extract_job`, `extract_form`, `form_fill`). The **one** part enforced in code: both delimiter markers are stripped from the text before wrapping, so a forged closing marker can't break out early. Everything else is a prompt instruction — a request, not a boundary; it lowers the odds and nothing more. Recorded as an accepted residual risk, explicitly *without* the guardrail's deterministic enforcement because none is possible for injection.
 
 ## ADR-026: PDF upload safety — resource bounds, and poppler does NOT execute embedded JS (measured)
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context (Phase 14):** `POST /resume/parse` and the JD-paste PDF path hand an uploaded file to `pdf2image` (poppler) and `pypdf`. Two questions: can a malicious PDF execute code, and can a malformed/oversized one exhaust the server?
 
@@ -512,6 +529,7 @@ The JD-paste path (text-extract only) runs the magic-byte + size gates. All rais
 **Verified:** 10 new tests (`test_pdf_safety.py`, incl. a proof the page-cap gate rejects *before* the rasterizer runs). Poppler-JS finding from the live experiment above.
 
 ## ADR-027: Postgres-backed rate limiting, not in-memory
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context (Phase 14):** the LLM-backed endpoints had no abuse/cost ceiling. Cloud Run runs N instances, so an in-process counter grants N× the quota.
 
@@ -522,6 +540,7 @@ The JD-paste path (text-extract only) runs the magic-byte + size gates. All rais
 **Verified:** 6 new tests (`test_rate_limit.py`, in-memory table fake). Migration apply is manual/pending.
 
 ## ADR-028: Client-side refresh throttling — extend the SWR cache, don't add a second one
+**Date:** 2026-07-12 · **Status:** accepted
 
 **Context (Phase 14):** every tab body refetched on view. With the now-rate-limited server, rapid tab-switching or pull-spamming could burn 429s for unchanged data.
 

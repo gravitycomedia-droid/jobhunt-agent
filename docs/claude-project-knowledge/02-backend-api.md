@@ -107,7 +107,8 @@ Single source of truth for every data shape, mirrored by hand in the Flutter app
 
 | Migration | What it adds |
 |---|---|
-| `001_core_schema.sql` | Enables `pgvector`. Creates `profiles`, `jobs` (unique `dedup_key`, `vector(768) embedding`, `ivfflat` cosine index), `matches` (unique on `profile_id,job_id`), `applications`, `tailored_resumes`, `llm_calls`. Defines SQL function `match_jobs_by_similarity(p_profile_id, p_limit)` (Stage 1 cosine shortlist). |
+| `001_core_schema.sql` | Enables `pgvector`. Creates `profiles`, `jobs` (unique `dedup_key`, `vector(768) embedding`, `ivfflat` cosine index — **later dropped in `013`; Stage-1 is now a brute-force scan, fine at current scale**), `matches` (unique on `profile_id,job_id`), `applications`, `tailored_resumes`, `llm_calls`. Defines SQL function `match_jobs_by_similarity(p_profile_id, p_limit)` (Stage 1 cosine shortlist). |
+| _…009–018_ | This table was written at Brick 3 and stops at `008`; migrations continue through **`018` (current head)** — background tasks, salary/currency, onboarding step, form fills, embedding-relevance fix (`013`), student info, tailor analysis, `llm_calls.provider`, rate limits, source-ingestion log. See `server/db/migrations/`. |
 | `002_followups.sql` | Adds `followup_subject`, `followup_body`, `followup_drafted_at` to `applications`. |
 | `003_fcm_token.sql` | Adds `fcm_token` to `profiles`. |
 | `004_auth.sql` | Unique constraint on `profiles.user_id`; enables RLS on `profiles`/`matches`/`applications`/`tailored_resumes` (owner-scoped) and `jobs` (any authenticated read, service-role-only write). Explicitly documented as defense-in-depth, not the primary boundary. |

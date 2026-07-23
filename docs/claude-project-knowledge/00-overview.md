@@ -91,4 +91,4 @@ approval gates always.
 | [09-status-and-roadmap.md](09-status-and-roadmap.md) | What's built, what's uncommitted, what's next (Brick 10 and future scope) |
 | [10-auth-and-security.md](10-auth-and-security.md) | Supabase Auth / Google OAuth, multi-tenancy, RLS, secrets handling |
 | [11-frontend-flutter-app.md](11-frontend-flutter-app.md) | Every screen, model, service, the design system, and state management approach |
-| [12-deployment-and-infra.md](12-deployment-and-infra.md) | Render hosting, Docker, Firebase project, environment variables |
+| [12-deployment-and-infra.md](12-deployment-and-infra.md) | Cloud Run hosting, Docker, Firebase project, environment variables |

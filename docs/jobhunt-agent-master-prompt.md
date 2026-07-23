@@ -1,6 +1,6 @@
 # MASTER PROMPT — Job-Hunt Agent: Stabilization, UX Overhaul & New Features
 
-You are working on the **Job-Hunt Agent** monorepo: a Flutter mobile app (`app/`) backed by a FastAPI server (`server/`), Supabase Postgres + pgvector, Google Gemini for LLM tasks, deployed on Render. Read `CLAUDE.md`, `DECISIONS.md`, and `docs/claude-project-knowledge/` before writing any code.
+You are working on the **Job-Hunt Agent** monorepo (product name **FirstRole**): a Flutter mobile app (`app/`) backed by a FastAPI server (`server/`), Supabase Postgres + pgvector, Google Gemini + DeepSeek for LLM tasks, deployed on Google Cloud Run (was Render; ADR-014). Read `CLAUDE.md`, `DECISIONS.md`, and `docs/claude-project-knowledge/` before writing any code. *(This is a historical founding prompt — where it conflicts with current ADRs, the ADRs win.)*
 
 ## NON-NEGOTIABLE CONSTRAINTS (project Golden Rules — never violate)
 
@@ -9,7 +9,7 @@ You are working on the **Job-Hunt Agent** monorepo: a Flutter mobile app (`app/`
 3. Every LLM output is schema-validated against a Pydantic model; exactly one retry with the validation error appended; log and fail gracefully on second failure.
 4. The anti-fabrication guardrail (`server/services/guardrail.py`, `partial_ratio`, threshold 85) is sacred. Any new resume-related output must pass through it or an equivalent deterministic check.
 5. Every LLM call is logged to `llm_calls` (prompt hash, model, tokens, latency, validation result, profile_id).
-6. No scraping of LinkedIn/Naukri/Indeed. Legal APIs and user-pasted content only.
+6. No scraping of LinkedIn/Naukri/Indeed. Legal APIs and user-pasted content only. *(Superseded by ADR-003 v2: no-login Apify scraping of LinkedIn/Indeed/Naukri/Internshala + Unstop is now approved at personal scale, daily-cron cadence only. Login-based scraping remains forbidden.)*
 7. Nothing is ever auto-submitted anywhere. Every external-facing action (application submit, email send, form submit) requires an explicit human tap.
 8. Keep the existing architecture: plain `StatefulWidget` + `setState` (no Riverpod/Bloc unless a phase explicitly says so), imperative `Navigator.push/pop` (no go_router), hand-written `fromJson`/`toJson` (no code-gen), design tokens from `lib/theme/app_tokens.dart` — widgets never hardcode hex/px values.
 9. Response envelope `{"data": ..., "error": null}` on every server endpoint. New endpoints follow existing router/auth patterns (`get_current_profile` dependency, ownership checks on every mutating endpoint).
