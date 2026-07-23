@@ -153,6 +153,58 @@ class ApiClient {
     return ResumeProfile.fromJson(body['data'] as Map<String, dynamic>);
   }
 
+  /// Phase 6 (§4.1) student branch of the onboarding fork: academic facts the
+  /// résumé parse doesn't reliably capture. All optional — an all-null body is
+  /// a valid skip that still advances the step server-side.
+  Future<ResumeProfile> updateAcademics({
+    String? branch,
+    int? gradYear,
+    double? cgpa,
+    String? usn,
+    String? collegeName,
+  }) async {
+    return _patchProfile('/resume/profile/academics', {
+      'branch': branch,
+      'grad_year': gradYear,
+      'cgpa': cgpa,
+      'usn': usn,
+      'college_name': collegeName,
+    });
+  }
+
+  /// Phase 6 (§4.1) professional branch of the fork: employer/years/notice.
+  Future<ResumeProfile> updateExperience({
+    String? company,
+    double? experienceYears,
+    int? noticePeriodDays,
+  }) async {
+    return _patchProfile('/resume/profile/experience', {
+      'company': company,
+      'experience_years': experienceYears,
+      'notice_period_days': noticePeriodDays,
+    });
+  }
+
+  /// Phase 6 (§4.1) preferred cities. Advances onboarding to 'roles'.
+  Future<ResumeProfile> updateTargetLocations(List<String> locations) async {
+    return _patchProfile('/resume/profile/target-locations', {'target_locations': locations});
+  }
+
+  /// Shared PATCH-and-parse for the onboarding detail endpoints — all return
+  /// the updated profile row in the `{data, error}` envelope.
+  Future<ResumeProfile> _patchProfile(String path, Map<String, dynamic> payload) async {
+    final response = await http.patch(
+      Uri.parse('$_baseUrl$path'),
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode(payload),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ResumeProfile.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
   /// Uploads a resume PDF for parsing. `MultipartRequest` is Dart's way of
   /// building a multipart/form-data POST — the same wire format a browser
   /// uses for a file-upload `<form>`, just constructed in code instead of

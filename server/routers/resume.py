@@ -7,9 +7,12 @@ from pypdf import PdfReader
 
 from db.supabase_client import supabase
 from models.common import (
+    MAX_BRANCH_LEN,
     MAX_COMPANY_LEN,
     MAX_FCM_TOKEN_LEN,
+    MAX_LOCATION_LEN,
     MAX_ROLE_LEN,
+    MAX_TARGET_LOCATIONS,
     MAX_TARGET_ROLES,
     MAX_USN_LEN,
     StrictModel,
@@ -33,10 +36,36 @@ router = APIRouter(prefix="/resume", tags=["resume"])
 # ADR-024: the Literal IS the validation. `step` used to be a free `str`
 # hand-checked against this list in the handler; now an unknown step is a 422
 # from Pydantic before the handler runs, the same way ApplicationState works.
-OnboardingStep = Literal["welcome", "resume", "review", "student_info", "roles", "done"]
+#
+# Phase 6 (§4.1) inserts the fork's branch-detail steps + locations between
+# 'student_info' and 'roles' (migration 021 widened the DB CHECK to match). The
+# ORDER of this tuple is load-bearing: _advance_onboarding treats it as the
+# total order for its forward-only guard, so the student branch (student_info →
+# academics → locations) and the professional branch (student_info → experience
+# → locations) must both be strictly increasing. 'academics' and 'experience'
+# are mutually-exclusive siblings — a profile only ever occupies one — but they
+# still need distinct indices so resumption lands on the correct branch screen.
+OnboardingStep = Literal[
+    "welcome",
+    "resume",
+    "review",
+    "student_info",
+    "academics",
+    "experience",
+    "locations",
+    "roles",
+    "done",
+]
 ONBOARDING_STEPS: list[str] = list(get_args(OnboardingStep))
 
 EmploymentType = Literal["student", "experienced"]
+
+
+def _fork_step(employment_type: str) -> str:
+    """The onboarding step a fork choice leads to (§4.1): a student gives
+    academics (branch/grad year/CGPA), a working candidate gives experience
+    (company/years/notice). Pure so the routing is unit-testable without a DB."""
+    return "academics" if employment_type == "student" else "experience"
 
 
 class FcmTokenUpdate(StrictModel):
@@ -63,6 +92,38 @@ class StudentInfoUpdate(StrictModel):
     # Only used to backfill education[0].institution when the resume
     # parse didn't already find one — never overwrites a real value.
     college_name: str | None = Field(default=None, max_length=MAX_COMPANY_LEN)
+
+
+class AcademicsUpdate(StrictModel):
+    """Student branch of the fork (§4.1): the academic facts the résumé parse
+    doesn't reliably capture. All optional — a student may leave any blank, and
+    the step still advances (it's skippable after the résumé)."""
+
+    branch: str | None = Field(default=None, max_length=MAX_BRANCH_LEN)
+    grad_year: int | None = Field(default=None, ge=1950, le=2100)
+    cgpa: float | None = Field(default=None, ge=0, le=10)
+    usn: str | None = Field(default=None, max_length=MAX_USN_LEN)
+    # Same institution backfill as StudentInfoUpdate — never overwrites a value
+    # the parser already found.
+    college_name: str | None = Field(default=None, max_length=MAX_COMPANY_LEN)
+
+
+class ExperienceUpdate(StrictModel):
+    """Professional branch of the fork (§4.1): current employer, total years,
+    and notice period. All optional for the same reason as AcademicsUpdate."""
+
+    company: str | None = Field(default=None, max_length=MAX_COMPANY_LEN)
+    experience_years: float | None = Field(default=None, ge=0, le=60)
+    notice_period_days: int | None = Field(default=None, ge=0, le=365)
+
+
+class TargetLocationsUpdate(StrictModel):
+    """Preferred cities (§4.1 / §4.4). Stored as an ordered list the filter and
+    match paths read; not embedded (it's a hard preference, not prose)."""
+
+    target_locations: list[Annotated[str, Field(max_length=MAX_LOCATION_LEN)]] = Field(
+        max_length=MAX_TARGET_LOCATIONS
+    )
 
 
 def _advance_onboarding(profile_id: str, current: str | None, target: str) -> None:
@@ -209,8 +270,82 @@ async def update_student_info(body: StudentInfoUpdate, profile: dict = Depends(g
         payload["embedding"] = embed_text(profile_embedding_text(merged), profile_id=profile["id"])
 
     result = supabase.table("profiles").update(payload).eq("id", profile["id"]).execute()
-    _advance_onboarding(profile["id"], profile.get("onboarding_step"), "roles")
+    # Phase 6 (§4.1): the fork now routes to the branch-specific detail step
+    # (academics for students, experience for professionals) instead of jumping
+    # straight to roles. Forward-only, so a revisit from Profile can't regress.
+    _advance_onboarding(profile["id"], profile.get("onboarding_step"), _fork_step(body.employment_type))
     return {"data": result.data[0], "error": None}
+
+
+def _backfill_institution(profile: dict, payload: dict, college_name: str | None) -> None:
+    """Shared with the student fork: writes `college_name` into
+    education[0].institution ONLY when the parser found none, and re-embeds
+    (institution feeds the embedding text). Mutates `payload` in place."""
+    if not college_name:
+        return
+    education = profile.get("education") or []
+    has_institution = bool(education) and bool(education[0].get("institution"))
+    if has_institution:
+        return
+    if education:
+        education = [{**education[0], "institution": college_name}, *education[1:]]
+    else:
+        education = [{"degree": "", "institution": college_name, "year": ""}]
+    payload["education"] = education
+    merged = {**profile, **payload}
+    payload["embedding"] = embed_text(profile_embedding_text(merged), profile_id=profile["id"])
+
+
+@router.patch("/profile/academics")
+async def update_academics(body: AcademicsUpdate, profile: dict = Depends(get_current_profile)):
+    """Student branch of the fork (§4.1). Persists the academic facts, then
+    advances to 'locations'. Every field is optional; an all-blank submit is a
+    valid skip that still advances the machine."""
+    payload: dict = {
+        k: v for k, v in {"branch": body.branch, "grad_year": body.grad_year, "cgpa": body.cgpa}.items() if v is not None
+    }
+    if body.usn:
+        payload["usn"] = body.usn
+    _backfill_institution(profile, payload, body.college_name)
+    row = (
+        supabase.table("profiles").update(payload).eq("id", profile["id"]).execute().data[0] if payload else profile
+    )
+    _advance_onboarding(profile["id"], profile.get("onboarding_step"), "locations")
+    return {"data": row, "error": None}
+
+
+@router.patch("/profile/experience")
+async def update_experience(body: ExperienceUpdate, profile: dict = Depends(get_current_profile)):
+    """Professional branch of the fork (§4.1). Persists employer/years/notice,
+    then advances to 'locations'. All fields optional — same skip contract as
+    academics."""
+    payload: dict = {
+        k: v
+        for k, v in {
+            "company": body.company,
+            "experience_years": body.experience_years,
+            "notice_period_days": body.notice_period_days,
+        }.items()
+        if v is not None
+    }
+    row = (
+        supabase.table("profiles").update(payload).eq("id", profile["id"]).execute().data[0] if payload else profile
+    )
+    _advance_onboarding(profile["id"], profile.get("onboarding_step"), "locations")
+    return {"data": row, "error": None}
+
+
+@router.patch("/profile/target-locations")
+async def update_target_locations(body: TargetLocationsUpdate, profile: dict = Depends(get_current_profile)):
+    """Preferred cities (§4.1). Stored verbatim (deduped, order preserved) and
+    advances to 'roles'. No re-embed — locations are a hard filter preference,
+    not embedding prose."""
+    # Dedup while preserving order (dict.fromkeys) so the same city checked
+    # twice on the client doesn't persist duplicates.
+    locations = list(dict.fromkeys(body.target_locations))
+    row = supabase.table("profiles").update({"target_locations": locations}).eq("id", profile["id"]).execute().data[0]
+    _advance_onboarding(profile["id"], profile.get("onboarding_step"), "roles")
+    return {"data": row, "error": None}
 
 
 @router.patch("/profile/fcm-token")

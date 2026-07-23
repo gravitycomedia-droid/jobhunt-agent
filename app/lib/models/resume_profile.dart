@@ -117,6 +117,22 @@ class ResumeProfile {
   String? employmentType;
   String? usn;
 
+  /// Phase 6 (§4.1) onboarding-fork facts, all set via their own dedicated
+  /// endpoints (academics / experience / target-locations), never through this
+  /// class's [toJson] — same "separate endpoint" precedent as [targetRoles].
+  /// Student branch:
+  String? branch;
+  int? gradYear;
+  double? cgpa;
+
+  /// Professional branch:
+  String? company;
+  double? experienceYears;
+  int? noticePeriodDays;
+
+  /// Preferred cities (also read by the jobs filter/match paths).
+  List<String> targetLocations;
+
   /// Phase 5: exact server JSON, cached verbatim for round-tripping (the
   /// hand-written [toJson] below is the PATCH body — a subset, not a
   /// faithful copy, so it can't be used for caching).
@@ -137,6 +153,13 @@ class ResumeProfile {
     this.onboardingStep = 'done',
     this.employmentType,
     this.usn,
+    this.branch,
+    this.gradYear,
+    this.cgpa,
+    this.company,
+    this.experienceYears,
+    this.noticePeriodDays,
+    this.targetLocations = const [],
     this.raw = const {},
   });
 
@@ -165,6 +188,13 @@ class ResumeProfile {
       onboardingStep: json['onboarding_step'] as String? ?? 'done',
       employmentType: json['employment_type'] as String?,
       usn: json['usn'] as String?,
+      branch: json['branch'] as String?,
+      gradYear: (json['grad_year'] as num?)?.toInt(),
+      cgpa: (json['cgpa'] as num?)?.toDouble(),
+      company: json['company'] as String?,
+      experienceYears: (json['experience_years'] as num?)?.toDouble(),
+      noticePeriodDays: (json['notice_period_days'] as num?)?.toInt(),
+      targetLocations: (json['target_locations'] as List? ?? []).map((l) => l as String).toList(),
     );
   }
 

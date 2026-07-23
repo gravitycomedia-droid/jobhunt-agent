@@ -6,18 +6,26 @@ import '../models/resume_profile.dart';
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
+import 'academics_screen.dart';
+import 'experience_screen.dart';
 import 'matching_loading_screen.dart';
 import 'profile_review_screen.dart';
 import 'resume_upload_screen.dart';
 import 'student_info_screen.dart';
+import 'target_locations_screen.dart';
 import 'target_roles_screen.dart';
 import 'welcome_screen.dart';
 
 /// The onboarding steps as an explicit enum (Phase 3B) — mirrors the
 /// server's `profiles.onboarding_step` values, plus the client-only
-/// `matching` transition screen at the end. `studentInfo` (migration 014)
-/// sits between review and roles.
-enum OnboardingStep { welcome, resume, review, studentInfo, roles, matching }
+/// `matching` transition screen at the end.
+///
+/// Phase 6 (§4.1) adds the fork's branch-detail steps. `studentInfo` is the
+/// fork itself; from there a student goes to `academics` and a professional to
+/// `experience` (mutually exclusive), then both converge on `locations` →
+/// `roles`. The enum order matches the server's `ONBOARDING_STEPS` so
+/// resumption from a stored step is a direct lookup.
+enum OnboardingStep { welcome, resume, review, studentInfo, academics, experience, locations, roles, matching }
 
 /// Phase 3B rework: onboarding as an explicit step state machine instead
 /// of chained Navigator.pushes. Why: with pushes, resuming at an arbitrary
@@ -58,6 +66,9 @@ class OnboardingFlow extends StatefulWidget {
         'resume' => OnboardingStep.resume,
         'review' => OnboardingStep.review,
         'student_info' => OnboardingStep.studentInfo,
+        'academics' => OnboardingStep.academics,
+        'experience' => OnboardingStep.experience,
+        'locations' => OnboardingStep.locations,
         'roles' => OnboardingStep.roles,
         _ => OnboardingStep.welcome,
       };
@@ -73,17 +84,22 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   late ResumeProfile? _profile = widget.initialProfile;
 
   // Steps the user counts: welcome(1) resume(2) review(3) studentInfo(4)
-  // roles(5); matching is a transition, not a numbered step.
+  // branch-detail(5) locations(6) roles(7). `academics` and `experience` are
+  // the same numbered step — a profile only ever sees one. `matching` is a
+  // transition, not a numbered step.
   int get _stepNumber => switch (_step) {
         OnboardingStep.welcome => 1,
         OnboardingStep.resume => 2,
         OnboardingStep.review => 3,
         OnboardingStep.studentInfo => 4,
-        OnboardingStep.roles => 5,
-        OnboardingStep.matching => 5,
+        OnboardingStep.academics => 5,
+        OnboardingStep.experience => 5,
+        OnboardingStep.locations => 6,
+        OnboardingStep.roles => 7,
+        OnboardingStep.matching => 7,
       };
 
-  static const _totalSteps = 5;
+  static const _totalSteps = 7;
 
   void _goTo(OnboardingStep step) => setState(() => _step = step);
 
@@ -95,9 +111,23 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     _goTo(OnboardingStep.studentInfo);
   }
 
-  /// Student-info skip: employment_type/usn stay unset — no downstream
-  /// feature depends on them being present, so this is a clean skip.
+  /// Fork skip (§4.1): jump past the whole fork — employment_type and the
+  /// branch details stay unset (no downstream feature requires them) and the
+  /// server advances straight to 'locations'.
   void _skipStudentInfo() {
+    unawaited(_apiClient.updateOnboardingStep('locations').catchError((_) {}));
+    _goTo(OnboardingStep.locations);
+  }
+
+  /// Branch-detail skip (academics/experience): the fork choice is already
+  /// recorded; skip only the detail form and advance to 'locations'.
+  void _skipBranchDetail() {
+    unawaited(_apiClient.updateOnboardingStep('locations').catchError((_) {}));
+    _goTo(OnboardingStep.locations);
+  }
+
+  /// Locations skip: no city preference; server advances to 'roles'.
+  void _skipLocations() {
     unawaited(_apiClient.updateOnboardingStep('roles').catchError((_) {}));
     _goTo(OnboardingStep.roles);
   }
@@ -109,16 +139,27 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     _goTo(OnboardingStep.matching);
   }
 
+  /// The branch-detail step for the current fork choice — where studentInfo
+  /// leads and where 'locations' walks back to. Falls back to the fork itself
+  /// when no choice was recorded (e.g. the fork was skipped).
+  OnboardingStep get _branchStep => switch (_profile?.employmentType) {
+        'student' => OnboardingStep.academics,
+        'experienced' => OnboardingStep.experience,
+        _ => OnboardingStep.studentInfo,
+      };
+
   OnboardingStep? get _backTarget => switch (_step) {
         OnboardingStep.welcome => null,
         OnboardingStep.resume => OnboardingStep.welcome,
-        // Back from review = re-upload a different PDF; back from
-        // studentInfo/roles = re-check earlier steps. Forward server state
-        // is untouched — walking backward to fix a typo never regresses
-        // onboarding_step.
+        // Back from review = re-upload a different PDF; back from a later step
+        // = re-check an earlier one. Forward server state is untouched —
+        // walking backward to fix a typo never regresses onboarding_step.
         OnboardingStep.review => OnboardingStep.resume,
         OnboardingStep.studentInfo => _profile == null ? null : OnboardingStep.review,
-        OnboardingStep.roles => _profile == null ? null : OnboardingStep.studentInfo,
+        OnboardingStep.academics => OnboardingStep.studentInfo,
+        OnboardingStep.experience => OnboardingStep.studentInfo,
+        OnboardingStep.locations => _profile == null ? null : _branchStep,
+        OnboardingStep.roles => _profile == null ? null : OnboardingStep.locations,
         OnboardingStep.matching => null,
       };
 
@@ -127,6 +168,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         OnboardingStep.resume => null, // NOT skippable — profile is required
         OnboardingStep.review => _skipReview,
         OnboardingStep.studentInfo => _skipStudentInfo,
+        OnboardingStep.academics => _skipBranchDetail,
+        OnboardingStep.experience => _skipBranchDetail,
+        OnboardingStep.locations => _skipLocations,
         OnboardingStep.roles => _skipRoles,
         OnboardingStep.matching => null,
       };
@@ -250,7 +294,50 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         }
         return StudentInfoScreen(
           profile: profile,
-          // PATCH /resume/profile/student-info advanced onboarding_step to 'roles'.
+          // The fork advanced onboarding_step to 'academics' or 'experience'
+          // server-side; route locally to whichever branch the choice implies.
+          onDone: (updated) => setState(() {
+            _profile = updated;
+            _step = updated.employmentType == 'student' ? OnboardingStep.academics : OnboardingStep.experience;
+          }),
+        );
+      case OnboardingStep.academics:
+        final profile = _profile;
+        if (profile == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(OnboardingStep.resume));
+          return const SizedBox.shrink();
+        }
+        return AcademicsScreen(
+          profile: profile,
+          // PATCH /resume/profile/academics advanced onboarding_step to 'locations'.
+          onDone: (updated) => setState(() {
+            _profile = updated;
+            _step = OnboardingStep.locations;
+          }),
+        );
+      case OnboardingStep.experience:
+        final profile = _profile;
+        if (profile == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(OnboardingStep.resume));
+          return const SizedBox.shrink();
+        }
+        return ExperienceScreen(
+          profile: profile,
+          // PATCH /resume/profile/experience advanced onboarding_step to 'locations'.
+          onDone: (updated) => setState(() {
+            _profile = updated;
+            _step = OnboardingStep.locations;
+          }),
+        );
+      case OnboardingStep.locations:
+        final profile = _profile;
+        if (profile == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _goTo(OnboardingStep.resume));
+          return const SizedBox.shrink();
+        }
+        return TargetLocationsScreen(
+          profile: profile,
+          // PATCH /resume/profile/target-locations advanced onboarding_step to 'roles'.
           onDone: (updated) => setState(() {
             _profile = updated;
             _step = OnboardingStep.roles;

@@ -46,12 +46,14 @@ MAX_USN_LEN = 64
 MAX_ROLE_LEN = 120
 MAX_SKILL_LEN = 120
 MAX_BULLET_LEN = 2_000
+MAX_BRANCH_LEN = 120  # academic branch/major, e.g. "Computer Science"
 
 # List-length caps: max_length on a str caps one item, not how many items are
 # sent. A 10k-entry skills array is as effective a token bomb as one 10k-char
 # skill, so the collections are bounded too.
 MAX_SKILLS = 200
 MAX_TARGET_ROLES = 25
+MAX_TARGET_LOCATIONS = 25  # preferred cities the filter/match paths read (§4.1)
 MAX_EXPERIENCE_ITEMS = 50
 MAX_PROJECT_ITEMS = 50
 MAX_EDUCATION_ITEMS = 25
