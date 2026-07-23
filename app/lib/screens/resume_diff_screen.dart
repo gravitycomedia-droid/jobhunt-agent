@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/tailored_resume.dart';
+import '../router/route_args.dart';
 import '../services/api_client.dart';
 import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
@@ -11,7 +13,6 @@ import '../widgets/diff_row.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_header.dart';
 import '../widgets/page_skeletons.dart';
-import 'resume_preview_screen.dart';
 
 /// Brick 6, extended in the frontend rebuild's Phase 2: shows a tailored
 /// resume as a bullet-by-bullet diff against the stored original, with
@@ -145,11 +146,8 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
       // Just push — ResumePreviewScreen's own back button already pops
       // itself. Popping again here on return raced that pop's still-running
       // transition and threw a RenderBox-not-laid-out assertion.
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ResumePreviewScreen(jobId: widget.jobId, jobTitle: widget.jobTitle),
-        ),
-      );
+      await context.push('/tailor/preview',
+          extra: TailorArgs(jobId: widget.jobId, jobTitle: widget.jobTitle));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not generate resume: $e')));

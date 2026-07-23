@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'config/supabase_config.dart';
-import 'screens/auth_gate.dart';
+import 'router/app_router.dart';
 import 'services/api_client.dart';
+import 'services/haptic_service.dart';
+import 'services/theme_controller.dart';
 import 'theme/app_theme.dart';
 import 'widgets/task_toast.dart';
 
@@ -15,6 +18,11 @@ Future<void> main() async {
   // first paint since every screen depends on knowing sign-in state.
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
+  // Phase 2: restore the persisted light/dark/system choice before first paint
+  // so there's no theme flash on launch.
+  await ThemeController.instance.load();
+  // Restore the haptics on/off preference (default on).
+  await HapticService.instance.load();
   // ADR-010: Render free tier spins the server down after ~15min idle and
   // takes 30-60s to cold-start. Not awaiting this means the wake-up ping
   // happens during app launch instead of during the user's first
@@ -22,7 +30,12 @@ Future<void> main() async {
   // Doesn't eliminate the cold start, just moves it earlier. Errors are
   // expected and ignored — this is a best-effort nudge, not a real call.
   _warmUpServer();
-  runApp(const JobHuntAgentApp());
+  // Phase 2c: the Riverpod root. Inert until a widget actually reads a provider
+  // (Phase 3+ signature widgets and new screens use Riverpod from the start).
+  // The two legacy singletons (MatchFeed, TaskCenter) survived the go_router
+  // migration unchanged; they get Riverpod-converted when matches_body /
+  // home_body are rebuilt in Phase 5 — see the Riverpod-adoption ADR.
+  runApp(const ProviderScope(child: JobHuntAgentApp()));
 }
 
 void _warmUpServer() {
@@ -38,14 +51,22 @@ class JobHuntAgentApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'FirstRole',
-      theme: AppTheme.light,
-      // Phase 2: TaskCenter's completion toasts fire through this global
-      // key so they show on whatever screen/tab the user is on when a
-      // background task finishes.
-      scaffoldMessengerKey: appScaffoldMessengerKey,
-      home: const AuthGate(),
+    // Phase 2: rebuild the MaterialApp whenever the theme mode changes so the
+    // Profile/Settings toggle takes effect live. `ValueListenableBuilder` is
+    // the FlutterFlow-equivalent of binding a widget to an App State field.
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.instance.mode,
+      builder: (context, mode, _) => MaterialApp.router(
+        title: 'FirstRole',
+        theme: appLight,
+        darkTheme: appDark,
+        themeMode: mode,
+        // TaskCenter's completion toasts fire through this global key so they
+        // show on whatever screen/tab the user is on when a background task
+        // finishes.
+        scaffoldMessengerKey: appScaffoldMessengerKey,
+        routerConfig: appRouter,
+      ),
     );
   }
 }

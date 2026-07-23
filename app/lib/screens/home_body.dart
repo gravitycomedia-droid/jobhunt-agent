@@ -1,11 +1,13 @@
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/activity_item.dart';
 import '../models/application_item.dart';
 import '../models/match_item.dart';
 import 'dart:async' show unawaited;
 
+import '../router/route_args.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/match_feed.dart';
@@ -20,9 +22,6 @@ import '../widgets/page_skeletons.dart';
 import '../widgets/score_ring.dart';
 import '../widgets/stale_banner.dart';
 import '../widgets/status_pill.dart';
-import 'activity_log_screen.dart';
-import 'resume_diff_screen.dart';
-import 'resume_upload_screen.dart';
 
 /// The Home tab's content (frontend rebuild Phases 1 & 3, prototype
 /// `ui.isHome`) — chrome comes from [MainTabScreen]/[AppShell]. A
@@ -225,9 +224,7 @@ class _HomeBodyState extends State<HomeBody> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ResumeUploadScreen()),
-              ),
+              onPressed: () => context.push('/resume-upload'),
               icon: const AppIcon(AppIconName.upload, color: AppColors.textOnBrand),
               label: const Text('Upload Resume'),
             ),
@@ -327,9 +324,7 @@ class _HomeBodyState extends State<HomeBody> {
 
   Widget _activityBellButton() {
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ActivityLogScreen()),
-      ),
+      onTap: () => context.push('/activity'),
       child: Container(
         width: 42,
         height: 42,
@@ -398,9 +393,7 @@ class _HomeBodyState extends State<HomeBody> {
             Text('Recent activity', style: AppTypography.title),
             const Spacer(),
             GestureDetector(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ActivityLogScreen()),
-              ),
+              onTap: () => context.push('/activity'),
               child: Text('View all', style: AppTypography.caption.copyWith(color: AppColors.brand600, fontWeight: FontWeight.w600)),
             ),
           ],
@@ -455,9 +448,7 @@ class _HomeBodyState extends State<HomeBody> {
       borderRadius: AppRadius.lgRadius,
       child: InkWell(
         borderRadius: AppRadius.lgRadius,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => ResumeDiffScreen(jobId: m.job.id, jobTitle: m.job.title)),
-        ),
+        onTap: () => context.push('/tailor', extra: TailorArgs(jobId: m.job.id, jobTitle: m.job.title)),
         child: Container(
           decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
           padding: const EdgeInsets.all(AppSpacing.space4),
@@ -509,9 +500,7 @@ class _HomeBodyState extends State<HomeBody> {
       borderRadius: AppRadius.lgRadius,
       child: InkWell(
         borderRadius: AppRadius.lgRadius,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => ResumeDiffScreen(jobId: m.job.id, jobTitle: m.job.title)),
-        ),
+        onTap: () => context.push('/tailor', extra: TailorArgs(jobId: m.job.id, jobTitle: m.job.title)),
         child: Container(
           decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
           padding: const EdgeInsets.all(AppSpacing.space3),

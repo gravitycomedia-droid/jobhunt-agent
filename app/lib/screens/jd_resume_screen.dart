@@ -1,14 +1,15 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/job_extraction.dart';
+import '../router/route_args.dart';
 import '../services/api_client.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
-import 'resume_diff_screen.dart';
 
 /// Standalone from the matching pipeline (no live posting required):
 /// paste a job description as text, or upload it as a PDF, review the
@@ -115,9 +116,7 @@ class _JdResumeScreenState extends State<JdResumeScreen> {
       if (!mounted) return;
       // Same screen that handles tailoring for any matched job — it kicks
       // off POST /tailor/{job_id} itself when no tailored resume exists yet.
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ResumeDiffScreen(jobId: job.jobId, jobTitle: job.jobTitle)),
-      );
+      await context.push('/tailor', extra: TailorArgs(jobId: job.jobId, jobTitle: job.jobTitle));
     } catch (e) {
       setState(() => _errorMessage = e.toString());
     } finally {
