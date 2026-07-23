@@ -257,6 +257,9 @@ def get_ranked_matches(profile: dict, limit: int = 50) -> list[dict]:
                 "compensators": m["compensators"],
                 "verdict": m["verdict"],
                 "one_line_reason": m["one_line_reason"],
+                # Frontend rebuild v2 §4.5: the Matches "NEW" badge is derived
+                # client-side from how recently this row was (re)ranked.
+                "ranked_at": m.get("ranked_at"),
             }
         )
     return results

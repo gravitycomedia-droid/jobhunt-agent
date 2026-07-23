@@ -168,6 +168,24 @@ class ResumeProfile {
     );
   }
 
+  /// Phase 5 (§4.11): résumé-completion for the Profile bar. A DETERMINISTIC
+  /// count of which core résumé sections the user has actually filled — code,
+  /// never an LLM guess (Golden Rule 2). The fraction of these seven signals
+  /// present, as a whole percent. Pure, so it's a clean candidate to lift
+  /// server-side later without changing the meaning.
+  int get completionPercent {
+    final signals = <bool>[
+      name.trim().isNotEmpty,
+      headline?.trim().isNotEmpty ?? false,
+      skills.isNotEmpty,
+      experience.isNotEmpty,
+      projects.isNotEmpty,
+      education.isNotEmpty,
+      targetRoles.isNotEmpty,
+    ];
+    return ((signals.where((s) => s).length / signals.length) * 100).round();
+  }
+
   /// Sent as the PATCH body — server accepts partial updates, but we always
   /// send the full edited profile since the review screen edits everything.
   Map<String, dynamic> toJson() => {

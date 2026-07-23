@@ -17,9 +17,10 @@ import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/background_task_dialog.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/page_skeletons.dart';
+import '../widgets/fit_gauge.dart';
 import '../widgets/score_ring.dart';
 import '../widgets/stale_banner.dart';
 import '../widgets/status_pill.dart';
@@ -54,6 +55,13 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
   DateTime? _lastUpdated; // ADR-028: for the "updated Xm ago" indicator
   List<ApplicationItem> _applications = [];
   List<ActivityItem> _activity = [];
+
+  // Phase 5 (rebuild v2, §4.2): the fit-gauge delta chip + bell badge. Both
+  // are ENHANCEMENTS fetched best-effort (see _loadEnhancements) — a failure
+  // never blanks the dashboard. `_scoreDelta == 0` hides the chip (no prior
+  // snapshot yet, or a genuine no-change) — never a fabricated reading.
+  int _scoreDelta = 0;
+  int _unreadCount = 0;
 
   // Phase 1C: Home's match count is literally the `.length` of the same
   // MatchFeed list the Matches tab renders — one source of truth, so the
@@ -159,12 +167,37 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
       });
       await CacheService.instance.write(CacheService.keyApplications, [for (final a in _applications) a.raw]);
       await CacheService.instance.write(CacheService.keyActivity, [for (final a in _activity) a.raw]);
+      unawaited(_loadEnhancements());
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  /// Phase 5 (§4.2): the gauge delta chip + bell unread badge. Deliberately
+  /// OUTSIDE [_load]'s success path and each other's — these back-end
+  /// endpoints (score-history, notifications) ship with the Phase-4
+  /// migrations/deploy that may not be live yet, and even once live they're
+  /// secondary. A failure leaves the chip/badge hidden; the dashboard itself
+  /// (matches, stats, activity) must always render.
+  Future<void> _loadEnhancements() async {
+    try {
+      final history = await _apiClient.fetchScoreHistory();
+      // null delta → no ≥24h-older snapshot yet → 0 keeps the chip hidden.
+      if (mounted) setState(() => _scoreDelta = history.delta?.topFit ?? 0);
+    } catch (_) {
+      /* leave the delta chip hidden */
+    }
+    try {
+      // The unread count is a separate COUNT query server-side, independent of
+      // limit — so limit:1 is the cheapest way to read just the badge number.
+      final feed = await _apiClient.fetchNotifications(limit: 1);
+      if (mounted) setState(() => _unreadCount = feed.unreadCount);
+    } catch (_) {
+      /* leave the bell badge hidden */
     }
   }
 
@@ -188,8 +221,9 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
     ref.watch(matchFeedProvider);
     ref.watch(trackedTaskProvider((kind: TaskKind.pipeline, id: null)));
     if (_isLoading) {
-      // Phase 4C: home shape — greeting lines, hero card, stat grid.
-      return const HomeSkeleton();
+      // Phase 5 (§Phase 5 acceptance): no skeleton — cold load shows the brand
+      // loader; a warm load paints the cached dashboard instantly instead.
+      return const Center(child: AppLoader());
     }
 
     if (_errorMessage != null) {
@@ -267,10 +301,21 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
           ),
           const SizedBox(height: AppSpacing.space4),
           if (_matches.isNotEmpty) ...[
+            // §4.2 fit gauge — the top match's fit as the hero score, with the
+            // real day-over-day delta chip (hidden until two snapshots exist).
+            // Keyed on the score so a rerank that changes the top match remounts
+            // the gauge and re-runs its count-up (it's a one-shot animator); a
+            // later delta-chip arrival at the SAME score just rebuilds in place.
+            Center(
+              child: FitGauge(
+                key: ValueKey(_matches.first.fitScore),
+                target: _matches.first.fitScore,
+                delta: _scoreDelta,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.space3),
             _newMatchesBanner(),
             const SizedBox(height: AppSpacing.space3),
-          ],
-          if (_matches.isNotEmpty) ...[
             _heroMatchCard(_matches.first),
             const SizedBox(height: AppSpacing.space4),
           ],
@@ -329,14 +374,26 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
           clipBehavior: Clip.none,
           children: [
             const AppIcon(AppIconName.bell, size: 20, color: AppColors.textSecondary),
-            if (_activity.isNotEmpty)
+            // §4.2: real unread count from GET /notifications (best-effort —
+            // 0 or a failed fetch shows no badge). 9+ caps the pill width.
+            if (_unreadCount > 0)
               Positioned(
-                top: -1,
-                right: -1,
+                top: -6,
+                right: -6,
                 child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(color: AppColors.criticalFill, shape: BoxShape.circle, border: Border.all(color: AppColors.surface, width: 2)),
+                  constraints: const BoxConstraints(minWidth: 16),
+                  height: 16,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.criticalFill,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.surface, width: 2),
+                  ),
+                  child: Text(
+                    _unreadCount > 9 ? '9+' : '$_unreadCount',
+                    style: const TextStyle(color: AppColors.textOnBrand, fontSize: 9, fontWeight: FontWeight.w700, height: 1),
+                  ),
                 ),
               ),
           ],
@@ -449,8 +506,8 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
           padding: const EdgeInsets.all(AppSpacing.space4),
           child: Row(
             children: [
-              ScoreRing(score: m.fitScore, size: 84),
-              const SizedBox(width: AppSpacing.space4),
+              // No ScoreRing here — the fit gauge above owns the score, so the
+              // best-match card is the detail card (§4.2), not a second gauge.
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

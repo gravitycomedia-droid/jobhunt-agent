@@ -10,10 +10,10 @@ import '../services/cache_service.dart';
 import '../services/refresh_throttle.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';
 import '../widgets/page_header.dart';
-import '../widgets/page_skeletons.dart';
 import '../widgets/stale_banner.dart';
 import '../widgets/task_toast.dart';
 import 'shortlist_screen.dart';
@@ -195,13 +195,9 @@ class _JobsListBodyState extends State<JobsListBody> {
 
   Widget _buildContent(List<Job> filteredJobs) {
     if (_isLoading) {
-      // Phase 4C: structure-matched skeleton — 5 job-card shapes.
-      return ListView.separated(
-        padding: EdgeInsets.zero,
-        itemCount: 5,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (_, _) => const JobCardSkeleton(),
-      );
+      // Phase 5 (§Phase 5 acceptance): no skeleton — cold load shows the brand
+      // loader; a warm load paints the cached list instantly instead.
+      return const Center(child: AppLoader());
     }
 
     if (_errorMessage != null) {

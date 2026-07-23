@@ -4,17 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
+import '../models/application_item.dart';
 import '../models/resume_profile.dart';
+import '../models/subscription.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
+import '../widgets/hatched_progress.dart';
 import '../widgets/page_header.dart';
-import '../widgets/page_skeletons.dart';
 import '../widgets/stale_banner.dart';
 import 'profile_review_screen.dart';
 import 'settings_screen.dart';
+import 'shortlist_screen.dart';
 import 'target_roles_screen.dart';
 
 /// The Profile tab's content (Brick 9 polish) — the account-level home
@@ -37,6 +41,13 @@ class _ProfileBodyState extends State<ProfileBody> {
   DateTime? _staleSince; // Phase 5: non-null = painting cached data
   ResumeProfile? _profile;
 
+  // Phase 5 (§4.11): the 3-stat row (from applications) and the plan card
+  // (from GET /subscription). Both load best-effort AFTER the profile paints —
+  // neither is essential to the screen, so a failure just leaves stats at 0 /
+  // the plan card hidden rather than blanking Profile.
+  List<ApplicationItem> _applications = [];
+  Subscription? _subscription;
+
   @override
   void initState() {
     super.initState();
@@ -45,13 +56,22 @@ class _ProfileBodyState extends State<ProfileBody> {
 
   Future<bool> _paintFromCache() async {
     if (_profile != null) return true;
-    final entry = await CacheService.instance.read<ResumeProfile>(
-      CacheService.keyProfile,
-      (json) => ResumeProfile.fromJson((json as Map).cast<String, dynamic>()),
-    );
+    final results = await Future.wait([
+      CacheService.instance.read<ResumeProfile>(
+        CacheService.keyProfile,
+        (json) => ResumeProfile.fromJson((json as Map).cast<String, dynamic>()),
+      ),
+      CacheService.instance.read<List<ApplicationItem>>(
+        CacheService.keyApplications,
+        (json) => (json as List).map((a) => ApplicationItem.fromJson((a as Map).cast<String, dynamic>())).toList(),
+      ),
+    ]);
+    final entry = results[0] as CacheEntry<ResumeProfile>?;
+    final apps = results[1] as CacheEntry<List<ApplicationItem>>?;
     if (entry == null || !mounted) return false;
     setState(() {
       _profile = entry.data;
+      _applications = apps?.data ?? _applications;
       _staleSince = entry.cachedAt;
       _isLoading = false;
     });
@@ -72,6 +92,7 @@ class _ProfileBodyState extends State<ProfileBody> {
       });
       if (profile != null) {
         await CacheService.instance.write(CacheService.keyProfile, profile.raw);
+        unawaited(_loadExtras());
       }
     } catch (e) {
       if (!mounted) return;
@@ -79,6 +100,25 @@ class _ProfileBodyState extends State<ProfileBody> {
         _errorMessage = painted ? null : e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  /// Best-effort: the stat row's applications + the plan card's subscription.
+  /// Kept out of [_load]'s success path so neither can blank Profile — the
+  /// account card, completion bar and grouped list always render.
+  Future<void> _loadExtras() async {
+    try {
+      final apps = await _apiClient.fetchApplications();
+      if (mounted) setState(() => _applications = apps);
+      await CacheService.instance.write(CacheService.keyApplications, [for (final a in apps) a.raw]);
+    } catch (_) {
+      /* stats fall back to whatever the cache painted (or 0) */
+    }
+    try {
+      final sub = await _apiClient.fetchSubscription();
+      if (mounted) setState(() => _subscription = sub);
+    } catch (_) {
+      /* plan card stays hidden */
     }
   }
 
@@ -154,19 +194,52 @@ class _ProfileBodyState extends State<ProfileBody> {
   }
 
   Widget _buildContent(String? email) {
+    // No skeleton here (§Phase 5): a cold load with nothing cached shows the
+    // real brand loader, not a placeholder shell.
+    if (_isLoading && _profile == null) {
+      return const Center(child: AppLoader());
+    }
+    if (_errorMessage != null && _profile == null) {
+      return Center(
+        child: EmptyState(
+          icon: AppIconName.alertTriangle,
+          title: 'Could not load your profile',
+          message: _errorMessage,
+          actionLabel: 'Retry',
+          onAction: _load,
+        ),
+      );
+    }
+
+    final profile = _profile;
     return ListView(
       children: [
         if (_staleSince != null) ...[
           StaleBanner(cachedAt: _staleSince!, onRetry: _load),
           const SizedBox(height: AppSpacing.space3),
         ],
-        _accountCard(email),
-        const SizedBox(height: AppSpacing.space4),
-        _resumeSection(),
-        if (_profile != null) ...[
+        _avatarCard(email, profile),
+        if (profile == null) ...[
+          const SizedBox(height: AppSpacing.space4),
+          EmptyState(
+            icon: AppIconName.fileText,
+            title: 'No resume uploaded yet',
+            message: 'Upload a resume to start matching and tailoring against jobs.',
+            actionLabel: 'Upload Resume',
+            onAction: () => context.push('/resume-upload'),
+          ),
+        ] else ...[
+          if (_subscription != null) ...[
+            const SizedBox(height: AppSpacing.space4),
+            _planCard(_subscription!),
+          ],
+          const SizedBox(height: AppSpacing.space4),
+          _statRow(),
           const SizedBox(height: AppSpacing.space4),
           _navRows(),
         ],
+        const SizedBox(height: AppSpacing.space4),
+        _signOutRow(),
       ],
     );
   }
@@ -182,6 +255,12 @@ class _ProfileBodyState extends State<ProfileBody> {
       child: Column(
         children: [
           _navRow(
+            icon: AppIconName.fileText,
+            label: 'My résumé',
+            onTap: _editProfile,
+            showDivider: true,
+          ),
+          _navRow(
             icon: AppIconName.target,
             label: 'Target roles',
             trailing: '${_profile!.targetRoles.length}',
@@ -189,8 +268,23 @@ class _ProfileBodyState extends State<ProfileBody> {
             showDivider: true,
           ),
           _navRow(
+            icon: AppIconName.bookmark,
+            label: 'Saved jobs',
+            trailing: '${_applications.where((a) => a.state == 'saved').length}',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => ShortlistScreen(applications: _applications)),
+            ),
+            showDivider: true,
+          ),
+          _navRow(
+            icon: AppIconName.fileText,
+            label: 'Apply via form',
+            onTap: () => context.push('/form-fill'),
+            showDivider: true,
+          ),
+          _navRow(
             icon: AppIconName.dollarSign,
-            label: 'LLM cost & usage',
+            label: 'Agent wallet',
             onTap: () => context.push('/cost'),
             showDivider: true,
           ),
@@ -245,7 +339,80 @@ class _ProfileBodyState extends State<ProfileBody> {
     );
   }
 
-  Widget _accountCard(String? email) {
+  /// §4.11 avatar card: who's signed in + role, plus the résumé-completion
+  /// bar (hatched remainder) and its %. [profile] is null pre-upload — the
+  /// card then just shows the account, and _buildContent adds the nudge below.
+  Widget _avatarCard(String? email, ResumeProfile? profile) {
+    final title = profile?.name ?? 'Your account';
+    final role = profile?.headline;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.space4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: AppRadius.lgRadius,
+        boxShadow: AppElevation.e1,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
+                child: const AppIcon(AppIconName.user, size: 22, color: AppColors.brand600),
+              ),
+              const SizedBox(width: AppSpacing.space3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: AppTypography.title, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text(
+                      role ?? email ?? 'Signed in',
+                      style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (role != null && email != null)
+                      Text(email, style: AppTypography.label.copyWith(color: AppColors.textTertiary), overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (profile != null) ...[
+            const SizedBox(height: AppSpacing.space4),
+            Row(
+              children: [
+                Text('Résumé completeness', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+                const Spacer(),
+                Text(
+                  '${profile.completionPercent}%',
+                  style: TextStyle(
+                    fontFamily: AppTypography.monoData.fontFamily,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.brand600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.space2),
+            HatchedProgress(value: profile.completionPercent / 100),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// §4.11 plan card. `subscription_tier` is the only field that actually
+  /// gates anything (server entitlements) — this is a display of it. The full
+  /// wallet/top-up UI (§4.12) is Phase 9; this stays a lean status card.
+  Widget _planCard(Subscription sub) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
@@ -256,94 +423,89 @@ class _ProfileBodyState extends State<ProfileBody> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
-            child: const AppIcon(AppIconName.user, size: 22, color: AppColors.brand600),
-          ),
+          const AppIcon(AppIconName.dollarSign, size: 20, color: AppColors.brand600),
           const SizedBox(width: AppSpacing.space3),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Signed in', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
-                Text(email ?? 'Unknown account', style: AppTypography.title, overflow: TextOverflow.ellipsis),
+                Text('${sub.isPro ? 'Pro' : 'Free'} plan', style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(sub.status, style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
               ],
             ),
           ),
-          TextButton(
-            onPressed: () => Supabase.instance.client.auth.signOut(),
-            child: const Text('Sign out'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: sub.isPro ? AppColors.brandSoft : AppColors.surfaceSunken,
+              borderRadius: AppRadius.smRadius,
+            ),
+            child: Text(
+              sub.tier.toUpperCase(),
+              style: AppTypography.label.copyWith(
+                color: sub.isPro ? AppColors.brand700 : AppColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _resumeSection() {
-    if (_isLoading) {
-      // Phase 4C: profile shape — avatar circle + field rows.
-      return const SizedBox(height: 320, child: ProfileSkeleton());
-    }
+  /// §4.11 3-stat row, counted from `applications` (code, never an LLM guess).
+  /// Applied = anything moved beyond 'saved'.
+  Widget _statRow() {
+    final applied = _applications.where((a) => a.state != 'saved').length;
+    final interviews = _applications.where((a) => a.state == 'interview').length;
+    final offers = _applications.where((a) => a.state == 'offer').length;
+    final stats = [
+      ('$applied', 'Applied', AppColors.infoText),
+      ('$interviews', 'Interviews', AppColors.brand600),
+      ('$offers', 'Offers', AppColors.successText),
+    ];
+    return Row(
+      children: [
+        for (var i = 0; i < stats.length; i++) ...[
+          if (i > 0) const SizedBox(width: AppSpacing.space2),
+          Expanded(child: _statTile(stats[i].$1, stats[i].$2, stats[i].$3)),
+        ],
+      ],
+    );
+  }
 
-    if (_errorMessage != null) {
-      return EmptyState(
-        icon: AppIconName.alertTriangle,
-        title: 'Could not load your profile',
-        message: _errorMessage,
-        actionLabel: 'Retry',
-        onAction: _load,
-      );
-    }
-
-    final profile = _profile;
-    if (profile == null) {
-      return EmptyState(
-        icon: AppIconName.fileText,
-        title: 'No resume uploaded yet',
-        message: 'Upload a resume to start matching and tailoring against jobs.',
-        actionLabel: 'Upload Resume',
-        onAction: () => context.push('/resume-upload'),
-      );
-    }
-
+  Widget _statTile(String value, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(color: AppColors.border),
-        borderRadius: AppRadius.lgRadius,
-        boxShadow: AppElevation.e1,
+        borderRadius: AppRadius.mdRadius,
       ),
-      child: Row(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3, horizontal: 4),
+      child: Column(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(profile.name, style: AppTypography.title, overflow: TextOverflow.ellipsis),
-                if (profile.headline != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    profile.headline!,
-                    style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
-            ),
+          Text(
+            value,
+            style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 22, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.4),
           ),
-          const SizedBox(width: AppSpacing.space3),
-          // A bare OutlinedButton as a non-flex Row child hits a Flutter
-          // layout bug on this SDK (freshly-inserted ListView item ->
-          // "BoxConstraints forces an infinite width" inside
-          // _RenderInputPadding, button_style_button.dart) that corrupts
-          // the whole list's layout. Forcing a tight SizedBox around it
-          // sidesteps the bug regardless of root cause.
-          SizedBox(width: 84, height: 40, child: OutlinedButton(onPressed: _editProfile, child: const Text('Edit'))),
+          const SizedBox(height: 2),
+          Text(label.toUpperCase(), style: AppTypography.label.copyWith(color: AppColors.textTertiary), textAlign: TextAlign.center),
         ],
+      ),
+    );
+  }
+
+  Widget _signOutRow() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: () => Supabase.instance.client.auth.signOut(),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textSecondary,
+          side: const BorderSide(color: AppColors.border),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        child: const Text('Sign out'),
       ),
     );
   }

@@ -14,9 +14,12 @@ import '../models/health_status.dart';
 import '../models/job.dart';
 import '../models/job_extraction.dart';
 import '../models/match_item.dart';
+import '../models/notification_item.dart';
 import '../models/resume_profile.dart';
+import '../models/score_history.dart';
 import '../models/shortlist_item.dart';
 import '../models/skill_growth_item.dart';
+import '../models/subscription.dart';
 import '../models/tailored_resume.dart';
 
 /// Golden Rule 1 (see CLAUDE.md): the phone never talks to Gemini/Supabase/etc
@@ -682,6 +685,52 @@ class ApiClient {
     return (body['data'] as List)
         .map((s) => SkillGrowthItem.fromJson(s as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Phase 5 (frontend rebuild v2): the fit-score history behind Home's
+  /// gauge delta chip (R-D). `delta` comes back null until two snapshots
+  /// ≥24h apart exist — the caller then hides the chip rather than showing
+  /// a fabricated `+0` (§4.2). See server/services/score_history.py.
+  Future<ScoreHistory> fetchScoreHistory() async {
+    final uri = Uri.parse('$_baseUrl/stats/score-history');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ScoreHistory.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Phase 5: the caller's plan state for Profile's plan card (§4.11).
+  /// `tier` is the only field that gates anything server-side.
+  Future<Subscription> fetchSubscription() async {
+    final uri = Uri.parse('$_baseUrl/subscription');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return Subscription.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Phase 5: the notification feed + unread count (§4.13). Home reads only
+  /// [NotificationFeed.unreadCount] for the bell badge; the full feed screen
+  /// arrives in Phase 9. The unread count lives INSIDE data (server keeps the
+  /// standard envelope), so it round-trips through [NotificationFeed.fromJson].
+  Future<NotificationFeed> fetchNotifications({int limit = 50}) async {
+    final uri = Uri.parse('$_baseUrl/notifications?limit=$limit');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return NotificationFeed.fromJson(body['data'] as Map<String, dynamic>);
   }
 
   /// Phase 6: parse a pasted application-form URL. Google Forms parse

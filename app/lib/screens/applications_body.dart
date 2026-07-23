@@ -6,12 +6,14 @@ import '../services/cache_service.dart';
 import '../services/refresh_throttle.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/application_card.dart';
+import '../widgets/celebration_modal.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/kanban_column.dart';
 import '../widgets/page_header.dart';
-import '../widgets/page_skeletons.dart';
 import '../widgets/stale_banner.dart';
+import '../widgets/task_toast.dart';
 import 'app_detail_screen.dart';
 
 /// The Track tab's content (chrome comes from [MainTabScreen] /
@@ -108,6 +110,43 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
     );
   }
 
+  /// Rebuilds an item at a new pipeline stage. Patches `raw` too (not just the
+  /// `state` field) so the moved card round-trips correctly through the cache —
+  /// [ApplicationItem.copyWith] leaves `raw` untouched, which would persist the
+  /// OLD state on the next cache write.
+  ApplicationItem _withState(ApplicationItem a, String state) {
+    return ApplicationItem.fromJson({
+      ...a.raw,
+      'state': state,
+      'state_changed_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  /// §4.9 Kanban drag: move [item] to [target] with an OPTIMISTIC update —
+  /// the card jumps columns instantly, the PATCH runs underneath, and a
+  /// failure reverts it (never leave the board lying about server state).
+  /// Landing in `offer` fires the celebration once (its own heavy haptic).
+  Future<void> _moveTo(ApplicationItem item, String target) async {
+    if (item.state == target) return;
+    final previous = item.state;
+    setState(() {
+      _items = _items.map((a) => a.id == item.id ? _withState(a, target) : a).toList();
+    });
+    try {
+      await _apiClient.updateApplicationState(item.id, target);
+      await CacheService.instance.write(CacheService.keyApplications, [for (final a in _items) a.raw]);
+      if (target == 'offer' && mounted) {
+        await showCelebration(context);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _items = _items.map((a) => a.id == item.id ? _withState(a, previous) : a).toList();
+      });
+      showTaskToast(success: false, message: 'Could not move to $target — $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -145,8 +184,9 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
 
   Widget _buildContent() {
     if (_isLoading) {
-      // Phase 4C: Kanban shape — column headers + card blocks per column.
-      return KanbanSkeleton(columns: kApplicationStates.length);
+      // Phase 5 (§Phase 5 acceptance): no skeleton — a cold load with nothing
+      // cached shows the brand loader; a warm load paints from cache instead.
+      return const Center(child: AppLoader());
     }
 
     if (_errorMessage != null) {
@@ -182,26 +222,55 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final state in kApplicationStates) ...[
-              KanbanColumn(
-                stage: state,
-                count: _items.where((a) => a.state == state).length,
-                children: _items
-                    .where((a) => a.state == state)
-                    .map(
-                      (a) => ApplicationCard(
-                        title: a.job.title,
-                        company: a.job.company ?? 'Unknown company',
-                        salary: a.job.salaryLabel,
-                        onTap: () => _openDetail(a),
-                      ),
-                    )
-                    .toList(),
-              ),
+              _laneFor(state),
               const SizedBox(width: AppSpacing.space3),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  /// One pipeline lane wired as a drop target (§4.9). `onWillAcceptWithDetails`
+  /// rejects a drop back onto the card's own column so a same-lane release is a
+  /// no-op rather than a pointless PATCH.
+  Widget _laneFor(String state) {
+    final cards = _items.where((a) => a.state == state).toList();
+    return DragTarget<ApplicationItem>(
+      onWillAcceptWithDetails: (d) => d.data.state != state,
+      onAcceptWithDetails: (d) => _moveTo(d.data, state),
+      builder: (context, candidate, rejected) => KanbanColumn(
+        stage: state,
+        count: cards.length,
+        highlighted: candidate.isNotEmpty,
+        children: [for (final a in cards) _draggableCard(a)],
+      ),
+    );
+  }
+
+  /// A Kanban card that a long-press picks up for dragging while a plain tap
+  /// still opens its detail sheet — the two gestures don't collide, so drag
+  /// (move stages) and tap (edit notes/follow-ups) coexist.
+  Widget _draggableCard(ApplicationItem a) {
+    final card = ApplicationCard(
+      title: a.job.title,
+      company: a.job.company ?? 'Unknown company',
+      salary: a.job.salaryLabel,
+      onTap: () => _openDetail(a),
+    );
+    // Column inner width: 264 − 8px padding each side.
+    const cardWidth = 248.0;
+    return LongPressDraggable<ApplicationItem>(
+      data: a,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Opacity(
+          opacity: 0.92,
+          child: SizedBox(width: cardWidth, child: card),
+        ),
+      ),
+      childWhenDragging: Opacity(opacity: 0.35, child: card),
+      child: card,
     );
   }
 }

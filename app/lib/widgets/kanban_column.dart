@@ -20,6 +20,7 @@ class KanbanColumn extends StatelessWidget {
     this.count,
     this.width = 264,
     this.children = const [],
+    this.highlighted = false,
   });
 
   /// Pipeline stage this lane represents (new/applied/replied/interview/offer/rejected).
@@ -31,14 +32,19 @@ class KanbanColumn extends StatelessWidget {
   final double width;
   final List<Widget> children;
 
+  /// Phase 5 (§4.9): true while a dragged card is hovering over this lane —
+  /// the board tints the drop target so the release point is unambiguous.
+  final bool highlighted;
+
   @override
   Widget build(BuildContext context) {
     final n = count ?? children.length;
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
       width: width,
       decoration: BoxDecoration(
-        color: AppColors.surfaceSunken,
-        border: Border.all(color: AppColors.border),
+        color: highlighted ? AppColors.brandSoft : AppColors.surfaceSunken,
+        border: Border.all(color: highlighted ? AppColors.brand : AppColors.border, width: highlighted ? 1.5 : 1),
         borderRadius: AppRadius.lgRadius,
       ),
       child: Column(

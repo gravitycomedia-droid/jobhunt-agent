@@ -105,13 +105,23 @@ class _FitGaugeState extends State<FitGauge> with SingleTickerProviderStateMixin
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Delta chip: signed day-over-day movement (§4.2). The caller
+              // passes 0 to HIDE it (no prior snapshot yet — never a fabricated
+              // reading); a real move renders up/green or down/red so a score
+              // that actually dropped can't masquerade as a gain.
               if (widget.delta != 0)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('+${widget.delta}', style: mono(13, w: FontWeight.w600, color: c.success)),
-                    Icon(Icons.arrow_upward, size: 12, color: c.success),
-                  ],
+                Builder(
+                  builder: (_) {
+                    final up = widget.delta > 0;
+                    final tone = up ? c.success : c.critical;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('${up ? '+' : '−'}${widget.delta.abs()}', style: mono(13, w: FontWeight.w600, color: tone)),
+                        Icon(up ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: tone),
+                      ],
+                    );
+                  },
                 ),
               Text('${_val.round()}', style: serifScore(82, c.ink)),
               Text(

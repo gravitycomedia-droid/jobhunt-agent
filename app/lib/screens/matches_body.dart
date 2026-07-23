@@ -14,11 +14,11 @@ import '../services/task_center.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/background_task_dialog.dart';
 import '../widgets/match_card.dart';
 import '../widgets/page_header.dart';
-import '../widgets/page_skeletons.dart';
 import '../widgets/stale_banner.dart';
 
 /// The Matches tab's content (Brick 9 polish: chrome comes from
@@ -171,13 +171,9 @@ class _MatchesBodyState extends ConsumerState<MatchesBody> {
 
   Widget _buildContent() {
     if (_isLoading) {
-      // Phase 4C: match-card shape (score-ring circle placeholder).
-      return ListView.separated(
-        padding: EdgeInsets.zero,
-        itemCount: 4,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (_, _) => const MatchCardSkeleton(),
-      );
+      // Phase 5 (§Phase 5 acceptance): no skeleton — cold load shows the brand
+      // loader; a warm load paints the cached matches instantly instead.
+      return const Center(child: AppLoader());
     }
 
     if (_errorMessage != null) {
@@ -270,6 +266,7 @@ class _MatchesBodyState extends ConsumerState<MatchesBody> {
       postedAt: job.postedAtLabel,
       score: item.fitScore,
       verdict: item.verdict,
+      isNew: item.isNew,
       strengths: item.strengths,
       gaps: item.gaps,
       // Frontend rebuild Phase 1: the prototype's Matches screen (unlike

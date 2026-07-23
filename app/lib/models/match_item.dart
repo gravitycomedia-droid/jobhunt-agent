@@ -14,6 +14,9 @@ class MatchItem {
   final String verdict;
   final String oneLineReason;
 
+  /// §4.5: when this row was last (re)ranked — backs the "NEW" badge.
+  final DateTime? rankedAt;
+
   /// Phase 5: the exact server JSON this was parsed from — written to the
   /// cache verbatim so cached rows round-trip through the same fromJson.
   final Map<String, dynamic> raw;
@@ -27,10 +30,15 @@ class MatchItem {
     required this.compensators,
     required this.verdict,
     required this.oneLineReason,
+    this.rankedAt,
     this.raw = const {},
   });
 
+  /// Ranked within the last day — a fresh result worth flagging.
+  bool get isNew => rankedAt != null && DateTime.now().difference(rankedAt!) < const Duration(hours: 24);
+
   factory MatchItem.fromJson(Map<String, dynamic> json) {
+    final ranked = json['ranked_at'];
     return MatchItem(
       raw: json,
       job: Job.fromJson(json),
@@ -41,6 +49,7 @@ class MatchItem {
       compensators: (json['compensators'] as List).map((e) => e as String).toList(),
       verdict: json['verdict'] as String,
       oneLineReason: json['one_line_reason'] as String,
+      rankedAt: ranked == null ? null : DateTime.tryParse(ranked as String),
     );
   }
 }

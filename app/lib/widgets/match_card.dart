@@ -63,6 +63,7 @@ class MatchCard extends StatefulWidget {
     this.defaultExpanded = false,
     this.onTailor,
     this.tailorLabel = 'Tailor resume',
+    this.isNew = false,
   });
 
   final String title;
@@ -92,6 +93,9 @@ class MatchCard extends StatefulWidget {
   /// Primary-action handler shown when expanded.
   final VoidCallback? onTailor;
   final String tailorLabel;
+
+  /// §4.5: show the "NEW" badge (ranked within the last day).
+  final bool isNew;
 
   @override
   State<MatchCard> createState() => _MatchCardState();
@@ -128,6 +132,17 @@ class _MatchCardState extends State<MatchCard> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    if (widget.isNew) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(color: AppColors.brand600, borderRadius: AppRadius.smRadius),
+                        child: const Text(
+                          'NEW',
+                          style: TextStyle(color: AppColors.textOnBrand, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                     if (widget.verdict != null) StatusPill(context: PillContext.verdict, value: widget.verdict!),
                     const Spacer(),
                     TextButton(
