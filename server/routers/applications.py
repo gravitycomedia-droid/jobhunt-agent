@@ -2,11 +2,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from config import settings
 from db.supabase_client import supabase
 from models.application import ApplicationCreate, ApplicationStateUpdate
 from services.auth import get_current_profile
 from services.email import EmailSendError, send_followup_email
 from services.llm import FollowupError, LlmApiError, generate_followup_draft
+from services.rate_limit import enforce_rate_limit
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -108,7 +110,12 @@ async def update_application(
     return {"data": row, "error": None}
 
 
-@router.post("/{application_id}/followup")
+@router.post(
+    "/{application_id}/followup",
+    dependencies=[
+        Depends(enforce_rate_limit("followup", settings.rate_limit_followup, settings.rate_limit_window_seconds))
+    ],
+)
 async def draft_followup(application_id: str, profile: dict = Depends(get_current_profile)):
     """Frontend rebuild Phase 2: on-demand version of daily_pipeline.py's
     stale-application sweep, for one application the user explicitly asked

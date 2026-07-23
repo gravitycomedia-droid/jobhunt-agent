@@ -16,6 +16,8 @@ import httpx
 from rapidfuzz import fuzz, process
 
 from models.form import FormAnswer, FormQuestion, FormSchema
+# ADR-024 SSRF gate, shared with the manual-job fetch (Phase 4 security fix).
+from services.job_ingestion import _MAX_REDIRECTS, ManualJobFetchError, _assert_public_url
 
 # How closely a current question's text must match a past one (after
 # normalize_question) to reuse that past answer — see apply_answer_history.
@@ -53,13 +55,35 @@ def is_google_form_url(url: str) -> bool:
 
 
 async def fetch_form_html(url: str) -> str:
-    """Same httpx/user-agent/timeout posture as fetch_manual_job_text, but
-    returns raw HTML (the Google parser needs the embedded JSON, not
-    stripped text). Follows redirects so forms.gle short links work."""
+    """Same posture as fetch_manual_job_text, but returns raw HTML (the Google
+    parser needs the embedded JSON, not stripped text).
+
+    ADR-024 / Phase 4 SSRF fix: redirects are followed MANUALLY so every hop is
+    re-validated through _assert_public_url — a forms.gle short link (or any
+    open redirect) can't be used to reach 169.254.169.254 or our internal
+    network. This reuses the exact gate the manual-job fetch already trusts."""
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; JobHuntAgent/1.0)"}
+    current = url
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            response = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; JobHuntAgent/1.0)"})
-            response.raise_for_status()
+        # follow_redirects=False: we follow them ourselves so each hop is checked.
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+            for _ in range(_MAX_REDIRECTS + 1):
+                _assert_public_url(current)
+                response = await client.get(current, headers=headers)
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise FormFetchError("That URL redirected without saying where")
+                    current = str(response.url.join(location))
+                    continue
+                response.raise_for_status()
+                break
+            else:
+                raise FormFetchError("That URL redirected too many times")
+    except ManualJobFetchError as e:
+        # The SSRF gate speaks in ManualJobFetchError; the forms client expects
+        # FormFetchError → a clean 422 with the "private or internal" message.
+        raise FormFetchError(str(e)) from e
     except httpx.HTTPError as e:
         raise FormFetchError(f"Could not fetch that URL: {e}") from e
 

@@ -2,10 +2,12 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 
+from config import settings
 from db.supabase_client import supabase
 from services.activity import build_activity_feed
 from services.auth import get_current_profile
 from services.cost_stats import summarize_costs
+from services.rate_limit import enforce_rate_limit
 from services.score_history import compute_score_history
 from services.skill_growth import get_skill_growth
 
@@ -74,7 +76,12 @@ async def get_activity(limit: int = Query(30, le=100), profile: dict = Depends(g
     return {"data": feed, "error": None}
 
 
-@router.get("/skill-growth")
+@router.get(
+    "/skill-growth",
+    dependencies=[
+        Depends(enforce_rate_limit("skill_growth", settings.rate_limit_skill_growth, settings.rate_limit_window_seconds))
+    ],
+)
 async def get_skill_growth_stats(profile: dict = Depends(get_current_profile)):
     """Phase 4: skills-to-learn aggregated from the caller's real match
     gaps, with LLM-suggested courses/projects — what SkillGrowthScreen

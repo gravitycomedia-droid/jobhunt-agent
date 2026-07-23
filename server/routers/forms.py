@@ -5,11 +5,14 @@ their own browser, signed into whatever Google account they choose."""
 
 from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from config import settings
 from db.supabase_client import supabase
+from models.common import MAX_URL_LEN, StrictModel
 from models.form import FormAnswer, FormQuestion, FormSchema
 from services.auth import get_current_profile
+from services.rate_limit import enforce_rate_limit
 from services.form_parser import (
     FormAuthRequiredError,
     FormFetchError,
@@ -39,8 +42,10 @@ router = APIRouter(prefix="/forms", tags=["forms"])
 JD_MIN_CHARS = 600
 
 
-class ParseFormRequest(BaseModel):
-    url: str
+class ParseFormRequest(StrictModel):
+    # ADR-024: StrictModel rejects unknown fields, and the length cap stops an
+    # absurdly long URL from ever reaching the fetch/SSRF path.
+    url: str = Field(min_length=1, max_length=MAX_URL_LEN)
 
 
 class FillFormRequest(BaseModel):
@@ -79,7 +84,12 @@ def _build_answer_history(profile_id: str) -> dict[str, FormAnswer]:
     return history
 
 
-@router.post("/parse")
+@router.post(
+    "/parse",
+    dependencies=[
+        Depends(enforce_rate_limit("forms_parse", settings.rate_limit_forms_parse, settings.rate_limit_window_seconds))
+    ],
+)
 async def parse_form(body: ParseFormRequest, profile: dict = Depends(get_current_profile)):
     """Fetch + parse a form URL. Google Forms parse deterministically from
     FB_PUBLIC_LOAD_DATA_ (no LLM); anything else falls back to
@@ -141,7 +151,12 @@ async def parse_form(body: ParseFormRequest, profile: dict = Depends(get_current
     return {"data": {"form": schema.model_dump(), "job_id": job_id, "job_title": job_title}, "error": None}
 
 
-@router.post("/fill")
+@router.post(
+    "/fill",
+    dependencies=[
+        Depends(enforce_rate_limit("forms_fill", settings.rate_limit_forms_fill, settings.rate_limit_window_seconds))
+    ],
+)
 async def fill_form(body: FillFormRequest, profile: dict = Depends(get_current_profile)):
     """Map the caller's profile onto the parsed form. LLM answers from
     profile facts only (nulls where unknown), then the deterministic
