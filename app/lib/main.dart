@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'config/supabase_config.dart';
 import 'router/app_router.dart';
 import 'services/api_client.dart';
+import 'services/app_container.dart';
 import 'services/haptic_service.dart';
 import 'services/theme_controller.dart';
 import 'theme/app_theme.dart';
@@ -30,12 +31,7 @@ Future<void> main() async {
   // Doesn't eliminate the cold start, just moves it earlier. Errors are
   // expected and ignored — this is a best-effort nudge, not a real call.
   _warmUpServer();
-  // Phase 2c: the Riverpod root. Inert until a widget actually reads a provider
-  // (Phase 3+ signature widgets and new screens use Riverpod from the start).
-  // The two legacy singletons (MatchFeed, TaskCenter) survived the go_router
-  // migration unchanged; they get Riverpod-converted when matches_body /
-  // home_body are rebuilt in Phase 5 — see the Riverpod-adoption ADR.
-  runApp(const ProviderScope(child: JobHuntAgentApp()));
+  runApp(const JobHuntAgentApp());
 }
 
 void _warmUpServer() {
@@ -54,18 +50,24 @@ class JobHuntAgentApp extends StatelessWidget {
     // Phase 2: rebuild the MaterialApp whenever the theme mode changes so the
     // Profile/Settings toggle takes effect live. `ValueListenableBuilder` is
     // the FlutterFlow-equivalent of binding a widget to an App State field.
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: ThemeController.instance.mode,
-      builder: (context, mode, _) => MaterialApp.router(
-        title: 'FirstRole',
-        theme: appLight,
-        darkTheme: appDark,
-        themeMode: mode,
-        // TaskCenter's completion toasts fire through this global key so they
-        // show on whatever screen/tab the user is on when a background task
-        // finishes.
-        scaffoldMessengerKey: appScaffoldMessengerKey,
-        routerConfig: appRouter,
+    // Phase 2c: bind the app to the shared Riverpod container (also reachable
+    // by non-widget code — see app_container.dart). Kept inside the widget so
+    // widget tests that pump JobHuntAgentApp get the scope automatically.
+    return UncontrolledProviderScope(
+      container: appContainer,
+      child: ValueListenableBuilder<ThemeMode>(
+        valueListenable: ThemeController.instance.mode,
+        builder: (context, mode, _) => MaterialApp.router(
+          title: 'FirstRole',
+          theme: appLight,
+          darkTheme: appDark,
+          themeMode: mode,
+          // TaskCenter's completion toasts fire through this global key so they
+          // show on whatever screen/tab the user is on when a background task
+          // finishes.
+          scaffoldMessengerKey: appScaffoldMessengerKey,
+          routerConfig: appRouter,
+        ),
       ),
     );
   }

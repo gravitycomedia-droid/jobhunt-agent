@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/tailored_resume.dart';
@@ -23,17 +24,17 @@ import '../widgets/page_skeletons.dart';
 /// resume" persists those per-bullet choices (PATCH /tailor/{id}/approve)
 /// and hands off to [ResumePreviewScreen]. This screen never submits
 /// anything on its own (golden rule: no auto-submitting anywhere).
-class ResumeDiffScreen extends StatefulWidget {
+class ResumeDiffScreen extends ConsumerStatefulWidget {
   const ResumeDiffScreen({super.key, required this.jobId, required this.jobTitle});
 
   final String jobId;
   final String jobTitle;
 
   @override
-  State<ResumeDiffScreen> createState() => _ResumeDiffScreenState();
+  ConsumerState<ResumeDiffScreen> createState() => _ResumeDiffScreenState();
 }
 
-class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
+class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
   final ApiClient _apiClient = ApiClient();
 
   bool _isLoading = true;
@@ -51,24 +52,15 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
   // diff screen while job A's tailor task was still running would no-op the
   // start call for B entirely, leaving B on the loading skeleton (or, worse,
   // eventually resolving with A's completion event and showing A's diff).
-  ValueNotifier<TrackedTask?> get _tailorTask => TaskCenter.instance.notifierFor(TaskKind.tailor, id: widget.jobId);
-
   @override
   void initState() {
     super.initState();
-    _tailorTask.addListener(_onTailorChanged);
     _load();
   }
 
-  @override
-  void dispose() {
-    _tailorTask.removeListener(_onTailorChanged);
-    super.dispose();
-  }
-
-  void _onTailorChanged() {
+  // Phase 2c: wired via ref.listen in build() (was a ValueNotifier listener).
+  void _onTailorChanged(TrackedTask? task) {
     if (!mounted) return;
-    final task = _tailorTask.value;
     if (task?.status == TrackedTaskStatus.done) {
       _fetchExisting(); // the tailored row is stored server-side — read it back
     } else if (task?.status == TrackedTaskStatus.failed) {
@@ -124,7 +116,7 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
               'the background and usually takes under a minute.',
         );
       }
-      await TaskCenter.instance.start(TaskKind.tailor, () => _apiClient.tailorResume(widget.jobId), id: widget.jobId);
+      await ref.read(taskCenterProvider.notifier).start(TaskKind.tailor, () => _apiClient.tailorResume(widget.jobId), id: widget.jobId);
     } catch (e) {
       setState(() {
         _errorMessage = e.toString();
@@ -158,6 +150,10 @@ class _ResumeDiffScreenState extends State<ResumeDiffScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Phase 2c: react to this job's tailor task completing/failing (the poll
+    // keeps running even if the user backs out — TaskCenter owns it).
+    ref.listen(trackedTaskProvider((kind: TaskKind.tailor, id: widget.jobId)),
+        (_, next) => _onTailorChanged(next));
     return Scaffold(
       appBar: const PageHeader(title: 'Tailored resume', showBack: true),
       body: _buildBody(),

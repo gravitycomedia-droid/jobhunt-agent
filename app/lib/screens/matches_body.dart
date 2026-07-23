@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/match_item.dart';
@@ -32,14 +33,14 @@ import '../widgets/stale_banner.dart';
 /// could take 7+ minutes and trip the client's timeout well before the
 /// server-side work actually finished. Showing cached results first and
 /// re-ranking underneath avoids that false failure.
-class MatchesBody extends StatefulWidget {
+class MatchesBody extends ConsumerStatefulWidget {
   const MatchesBody({super.key});
 
   @override
-  State<MatchesBody> createState() => _MatchesBodyState();
+  ConsumerState<MatchesBody> createState() => _MatchesBodyState();
 }
 
-class _MatchesBodyState extends State<MatchesBody> {
+class _MatchesBodyState extends ConsumerState<MatchesBody> {
   final ApiClient _apiClient = ApiClient();
   final RefreshThrottle _throttle = RefreshThrottle();
 
@@ -47,34 +48,21 @@ class _MatchesBodyState extends State<MatchesBody> {
   String? _errorMessage;
   DateTime? _lastUpdated;
 
-  // Phase 1C: the list itself lives in MatchFeed — the same object Home's
-  // stat counts — so the two surfaces can never disagree. This State only
-  // owns loading/error presentation.
-  List<MatchItem> get _items => MatchFeed.instance.matches.value ?? const [];
+  // Phase 1C/2c: the list itself lives in matchFeedProvider — the same state
+  // Home's stat counts — so the two surfaces can never disagree. This State
+  // only owns loading/error presentation. Reactivity comes from ref.watch in
+  // build (see the watches at the top of build()).
+  List<MatchItem> get _items => ref.read(matchFeedProvider).matches ?? const [];
 
-  // ADR-011: the rerank runs server-side as a background task; TaskCenter
-  // owns the polling loop (it survives tab switches — this State stays
-  // alive in the IndexedStack but couldn't own a cross-tab poller).
-  // MatchFeed refetches on completion; we just repaint on either signal.
-  ValueNotifier<TrackedTask?> get _rerankTask => TaskCenter.instance.notifierFor(TaskKind.rerank);
+  // ADR-011: the rerank runs server-side as a background task; TaskCenter owns
+  // the cross-tab polling loop. MatchFeed refetches on completion.
+  TrackedTask? get _rerankTask =>
+      ref.read(trackedTaskProvider((kind: TaskKind.rerank, id: null)));
 
   @override
   void initState() {
     super.initState();
-    _rerankTask.addListener(_repaint);
-    MatchFeed.instance.matches.addListener(_repaint);
     _loadCached();
-  }
-
-  @override
-  void dispose() {
-    _rerankTask.removeListener(_repaint);
-    MatchFeed.instance.matches.removeListener(_repaint);
-    super.dispose();
-  }
-
-  void _repaint() {
-    if (mounted) setState(() {});
   }
 
   /// Passive load (initState / retry). ADR-028: this is a passive trigger, so
@@ -89,7 +77,7 @@ class _MatchesBodyState extends State<MatchesBody> {
     });
     // Phase 5 stale-while-revalidate: paint the cached list instantly (no
     // skeleton), then fetch fresh underneath.
-    final painted = await MatchFeed.instance.loadFromCache();
+    final painted = await ref.read(matchFeedProvider.notifier).loadFromCache();
     _lastUpdated = await CacheService.instance.cachedAtFor(CacheService.keyMatches);
     if (mounted && painted) setState(() => _isLoading = false);
 
@@ -101,7 +89,7 @@ class _MatchesBodyState extends State<MatchesBody> {
     }
 
     try {
-      await MatchFeed.instance.refresh();
+      await ref.read(matchFeedProvider.notifier).refresh();
       if (!mounted) return;
       _lastUpdated = DateTime.now();
       setState(() => _isLoading = false);
@@ -120,7 +108,7 @@ class _MatchesBodyState extends State<MatchesBody> {
   }
 
   Future<void> _startRerank() async {
-    await TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20));
+    await ref.read(taskCenterProvider.notifier).start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20));
   }
 
   /// Explicit pull-to-refresh. ADR-028: always hits the network (a pull means
@@ -129,16 +117,16 @@ class _MatchesBodyState extends State<MatchesBody> {
     if (!_throttle.shouldRun()) return;
     await _startRerank();
     try {
-      await MatchFeed.instance.refresh();
+      await ref.read(matchFeedProvider.notifier).refresh();
       if (mounted) setState(() => _lastUpdated = DateTime.now());
     } catch (_) {
       // Keep showing what we have; the banner already covers task errors.
     }
   }
 
-  bool get _isReranking => _rerankTask.value?.isActive ?? false;
+  bool get _isReranking => _rerankTask?.isActive ?? false;
   String? get _rerankError =>
-      _rerankTask.value?.status == TrackedTaskStatus.failed ? _rerankTask.value?.error : null;
+      _rerankTask?.status == TrackedTaskStatus.failed ? _rerankTask?.error : null;
 
   /// Header re-rank trigger (Phase 3A) — the explicit, user-initiated
   /// variant, so it gets the Phase 2 start dialog (the automatic rerank on
@@ -156,6 +144,10 @@ class _MatchesBodyState extends State<MatchesBody> {
 
   @override
   Widget build(BuildContext context) {
+    // Phase 2c: register reactivity — rebuild when the matches list or the
+    // rerank task state changes (replaces the old ValueNotifier listeners).
+    ref.watch(matchFeedProvider);
+    ref.watch(trackedTaskProvider((kind: TaskKind.rerank, id: null)));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -233,7 +225,7 @@ class _MatchesBodyState extends State<MatchesBody> {
   }
 
   Widget _statusBanner() {
-    final staleSince = MatchFeed.instance.staleSince.value;
+    final staleSince = ref.read(matchFeedProvider).staleSince;
     if (staleSince != null) {
       return StaleBanner(cachedAt: staleSince, onRetry: _loadCached);
     }
@@ -251,7 +243,7 @@ class _MatchesBodyState extends State<MatchesBody> {
         message: _rerankError,
         actionLabel: 'Retry',
         onAction: _rerankThenReload,
-        onDismiss: () => TaskCenter.instance.clearIfFinished(TaskKind.rerank),
+        onDismiss: () => ref.read(taskCenterProvider.notifier).clearIfFinished(TaskKind.rerank),
       );
     }
     // ADR-028: keep the passive 5-minute freshness window visible, so "why

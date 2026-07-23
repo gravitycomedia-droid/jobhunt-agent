@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart'
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
+import '../services/app_container.dart';
 import '../services/cache_service.dart';
 import '../services/match_feed.dart';
 import '../services/push_service.dart';
@@ -80,8 +81,8 @@ class AppRouterNotifier extends ChangeNotifier {
       unawaited(_checkProfile());
     }
     if (data.event == AuthChangeEvent.signedOut) {
-      TaskCenter.instance.reset();
-      MatchFeed.instance.reset();
+      appContainer.read(taskCenterProvider.notifier).reset();
+      appContainer.read(matchFeedProvider.notifier).reset();
       final previousUserId = _lastUserId;
       if (previousUserId != null) {
         unawaited(CacheService.instance.clearForUser(previousUserId));

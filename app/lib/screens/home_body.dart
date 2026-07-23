@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/activity_item.dart';
@@ -30,7 +31,7 @@ import '../widgets/status_pill.dart';
 /// of matches, and a "Recent activity" teaser (Phase 3, backed by
 /// GET /stats/activity). Still no "Grow your match rate" section — that
 /// depends on Skill Growth data, which is Phase 4.
-class HomeBody extends StatefulWidget {
+class HomeBody extends ConsumerStatefulWidget {
   const HomeBody({super.key, this.onNavigateToTab});
 
   /// Switches [MainTabScreen]'s active tab — Home has a few prototype
@@ -39,10 +40,10 @@ class HomeBody extends StatefulWidget {
   final ValueChanged<String>? onNavigateToTab;
 
   @override
-  State<HomeBody> createState() => _HomeBodyState();
+  ConsumerState<HomeBody> createState() => _HomeBodyState();
 }
 
-class _HomeBodyState extends State<HomeBody> {
+class _HomeBodyState extends ConsumerState<HomeBody> {
   final ApiClient _apiClient = ApiClient();
   final RefreshThrottle _throttle = RefreshThrottle();
 
@@ -58,26 +59,20 @@ class _HomeBodyState extends State<HomeBody> {
   // MatchFeed list the Matches tab renders — one source of truth, so the
   // "10 on Home, 2 on Matches" drift can't happen. The listener repaints
   // this (IndexedStack-kept-alive) body whenever a rerank lands.
-  List<MatchItem> get _matches => MatchFeed.instance.matches.value ?? const [];
+  // Phase 2c: reactivity via ref.watch in build (see the watches at the top of
+  // build()), replacing the old MatchFeed/TaskCenter ValueNotifier listeners.
+  List<MatchItem> get _matches => ref.read(matchFeedProvider).matches ?? const [];
 
-  // Phase 3A: the run-agent-now trigger moved here from the deleted
-  // branded title bar — Home's greeting row is its new permanent home.
-  ValueNotifier<TrackedTask?> get _pipelineTask => TaskCenter.instance.notifierFor(TaskKind.pipeline);
-  bool get _isRunningPipeline => _pipelineTask.value?.isActive ?? false;
+  // Phase 3A: the run-agent-now trigger moved here from the deleted branded
+  // title bar — Home's greeting row is its new permanent home.
+  TrackedTask? get _pipelineTask =>
+      ref.read(trackedTaskProvider((kind: TaskKind.pipeline, id: null)));
+  bool get _isRunningPipeline => _pipelineTask?.isActive ?? false;
 
   @override
   void initState() {
     super.initState();
-    MatchFeed.instance.matches.addListener(_repaint);
-    _pipelineTask.addListener(_repaint);
     _load();
-  }
-
-  @override
-  void dispose() {
-    MatchFeed.instance.matches.removeListener(_repaint);
-    _pipelineTask.removeListener(_repaint);
-    super.dispose();
   }
 
   Future<void> _runPipeline() async {
@@ -88,11 +83,7 @@ class _HomeBodyState extends State<HomeBody> {
           'in the background and usually takes 2–3 minutes — keep using the '
           "app, we'll notify you when it's done.",
     ));
-    await TaskCenter.instance.start(TaskKind.pipeline, () => _apiClient.runPipeline());
-  }
-
-  void _repaint() {
-    if (mounted) setState(() {});
+    await ref.read(taskCenterProvider.notifier).start(TaskKind.pipeline, () => _apiClient.runPipeline());
   }
 
   /// Phase 5: paint the last-known dashboard instantly from cache, then
@@ -101,7 +92,7 @@ class _HomeBodyState extends State<HomeBody> {
   Future<bool> _paintFromCache() async {
     if (_applications.isNotEmpty || _activity.isNotEmpty || _matches.isNotEmpty) return true;
     final results = await Future.wait([
-      MatchFeed.instance.loadFromCache(),
+      ref.read(matchFeedProvider.notifier).loadFromCache(),
       CacheService.instance.read<List<ApplicationItem>>(
         CacheService.keyApplications,
         (json) => (json as List).map((a) => ApplicationItem.fromJson((a as Map).cast<String, dynamic>())).toList(),
@@ -153,7 +144,7 @@ class _HomeBodyState extends State<HomeBody> {
         return;
       }
       final results = await Future.wait([
-        MatchFeed.instance.refresh(),
+        ref.read(matchFeedProvider.notifier).refresh(),
         _apiClient.fetchApplications(),
         _apiClient.fetchActivity(limit: 3),
       ]);
@@ -192,6 +183,10 @@ class _HomeBodyState extends State<HomeBody> {
 
   @override
   Widget build(BuildContext context) {
+    // Phase 2c: rebuild when the shared matches list or the pipeline task state
+    // changes (replaces the old ValueNotifier listeners).
+    ref.watch(matchFeedProvider);
+    ref.watch(trackedTaskProvider((kind: TaskKind.pipeline, id: null)));
     if (_isLoading) {
       // Phase 4C: home shape — greeting lines, hero card, stat grid.
       return const HomeSkeleton();

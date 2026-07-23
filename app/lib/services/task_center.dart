@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/background_task.dart';
 import '../widgets/task_toast.dart';
@@ -35,28 +35,29 @@ class TrackedTask {
   bool get isActive => status == TrackedTaskStatus.queued || status == TrackedTaskStatus.running;
 }
 
-/// ADR-011 client half: owns the polling loops for 202-style background
-/// tasks (rerank, agent pipeline) so they survive tab switches — a poller
-/// held inside one tab's State would keep running in the IndexedStack, but
-/// its completion callback couldn't reach the rest of the app, and a
-/// pushed-then-popped screen would lose it entirely.
-///
-/// Plain singleton + ValueNotifier (no new packages, per project rules):
-/// screens subscribe with ValueListenableBuilder / addListener and stay
-/// dumb about scheduling. This is the FlutterFlow "App State" idea, but
-/// hand-rolled and scoped to task progress only.
-class TaskCenter {
-  TaskCenter._();
-  static final TaskCenter instance = TaskCenter._();
+String _taskKey(TaskKind kind, String? id) => id == null ? kind.name : '${kind.name}:$id';
 
+/// Phase 2c (was a plain singleton): the Riverpod [Notifier] that owns the
+/// polling loops for 202-style background tasks (rerank, agent pipeline,
+/// tailor) so they survive tab switches and pushed/popped screens.
+///
+/// State is one immutable map keyed by kind+id (see [_taskKey]) so e.g.
+/// tailoring job A doesn't collide with job B; rerank/pipeline pass no id and
+/// keep their one-global-task-per-kind behaviour. Read a specific task
+/// reactively with [trackedTaskProvider]; drive it via
+/// `ref.read(taskCenterProvider.notifier)`.
+final taskCenterProvider =
+    NotifierProvider<TaskCenter, Map<String, TrackedTask?>>(TaskCenter.new);
+
+/// Reactive read of one task's current snapshot (null = nothing started).
+final trackedTaskProvider =
+    Provider.family<TrackedTask?, ({TaskKind kind, String? id})>((ref, arg) {
+  return ref.watch(taskCenterProvider)[_taskKey(arg.kind, arg.id)];
+});
+
+class TaskCenter extends Notifier<Map<String, TrackedTask?>> {
   final ApiClient _api = ApiClient();
 
-  // Keyed by kind+id (see _key) rather than just TaskKind, so e.g. tailoring
-  // job A doesn't block/collide with tailoring job B. rerank/pipeline never
-  // pass an id, so they keep their original one-global-task-per-kind
-  // behavior; entries are created lazily on first use instead of
-  // pre-populated for every TaskKind.
-  final Map<String, ValueNotifier<TrackedTask?>> _notifiers = {};
   final Map<String, Timer> _timers = {};
 
   // Remembered per kind+id so a failure toast's Retry can re-run the exact
@@ -70,22 +71,20 @@ class TaskCenter {
   static const _backoffAfter = Duration(minutes: 1);
   static const _giveUpAfter = Duration(minutes: 10);
 
-  String _key(TaskKind kind, String? id) => id == null ? kind.name : '${kind.name}:$id';
+  @override
+  Map<String, TrackedTask?> build() => const {};
 
-  /// Subscribe point for one task kind (optionally scoped to [id] — e.g. a
-  /// jobId, for kinds that can have several tasks in flight at once). Null
-  /// value = nothing started yet this session.
-  ValueNotifier<TrackedTask?> notifierFor(TaskKind kind, {String? id}) =>
-      _notifiers.putIfAbsent(_key(kind, id), () => ValueNotifier<TrackedTask?>(null));
+  /// Current snapshot for one task kind (optionally scoped to [id]).
+  TrackedTask? taskFor(TaskKind kind, {String? id}) => state[_taskKey(kind, id)];
 
-  bool isActive(TaskKind kind, {String? id}) => notifierFor(kind, id: id).value?.isActive ?? false;
+  bool isActive(TaskKind kind, {String? id}) => taskFor(kind, id: id)?.isActive ?? false;
 
   /// Kicks off a background task: [starter] is the ApiClient call that
   /// returns the server's task id (e.g. `() => api.rerankShortlist()`).
   /// No-op if a task of this kind (and [id], if given) is already active.
   Future<void> start(TaskKind kind, Future<String> Function() starter, {String? id}) async {
     if (isActive(kind, id: id)) return;
-    _starters[_key(kind, id)] = starter;
+    _starters[_taskKey(kind, id)] = starter;
     _publish(TrackedTask(kind, TrackedTaskStatus.queued, id: id));
     final String taskId;
     try {
@@ -101,12 +100,12 @@ class TaskCenter {
   /// Re-runs the last start call for this kind+id — wired to failure toasts'
   /// Retry action.
   void retry(TaskKind kind, {String? id}) {
-    final starter = _starters[_key(kind, id)];
+    final starter = _starters[_taskKey(kind, id)];
     if (starter != null) start(kind, starter, id: id);
   }
 
   void _publish(TrackedTask task) {
-    notifierFor(task.kind, id: task.id).value = task;
+    state = {...state, _taskKey(task.kind, task.id): task};
     // Phase 2 completion feedback: fire the global toast from here so it
     // lands wherever the user is now, not just on the tab that started it.
     if (task.status == TrackedTaskStatus.done) {
@@ -139,7 +138,7 @@ class TaskCenter {
   }
 
   void _poll(TaskKind kind, String taskId, {String? id, required DateTime startedAt}) {
-    final key = _key(kind, id);
+    final key = _taskKey(kind, id);
     _timers[key]?.cancel();
     final elapsed = DateTime.now().difference(startedAt);
 
@@ -173,7 +172,9 @@ class TaskCenter {
   /// Dismisses a finished (done/failed) task's state — used by banners'
   /// dismiss buttons. No-op while a task is still active.
   void clearIfFinished(TaskKind kind, {String? id}) {
-    if (!isActive(kind, id: id)) notifierFor(kind, id: id).value = null;
+    if (isActive(kind, id: id)) return;
+    final next = {...state}..remove(_taskKey(kind, id));
+    state = next;
   }
 
   /// Sign-out hygiene: stop polling and clear state so the next account
@@ -183,8 +184,6 @@ class TaskCenter {
       t.cancel();
     }
     _timers.clear();
-    for (final n in _notifiers.values) {
-      n.value = null;
-    }
+    state = const {};
   }
 }

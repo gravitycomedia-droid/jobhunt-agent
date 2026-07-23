@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
@@ -18,16 +19,16 @@ import '../widgets/app_loader.dart';
 /// [MainTabScreen] after a short, fixed display time; [HomeBody] and
 /// [MatchesBody] already know how to show cached-then-refreshing state on
 /// their own once they mount.
-class MatchingLoadingScreen extends StatefulWidget {
+class MatchingLoadingScreen extends ConsumerStatefulWidget {
   const MatchingLoadingScreen({super.key, required this.onDone});
 
   final VoidCallback onDone;
 
   @override
-  State<MatchingLoadingScreen> createState() => _MatchingLoadingScreenState();
+  ConsumerState<MatchingLoadingScreen> createState() => _MatchingLoadingScreenState();
 }
 
-class _MatchingLoadingScreenState extends State<MatchingLoadingScreen> {
+class _MatchingLoadingScreenState extends ConsumerState<MatchingLoadingScreen> {
   final ApiClient _apiClient = ApiClient();
 
   @override
@@ -55,7 +56,7 @@ class _MatchingLoadingScreenState extends State<MatchingLoadingScreen> {
       // rerank still works against the existing pool if the refresh fails.
       await _apiClient.refreshJobs().catchError((_) => <String, dynamic>{});
     }
-    await TaskCenter.instance.start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20));
+    await ref.read(taskCenterProvider.notifier).start(TaskKind.rerank, () => _apiClient.rerankShortlist(limit: 20));
   }
 
   @override
