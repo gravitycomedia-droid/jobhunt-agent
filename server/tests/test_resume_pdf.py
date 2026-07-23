@@ -87,6 +87,46 @@ def test_analysis_row_uses_jd_title_summary_and_two_column():
     assert "INVENTED CLAIM" not in text  # rejected tailored text never leaks
 
 
+def test_r2_grouped_rendering_omits_trimmed_and_honours_restore():
+    # ADR-034 (R2): bullets carry experience_index + selected/accepted. A trimmed
+    # bullet (selected=False, accepted=False) must NOT render; flipping accepted
+    # (a one-tap restore) brings it back.
+    bullets = [
+        {"original": "built x", "tailored": "Built X with Flutter", "guardrail_pass": True,
+         "experience_index": 0, "relevance": 0.9, "selected": True, "accepted": True},
+        {"original": "shipped y", "tailored": "shipped y", "guardrail_pass": True,
+         "experience_index": 0, "relevance": 0.1, "selected": False, "accepted": False,
+         "trim_reason": "Below relevance floor for this job"},
+        {"original": "helped z", "tailored": "Helped Z at scale", "guardrail_pass": True,
+         "experience_index": 1, "relevance": 0.5, "selected": True, "accepted": True},
+    ]
+    row = {"job_id": "j", "bullets": bullets, "analysis": {}}
+
+    text = _extract(compile_ats_pdf(PROFILE, row))
+    assert "Built X with Flutter" in text
+    assert "Helped Z at scale" in text
+    assert "shipped y" not in text  # trimmed → omitted, not printed as original
+
+    # One-tap restore: user accepts the trimmed bullet.
+    bullets[1]["accepted"] = True
+    text2 = _extract(compile_ats_pdf(PROFILE, row))
+    assert "shipped y" in text2
+
+
+def test_r2_role_with_all_bullets_trimmed_drops_off():
+    # A role whose every bullet is trimmed must not render as a bare header.
+    bullets = [
+        {"original": "built x", "tailored": "Built X", "guardrail_pass": True,
+         "experience_index": 0, "relevance": 0.9, "selected": True, "accepted": True},
+        {"original": "helped z", "tailored": "helped z", "guardrail_pass": True,
+         "experience_index": 1, "relevance": 0.0, "selected": False, "accepted": False,
+         "trim_reason": "Below relevance floor for this job"},
+    ]
+    text = _extract(compile_ats_pdf(PROFILE, {"job_id": "j", "bullets": bullets, "analysis": {}}))
+    assert "Built X" in text
+    assert "Beta" not in text  # the second role (only trimmed bullets) drops off
+
+
 def test_single_page_fit_for_long_profile():
     # Framework §1 / one-page auto-fit: a profile with many bullets must still
     # compile to a single page.

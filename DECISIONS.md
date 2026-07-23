@@ -705,3 +705,94 @@ flips the form to sign-in with the typed email preserved. The thrown-error path
 is identical whichever way the project is configured. `_friendlyAuthMessage` also
 rewrites `invalid login credentials` to point Google-signup users at the Google
 button — the likeliest reason a real user's password "doesn't work".
+
+## ADR-033: Atom-level anti-fabrication guardrail (Track B, R1)
+
+**Date:** 2026-07-23 · **Status:** Accepted · **Track:** B (résumé quality) · **Migration:** 025
+
+**Context.** The Brick-6 guardrail (`fuzz.partial_ratio(original, raw_resume_text)
+>= 85`) had a structural blind spot: it only proved the *original* bullet was
+real, then trusted the LLM that `tailored` was a faithful rephrase. Nothing
+checked the tailored text itself. An inflated metric ("40%" → "60%") or a
+relocated achievement ("… at Google") sailed through because the untouched
+`original` still traced. Golden Rule 4 says every tailored bullet must trace to
+a real source; the old check enforced that for the wrong string.
+
+**Decision.** Decompose the **tailored** bullet into factual **atoms** and trace
+each to the profile (structured fields + raw text), not the bullet as a whole:
+
+- **numbers/metrics/dates** — normalized (`40 percent`≡`40%`, commas stripped,
+  `500+`→`500`) and must appear in the source's number set. This catches metric
+  and scope inflation, the highest-value fabrication.
+- **tech** — a token in a curated `TECH_LEXICON` must be one the candidate
+  actually has (`_skill_present`: fuzzy vs `skills[]` or whole-word in raw text).
+  The lexicon's job is *lowercase* tech ("added kubernetes"); uppercase tech is
+  a proper-noun candidate already.
+- **proper nouns** — capitalized, non-sentence-initial, non-generic tokens must
+  be named somewhere real. Catches invented employers/products ("at Google").
+- **prose floats free** — verbs, connectives, framing are never checked.
+
+Atoms may be **dropped** by tailoring, never **added, inflated, or upgraded**.
+The check is a pure function (`verify_bullet_atoms` / `build_source_context`);
+enforcement is `guardrail_pass` on the stored bullet plus per-atom `flagged_atoms`
+surfaced in the diff UI. `verify_skills` (80) and `compute_gaps` are unchanged.
+
+**Bias toward false negatives, never false positives.** The lexicon is
+deliberately non-exhaustive and generic capitalized words are suppressed: a miss
+is a logged diagnostic, a false positive is a user who stops trusting the
+guardrail. Every untraceable atom is written best-effort to `guardrail_atom_log`
+(migration 025) — a write failure never blocks tailoring — to tune the lexicon
+and seed the R-E golden set.
+
+**Gate.** An in-repo golden-set fixture (`test_guardrail.py::test_golden_set`)
+locks the atom rules against regression. The *full* R-E golden set (a corpus of
+real resumes/JDs) remains the pre-production validation gate before Track B ships
+to users; this ADR is accepted for the branch, validated end-to-end at that gate.
+
+## ADR-034: Section-level tailoring — selection is deterministic Python, not the LLM (Track B, R2)
+
+**Date:** 2026-07-23 · **Status:** Accepted · **Track:** B (résumé quality) · **No migration**
+
+**Context.** Brick-6 tailoring flattened *every* bullet and asked the LLM to
+rephrase all of them. A one-page résumé can't hold every bullet, and "which
+achievements belong on the résumé for THIS job" is a ranking decision — exactly
+the kind of logic Golden Rule 2 keeps out of the LLM. Letting the model silently
+choose was also unpredictable: the same profile + JD could yield different résumés.
+
+**Decision.** Tailoring is **selection first, rephrasing second**, and the
+selection is deterministic Python (`services/section_tailor.py`):
+
+1. **Score** every bullet vs the JD by keyword overlap — a fraction of the
+   bullet's own tokens that appear in the JD. Offline, exact, reproducible.
+   (Embedding cosine is an optional blended signal, off by default: on this
+   corpus embeddings are squashed into a narrow band — see ADR-021/matching.py —
+   so lexical overlap discriminates better. Left as a documented hook.)
+2. **Select** deterministically: a per-role bullet cap, a relevance floor, and
+   two invariants — **the most-recent role (index 0) is never dropped** (floor
+   ignored), and no other role is left a bare header (keep its single best
+   bullet). Sort key is `(-relevance, original_index)`, so the choice is
+   reproducible, never hash-order-dependent.
+3. Only the **survivors** go to the LLM. Each survivor is mapped back to its
+   `experience_index` by fuzzy-matching the echoed `original`, run through the
+   R1 atom guardrail, and stored with `selected=True`.
+4. Every **drop** is disclosed: trimmed bullets are stored with `selected=False`,
+   `accepted=False`, and a `trim_reason` — the "Trimmed" list the UI shows. A
+   one-tap **restore** is just flipping `accepted=True` (the PDF renderer and
+   approve endpoint already resolve inclusion from `accepted`), so no new
+   endpoint or column is needed.
+
+Recency is inferred from **résumé order** (index 0 = most-recent), not by parsing
+the free-text `duration` — date parsing is brittle and would break determinism.
+
+**Storage.** No migration: selection/trim metadata rides on the existing
+`tailored_resumes.bullets` jsonb (`experience_index`, `relevance`, `selected`,
+`trim_reason`, `accepted`). The PDF renderer regroups R2 bullets by
+`experience_index`, orders by relevance, and omits fully-trimmed roles; rows
+without `experience_index` (legacy/bare-list callers) keep the old positional
+slotting. The reframed summary line now also passes through the atom guardrail
+and falls back to the stored headline if it fabricates.
+
+**Acceptance (met by tests).** Same profile + same JD → identical selection
+(`test_selection_is_deterministic`); the most-recent role never drops
+(`test_most_recent_role_never_drops`); every drop is disclosed and restorable
+(`test_r2_grouped_rendering_omits_trimmed_and_honours_restore`).

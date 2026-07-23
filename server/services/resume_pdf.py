@@ -89,14 +89,42 @@ def _styles(accent: HexColor, scale: float) -> dict[str, ParagraphStyle]:
     }
 
 
+def _is_included(b: dict) -> bool:
+    """A bullet lands on the résumé iff the human accepted it — the same
+    resolution the approve endpoint uses. Trimmed bullets (R2) default to not
+    accepted, so they're excluded until the user restores one."""
+    return bool(b.get("accepted", b.get("guardrail_pass", False)))
+
+
+def _bullet_text(b: dict) -> str:
+    return b["tailored"] if _is_included(b) else b["original"]
+
+
 def compile_final_bullets(bullets: list[dict]) -> list[str]:
     """The per-bullet human decision, resolved: accepted → tailored text,
     rejected → original. Missing `accepted` (pre-approval rows) falls back
     to guardrail_pass, matching PATCH /tailor/{id}/approve's default."""
-    return [
-        b["tailored"] if b.get("accepted", b.get("guardrail_pass", False)) else b["original"]
-        for b in bullets
-    ]
+    return [_bullet_text(b) for b in bullets]
+
+
+def _tailored_experiences(experience: list[dict], bullets: list[dict]) -> list[dict]:
+    """Rebuild the experience list with tailored text. ADR-034 (R2): when the
+    bullets carry `experience_index` they were section-SELECTED, so regroup them
+    under their real role, ordered by relevance, and DROP any role left with no
+    included bullets (the trims never render). Rows without `experience_index`
+    (legacy / bare-list callers) fall back to the old positional 1:1 slotting."""
+    if not any("experience_index" in b for b in bullets):
+        return _replace_experience_bullets(experience, compile_final_bullets(bullets))
+
+    out: list[dict] = []
+    for ei, exp in enumerate(experience):
+        chosen = [b for b in bullets if b.get("experience_index") == ei and _is_included(b)]
+        # Best-first within the role; original order breaks ties deterministically.
+        chosen.sort(key=lambda b: -(b.get("relevance") or 0.0))
+        texts = [_bullet_text(b) for b in chosen]
+        if texts:  # a role with every bullet trimmed simply drops off the résumé
+            out.append({**exp, "bullets": texts})
+    return out
 
 
 def _replace_experience_bullets(experience: list[dict], final_bullets: list[str]) -> list[dict]:
@@ -251,8 +279,7 @@ def compile_ats_pdf(profile: dict, tailored: dict | list) -> bytes:
     bullets = row.get("bullets") or []
     analysis = row.get("analysis") or {}
 
-    final_bullets = compile_final_bullets(bullets)
-    experience = _replace_experience_bullets(profile.get("experience") or [], final_bullets)
+    experience = _tailored_experiences(profile.get("experience") or [], bullets)
     projects = profile.get("projects") or []
     education = profile.get("education") or []
 

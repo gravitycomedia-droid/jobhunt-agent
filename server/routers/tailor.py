@@ -7,10 +7,18 @@ from config import settings
 from db.supabase_client import supabase
 from services.auth import get_current_profile
 from services.background_tasks import create_task, run_task
-from services.guardrail import compute_gaps, verify_bullets, verify_skills
+from services.guardrail import (
+    build_source_context,
+    collect_untraceable_atoms,
+    compute_gaps,
+    verify_bullet_atoms,
+    verify_skills,
+)
 from services.llm import LlmApiError, TailorError, tailor_resume
+from services.prose_lint import lint_bullets
 from services.rate_limit import enforce_rate_limit
 from services.resume_pdf import compile_ats_pdf
+from services.section_tailor import assemble_bullets, score_bullets, select_bullets
 
 router = APIRouter(prefix="/tailor", tags=["tailor"])
 
@@ -25,11 +33,24 @@ class ApproveTailorRequest(BaseModel):
     accepted: list[bool] | None = None
 
 
-def _flatten_bullets(profile: dict) -> list[str]:
-    bullets: list[str] = []
-    for exp in profile.get("experience") or []:
-        bullets.extend(exp.get("bullets") or [])
-    return bullets
+def _log_untraceable_atoms(profile_id: str, job_id: str, verified_bullets: list[dict]) -> None:
+    """ADR-033 (R1): persist every atom the guardrail couldn't trace to the
+    `guardrail_atom_log` table (migration 025). Best-effort — a logging failure
+    must never break tailoring — and diagnostic only: this feeds later tech-
+    lexicon tuning and the R-E golden set, it is NOT the enforcement (the
+    enforcement is guardrail_pass on the stored bullet)."""
+    atoms = collect_untraceable_atoms(verified_bullets)
+    if not atoms:
+        return
+    try:
+        supabase.table("guardrail_atom_log").insert(
+            [
+                {"profile_id": profile_id, "job_id": job_id, "atom": a["text"], "kind": a["kind"]}
+                for a in atoms
+            ]
+        ).execute()
+    except Exception:  # noqa: BLE001 — diagnostic log, never gates tailoring
+        pass
 
 
 def tailor_and_store(profile: dict, job_id: str) -> dict:
@@ -43,8 +64,16 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Job not found")
     job = job_rows[0]
 
-    bullets = _flatten_bullets(profile)
-    if not bullets:
+    experiences = profile.get("experience") or []
+    jd_text = job.get("description") or ""
+
+    # ADR-034 (R2): tailoring is SELECTION first. Score every bullet vs the JD
+    # in Python (keyword overlap — deterministic and offline), then deterministic-
+    # ally choose the survivors: per-role cap, relevance floor, most-recent role
+    # never dropped. ONLY the survivors go to the LLM; the drops are disclosed.
+    scored = score_bullets(experiences, jd_text)
+    selection = select_bullets(experiences, scored)
+    if not selection.selected:
         raise HTTPException(status_code=422, detail="Stored profile has no experience bullets to tailor")
 
     # JD-paste resume builder jobs (routers/jobs.py's `from-jd` flow) run on
@@ -58,10 +87,11 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
     model = settings.gemini_model_lite if is_jd_paste else None
     provider = "gemini" if is_jd_paste else None
     skills = profile.get("skills") or []
+    survivor_originals = [s["original"] for s in selection.selected]
     try:
         llm_response = tailor_resume(
-            bullets,
-            job.get("description") or "",
+            survivor_originals,
+            jd_text,
             profile_id=profile["id"],
             model=model,
             provider=provider,
@@ -74,8 +104,13 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
         raise HTTPException(status_code=502, detail=f"Resume tailor is temporarily unavailable: {e}") from e
 
     raw_resume_text = profile.get("raw_resume_text") or ""
-    verified_bullets = verify_bullets(llm_response.tailored_bullets, raw_resume_text)
-    guardrail_flags = sum(1 for b in verified_bullets if not b["guardrail_pass"])
+    # ADR-033 (R1): the guardrail decomposes each TAILORED bullet into factual
+    # atoms and traces them against the whole profile — structured fields
+    # included — not just a fuzzy match of `original` against raw text. The
+    # source context is built once and reused for the summary line below.
+    ctx = build_source_context(profile)
+    verified_bullets, guardrail_flags = assemble_bullets(selection, llm_response.tailored_bullets, ctx)
+    _log_untraceable_atoms(profile["id"], job_id, verified_bullets)
 
     analysis = llm_response.analysis
     # ADR-019: the LLM's skill reordering is intersected back to real skills
@@ -84,13 +119,28 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
     skills_ordered = verify_skills(llm_response.skills_ordered, skills)
     gaps = compute_gaps(analysis.hard_requirements, skills, raw_resume_text)
 
+    # R2: the reframed summary/headline runs through the SAME atom guardrail as
+    # the bullets — the summary is the most tempting place to inflate ("expert
+    # in Kubernetes"). If it introduces an untraceable atom, fall back to the
+    # candidate's own stored headline rather than ship a fabricated line.
+    summary_verdict = verify_bullet_atoms(analysis.summary_line, ctx)
+    summary_line = analysis.summary_line if summary_verdict.guardrail_pass else (profile.get("headline") or "")
+
+    # R3 (deterministic prose lint): advisory only, computed in Python on the
+    # SURVIVOR tailored text (trimmed bullets aren't on the résumé). Indexes the
+    # selected bullets in order. Stored inside `analysis` (jsonb — no migration).
+    # NEVER gates approval; the UI renders it as suggestions beside each bullet.
+    prose_findings = lint_bullets([b["tailored"] for b in verified_bullets if b["selected"]])
+
     stored_analysis = {
         "role_type": analysis.role_type,
         "culture_signal": analysis.culture_signal,
         "jd_title": analysis.jd_title,
-        "summary_line": analysis.summary_line,
+        "summary_line": summary_line,
+        "summary_guardrail_pass": summary_verdict.guardrail_pass,
         "hard_requirements": analysis.hard_requirements,
         "skills_ordered": skills_ordered,
+        "prose_findings": prose_findings,
     }
 
     row = (
