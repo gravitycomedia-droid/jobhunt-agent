@@ -4,7 +4,7 @@ and is never fabricated from near-simultaneous refresh snapshots."""
 
 from datetime import datetime, timedelta, timezone
 
-from services.score_history import compute_score_history
+from services.score_history import compute_score_history, snapshot_stats
 
 NOW = datetime(2026, 7, 23, 12, 0, tzinfo=timezone.utc)
 
@@ -69,3 +69,20 @@ def test_negative_delta_when_score_dropped():
     snaps = [_snap(NOW - timedelta(days=1, hours=1), 85, avg=60.0), _snap(NOW, 80, avg=55.0)]
     out = compute_score_history(snaps)
     assert out["delta"] == {"top_fit": -5, "avg_fit": -5.0}
+
+
+# --- snapshot_stats: what _process_profile freezes each run ------------------
+
+
+def test_snapshot_stats_reduces_fit_scores():
+    assert snapshot_stats([80, 60, 100]) == {"top_fit_score": 100, "avg_fit_score": 80.0, "match_count": 3}
+
+
+def test_snapshot_stats_ignores_unscored_matches():
+    assert snapshot_stats([None, 90, None, 70]) == {"top_fit_score": 90, "avg_fit_score": 80.0, "match_count": 2}
+
+
+def test_snapshot_stats_none_when_nothing_scored():
+    # An empty run writes NO snapshot, so it can't plant a zero the delta diffs on.
+    assert snapshot_stats([]) is None
+    assert snapshot_stats([None, None]) is None

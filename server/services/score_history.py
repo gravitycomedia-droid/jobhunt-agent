@@ -39,6 +39,21 @@ def _point(row: dict) -> dict:
     }
 
 
+def snapshot_stats(fit_scores: list) -> dict | None:
+    """Pure: reduce a profile's current match fit_scores into the row
+    _process_profile writes to score_snapshots. None when there's nothing scored
+    yet — the pipeline then skips the write, so an empty run never plants a
+    misleading all-zero snapshot the delta would later diff against."""
+    scored = [s for s in fit_scores if s is not None]
+    if not scored:
+        return None
+    return {
+        "top_fit_score": max(scored),
+        "avg_fit_score": round(sum(scored) / len(scored), 2),
+        "match_count": len(scored),
+    }
+
+
 def compute_score_history(snapshots: list[dict], now: datetime | None = None) -> dict:
     """Pure. `snapshots` are this profile's score_snapshots rows in any order.
     Returns what GET /stats/score-history wraps in the envelope:

@@ -14,6 +14,7 @@ from services.job_ingestion import (
 from services.llm import FollowupError, LlmApiError, generate_followup_draft
 from services.matching import DEFAULT_RERANK_LIMIT, rerank_shortlist
 from services.notify import send_push_notification
+from services.score_history import snapshot_stats
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +109,44 @@ def _process_profile(profile: dict) -> dict:
     followups_drafted = _draft_pending_followups(profile) if prefs.get("followup_nudge", True) else 0
 
     apply_worthy = rerank_result["reranked"]
+
+    # R-D: freeze this run's match-quality summary for the score-history delta.
+    _write_score_snapshot(profile["id"])
+
     if (apply_worthy or followups_drafted) and prefs.get("alerts", True):
-        send_push_notification(
-            "Job-Hunt Agent ran",
-            f"{apply_worthy} newly scored, {followups_drafted} follow-up draft(s) ready.",
-            token=profile.get("fcm_token"),
-        )
+        title = "Job-Hunt Agent ran"
+        body = f"{apply_worthy} newly scored, {followups_drafted} follow-up draft(s) ready."
+        send_push_notification(title, body, token=profile.get("fcm_token"))
+        # Persist the same event to the in-app feed (§4.13) — a push is ephemeral.
+        _record_notification(profile["id"], title, body)
 
     return {"matches_reranked": apply_worthy, "followups_drafted": followups_drafted}
+
+
+def _write_score_snapshot(profile_id: str) -> None:
+    """R-D: write one score_snapshots row from this profile's current match
+    fit_scores. Best-effort — a snapshot failure must never sink the day's
+    re-ranks and follow-ups. Skips the write entirely when nothing is scored yet
+    (snapshot_stats returns None), so an empty run can't plant a zero the delta
+    would later diff against."""
+    try:
+        rows = supabase.table("matches").select("fit_score").eq("profile_id", profile_id).execute().data
+        stats = snapshot_stats([r.get("fit_score") for r in rows])
+        if stats:
+            supabase.table("score_snapshots").insert({"profile_id": profile_id, **stats}).execute()
+    except Exception:
+        logger.exception("score snapshot write failed (non-fatal) for %s", profile_id)
+
+
+def _record_notification(profile_id: str, title: str, body: str) -> None:
+    """Persist the agent-run event to the notifications feed. Best-effort like
+    the push it mirrors — the feed is a convenience, not the pipeline's job."""
+    try:
+        supabase.table("notifications").insert(
+            {"profile_id": profile_id, "kind": "agent_run", "title": title, "body": body}
+        ).execute()
+    except Exception:
+        logger.exception("notification record failed (non-fatal) for %s", profile_id)
 
 
 async def _refresh_and_backfill() -> dict:

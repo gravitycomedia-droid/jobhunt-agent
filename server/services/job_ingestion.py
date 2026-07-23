@@ -14,7 +14,7 @@ from db.supabase_client import supabase
 from models.job import JobExtraction, JobIn
 from services.dedup import is_duplicate, make_dedup_key
 from services.embeddings import embed_text, embed_texts, job_embedding_text
-from services.job_filter import is_relevant
+from services.job_filter import classify_work_type, is_relevant
 from services.job_sources import (
     _locations,
     _roles,
@@ -184,6 +184,7 @@ def insert_manual_job(extraction: JobExtraction, redirect_url: str | None = None
         "salary_max": extraction.salary_max,
         "redirect_url": redirect_url,
         "dedup_key": dedup_key,
+        "work_type": classify_work_type(extraction.location, extraction.title, extraction.description),
         "embedding": embed_text(job_embedding_text(extraction.model_dump())),
     }
     return supabase.table("jobs").insert(payload).execute().data[0]
@@ -249,6 +250,9 @@ def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
         payload = job.model_dump(mode="json")
         payload["dedup_key"] = dedup_key
         payload["embedding"] = embedding
+        # Persist the remote/hybrid classification the relevance gate above already
+        # computed internally (migration 019) so the filter sheet can read it.
+        payload["work_type"] = classify_work_type(job.location, job.title, job.description)
         payloads.append(payload)
 
     # One batched upsert instead of one insert() round-trip per row — with

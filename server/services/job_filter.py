@@ -112,6 +112,24 @@ def is_remote(location: str | None, title: str | None = None, description: str |
     )
 
 
+_HYBRID = re.compile(r"\bhybrid\b", re.I)
+
+
+def classify_work_type(
+    location: str | None, title: str | None = None, description: str | None = None
+) -> str | None:
+    """The value persisted to jobs.work_type (migration 019). Remote reuses
+    is_remote (which the ingestion gate already computes); hybrid needs an
+    explicit signal. Everything else returns None, NOT 'onsite': sources rarely
+    state onsite, and an honest 'unknown' (which the filter buckets as such) beats
+    guessing a work arrangement the posting never claimed."""
+    if is_remote(location, title, description):
+        return "remote"
+    if _HYBRID.search(location or "") or _HYBRID.search(title or "") or _HYBRID.search(_head(description, 400)):
+        return "hybrid"
+    return None
+
+
 def in_target_location(location: str | None, title: str | None = None, description: str | None = None) -> bool:
     """Hyd/Blr OR remote. Remote is location-independent, so it satisfies the
     location requirement on its own."""
