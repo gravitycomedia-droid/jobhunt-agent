@@ -86,9 +86,9 @@ Hand-written Dart classes mirroring server Pydantic schemas, each with a
 ## Services (`lib/services/`)
 
 - **`api_client.dart`** (~525 lines) — the single point of contact with the
-  FastAPI server. `_baseUrl` defaults to
-  `https://jobhunt-agent-server.onrender.com`, overridable via
-  `--dart-define=API_BASE_URL=...` for local dev. Reads
+  FastAPI server. `_baseUrl` defaults to the Cloud Run URL
+  `https://jobhunt-agent-server-380742808186.asia-south1.run.app`, overridable
+  via `--dart-define=API_BASE_URL=...` for local dev. Reads
   `Supabase.instance.client.auth.currentSession?.accessToken` and attaches
   `Authorization: Bearer <token>` on every call. ~24 methods covering the
   entire API surface documented in
@@ -137,6 +137,6 @@ package, no state-management package, no code-gen package.**
 
 `applicationId`/namespace: `com.jobhuntagent.jobhunt_agent`. Single
 `MainActivity`, `launchMode="singleTop"`. OAuth callback intent-filter matches
-`SupabaseConfig.redirectUrl`. Release build currently signs with the **debug**
-keystore — `TODO: Add your own signing config for the release build` — a real
-upload keystore is required before Play Store submission (Brick 10).
+`SupabaseConfig.redirectUrl`. Release build signs with a **real upload keystore**
+via `android/key.properties` (ADR-030); R8 on; `build.gradle.kts` hard-fails if
+`key.properties` is missing (no debug-cert fallback).

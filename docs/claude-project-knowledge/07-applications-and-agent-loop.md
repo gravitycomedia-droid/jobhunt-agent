@@ -38,8 +38,8 @@ but sending always requires a separate explicit tap.
 
 ## The daily agent loop (`server/jobs/daily_pipeline.py`)
 
-This is the autonomous part of the system — triggered once a day by a Render
-cron job hitting `POST /pipeline/run`. Step by step:
+This is the autonomous part of the system — triggered once a day by **Cloud
+Scheduler** (OIDC, ADR-014) hitting `POST /pipeline/run`. Step by step:
 
 1. **`_refresh_and_backfill()`** — runs **once**, shared across all users, not
    per-profile:
@@ -59,8 +59,9 @@ cron job hitting `POST /pipeline/run`. Step by step:
    - If `alerts` is enabled and either step produced something, sends **one**
      push notification summarizing the counts.
 3. **Two entrypoints**:
-   - `run_daily_pipeline_for_all()` — the actual Render cron target
-     (`POST /pipeline/run`, gated by the `X-Pipeline-Secret` header, not JWT,
+   - `run_daily_pipeline_for_all()` — the actual Cloud Scheduler cron target
+     (`POST /pipeline/run`, gated by a Google-signed OIDC token or the legacy
+     `X-Pipeline-Secret` header, not JWT,
      since a cron job has no user session): runs the shared refresh once, then
      loops `_process_profile()` over every `profiles` row.
    - `run_daily_pipeline_for_profile(profile)` — the authenticated "Run agent

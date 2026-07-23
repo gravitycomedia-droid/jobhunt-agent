@@ -16,10 +16,11 @@ Pinecone/Weaviate/Qdrant as unnecessary complexity at thousands (not millions)
 of vectors. One datastore for relational + vector + auth + storage; revisit
 only past ~1M vector rows.
 
-**ADR-003 (amended 2026-07-13) — Job APIs + scoped scraping via Apify.**
+**ADR-003 (amended 2026-07-13, v2 2026-07-20) — Job APIs + scoped scraping via Apify.**
 Original decision: Adzuna (primary) + JSearch/RapidAPI (secondary) with a dedup
 layer, legal APIs only, no scraping of LinkedIn/Indeed/Naukri, plus a manual
-paste-a-job feature as a supplement.
+paste-a-job feature as a supplement. **v2 (2026-07-20)** additionally approved
+Internshala (no-login Apify) and Unstop internships under the same constraints.
 
 **Amendment**: for personal use by a small, known group of friends (not a public
 or commercial product), scraping LinkedIn, Indeed, and Naukri via third-party
@@ -83,6 +84,7 @@ native 3072-dim output (doubles index cost, unneeded at this scale) and
 preview embedding models (stability risk).
 
 **ADR-007 (2026-07-09) — Stubbed FCM push, cron via Render, manual trigger.**
+*(Cron mechanism superseded — the live trigger is Cloud Scheduler via OIDC, ADR-014.)*
 No Firebase project existed at decision time, so `notify.py` originally just
 logged "would notify"; `POST /pipeline/run` doubled as both the future cron
 target and a manual "run now" button. **Same-day update**: a real Firebase
@@ -131,7 +133,7 @@ backend support yet. Scoped into 4 checkpointed phases:
   verification pattern after `flutter run -d web-server`'s debug compiler
   proved unreliable for visual verification.
 
-**ADR-010 — Render deployment + first working APK build.** Two blockers: (1)
+**ADR-010 — Render deployment + first working APK build.** *(Hosting superseded — the server now runs on Google Cloud Run, ADR-014; release signing superseded — real upload keystore, ADR-030.)* Two blockers: (1)
 `ApiClient._baseUrl` pointed at `localhost`/`10.0.2.2`, unreachable from a real
 phone; (2) Bricks 4–9's entire server implementation had never been
 committed/pushed to GitHub, so Render had nothing to deploy. Decision:

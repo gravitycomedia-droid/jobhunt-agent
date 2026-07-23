@@ -41,10 +41,10 @@ Dashboard → SQL Editor → paste and run each file:
       `/jobs/manual/parse`, `/jobs/from-jd/parse`, `/jobs/refresh`) 500 on their
       first request.
 
-## 1a. Cloud Run / Render — new secret (Phase 14 / ADR-023)
+## 1a. Cloud Run — new secret (Phase 14 / ADR-023)
 
 - [x] Add `DEEPSEEK_API_KEY` to the deploy's secrets (Secret Manager on Cloud
-      Run, env var on Render), exactly like `GEMINI_API_KEY`. **Never** ship it
+      Run), exactly like `GEMINI_API_KEY`. **Never** ship it
       to the Flutter app. Without it the server still boots and works — every
       DeepSeek-routed task (rerank, extract, followup, skill-growth, forms)
       transparently falls back to Gemini — but you get none of the cost saving,
@@ -159,14 +159,21 @@ Dashboard → Authentication → URL Configuration:
 No Google Cloud Console change needed — Google redirects to Supabase's own
 `/auth/v1/callback`, which is already configured.
 
-## 3. Render
+## 3. Cloud Run (deploy)
 
-- [ ] Push `main` to GitHub (`git push`) and confirm the
-      `jobhunt-agent-server` service redeploys (auto-deploy) or trigger a
-      manual deploy. The new code needs `reportlab` (now in
-      requirements.txt) — the Docker build installs it automatically.
+Since ADR-014 the server runs on Google Cloud Run, **not** Render. A `git push`
+deploys nothing on its own — deployment is a manual build-and-deploy the user
+must run and approve (see the `gcloud run deploy --source .` command recorded in
+§2 above / `MANUAL_STEPS.md:102`).
+
+- [ ] After pushing `main` to GitHub, run the manual Cloud Run deploy so the new
+      code goes live. The `server/Dockerfile` build installs `reportlab` and
+      `poppler-utils` automatically.
+- [ ] Confirm the deploy landed on a **new revision** (`gcloud run services
+      describe jobhunt-agent-server --region=asia-south1`) before assuming a
+      change is live — a stale revision is the usual cause of "still broken."
 - [ ] No new env vars are required. Optional: `MAX_JOB_AGE_DAYS` (defaults
-      to 60 in code).
+      to 10 in code).
 
 ## 4. Local verification server (already running this session)
 
@@ -174,7 +181,7 @@ No Google Cloud Console change needed — Google redirects to Supabase's own
   (LAN: `http://192.168.31.79:8000`). To point the app at it:
   `flutter run --dart-define=API_BASE_URL=http://192.168.31.79:8000`
 - Note: a physical Android device blocks cleartext HTTP by default — for
-  device testing against the LAN server either use the Render URL or add
+  device testing against the LAN server either use the Cloud Run URL or add
   `android:usesCleartextTraffic="true"` temporarily to AndroidManifest.
   An Android emulator can also use `http://10.0.2.2:8000`.
 - Reminder: the new endpoints 500 until the migrations in §1 are applied —

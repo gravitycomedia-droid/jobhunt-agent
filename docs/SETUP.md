@@ -32,10 +32,14 @@
 - Copy your `X-RapidAPI-Key` from the endpoint page
 - Free tier is ~200 requests/month — the daily pipeline uses ~2–4/day, so you're fine
 
-### 6. Render — 10 min · needed end of Brick 3 (deploy)
-- render.com → sign up with GitHub
-- You'll create: one **Web Service** (FastAPI, free tier) + one **Cron Job** (Brick 8)
-- Free tier note: service sleeps after idle (~50s cold start). Upgrade to Starter (~₹450–650/mo) from Brick 5 if it annoys you — that's the only spend worth making.
+### 6. Google Cloud Run — deploy (ADR-014; originally Render)
+- The server runs on **Google Cloud Run** (`asia-south1`), not Render. This
+  section originally targeted Render; the project migrated in ADR-014 because
+  Render free-tier cold starts were timing out re-rank/tailor calls.
+- Deploy is a manual, user-approved `gcloud run deploy --source .` that builds
+  `server/Dockerfile` (bundles `poppler-utils`); a `git push` deploys nothing.
+- The daily pipeline is triggered by **Cloud Scheduler** (OIDC), not a Render
+  cron job. See `MANUAL_STEPS.md` for the exact commands.
 
 ### 7. Firebase — 15 min · needed Brick 8 (do it later)
 - console.firebase.google.com → Add project (link to the same Google account)

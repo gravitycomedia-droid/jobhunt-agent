@@ -64,7 +64,8 @@ Write pytest tests for the dedup function with tricky near-duplicate cases.
 **Paste into Claude Code:**
 ```
 Brick 4. Add semantic matching stage 1:
-1. server/services/embeddings.py: embed_text() using text-embedding-004,
+1. server/services/embeddings.py: embed_text() using gemini-embedding-001
+   (768-dim; the original plan named text-embedding-004, switched in ADR-006),
    with batching and llm_calls logging.
 2. Embed profile on save; embed each job at ingestion (backfill existing).
 3. GET /matches/shortlist: call the match_jobs_by_similarity SQL function

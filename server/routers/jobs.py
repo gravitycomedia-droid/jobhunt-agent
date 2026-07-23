@@ -83,8 +83,9 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
 )
 async def refresh_jobs(user_id: str = Depends(get_current_user_id)):
     """Requires login but isn't scoped to the caller — the job pool is
-    shared across all beta users (Golden Rule: no scraping, legal APIs
-    only; the pool itself has no owner)."""
+    shared across all beta users (the pool itself has no owner). Note: this
+    endpoint hits API/board sources only; no-login Apify + Unstop scraping is
+    cron-only and never reachable from here (ADR-003 v2, Golden Rule 8)."""
     result = await refresh_job_pool()
     return {"data": result, "error": None}
 

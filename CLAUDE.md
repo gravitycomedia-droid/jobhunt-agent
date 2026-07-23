@@ -35,9 +35,9 @@ jobhunt-agent/
 - **Backend:** FastAPI + Pydantic v2, Python 3.11+
 - **DB:** Supabase Postgres with pgvector extension. Access via `supabase-py` from the server ONLY.
 - **LLM:** two providers behind one validate/retry/log flow (`services/llm.py`, ADR-023). **Gemini** `gemini-2.5-flash` for vision (`parse`) and, by default, `tailor`; `gemini-embedding-001` (768-dim) for embeddings. **DeepSeek** `deepseek-v4-flash` (OpenAI-compatible SDK, thinking disabled) for `rerank`/`extract_job`/`followup`/`skill_growth`/forms. `DEEPSEEK_API_KEY` is server-side only (Golden Rule 1); absent key falls back to Gemini.
-- **Jobs data:** Adzuna API (primary) + JSearch via RapidAPI (secondary) + Greenhouse/Lever public boards. Supplementary: LinkedIn/Indeed/Naukri via no-login **Apify** actors, daily-cron cadence only (ADR-003, amended 2026-07-13). No login-based scraping, ever.
+- **Jobs data:** Adzuna API (primary) + JSearch via RapidAPI (secondary) + Greenhouse/Lever public boards. Supplementary: LinkedIn/Indeed/Naukri/Internshala via no-login **Apify** actors + Unstop internships, daily-cron cadence only (ADR-003, amended 2026-07-13, v2 2026-07-20). No login-based scraping, ever.
 - **Push:** Firebase Cloud Messaging
-- **Hosting:** Render (web service + cron job)
+- **Hosting:** Google Cloud Run (container web service, Mumbai `asia-south1`; daily pipeline triggered by Cloud Scheduler via OIDC). Migrated off Render — ADR-014.
 
 ## Golden rules (enforce these in every code review)
 1. **Secrets live in server/.env only.** The Flutter app must NEVER contain API keys. Phone talks to our FastAPI server; server talks to everything else.
@@ -77,8 +77,8 @@ The builder is learning Flutter/Dart. When writing Dart code:
 
 ## What NOT to do
 - No LangChain/LangGraph for v1 — plain Python orchestration is simpler and more instructive
-- No Docker for v1 — Render deploys from repo directly
-- No *login-based* scraping of LinkedIn/Naukri/Indeed — never hand those account credentials to Apify or store them here (that's what carries the ban risk). No-login Apify actors are approved for these three sources at personal scale — see ADR-003 (amended). No high-volume polling, no redistributing scraped data.
+- Docker is used deliberately: `server/Dockerfile` bundles `poppler-utils` for the vision-LLM PDF parse, and Cloud Run deploys that container (ADR-010/014). This reverses the original "no Docker in v1" stance — do not "simplify" it away.
+- No *login-based* scraping of LinkedIn/Naukri/Indeed/Internshala — never hand those account credentials to Apify or store them here (that's what carries the ban risk). No-login Apify actors + Unstop are approved for these sources at personal scale, daily-cron cadence only — see ADR-003 (amended v2 2026-07-20). No high-volume polling, no redistributing scraped data.
 - No auto-submitting applications anywhere — human approval gates always
 - No dedicated vector DB (Pinecone/Weaviate) — pgvector is the deliberate choice (see DECISIONS.md)
 - Don't add features not in the current brick, even if easy

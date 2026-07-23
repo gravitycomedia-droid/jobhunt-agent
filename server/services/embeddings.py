@@ -68,7 +68,7 @@ def _embed_batch(texts: list[str], profile_id: str | None = None) -> list[list[f
 
 
 def embed_texts(texts: list[str], profile_id: str | None = None) -> list[list[float]]:
-    """Embed a list of strings with text-embedding-004, batching requests of
+    """Embed a list of strings with gemini-embedding-001, batching requests of
     more than _BATCH_SIZE and logging one llm_calls row per batch
     (Golden Rule 5). Order of the returned vectors matches `texts`.
     `profile_id` attributes cost to a user when embedding their profile
