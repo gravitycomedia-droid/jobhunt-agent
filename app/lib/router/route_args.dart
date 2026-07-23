@@ -1,3 +1,5 @@
+import '../models/match_item.dart';
+
 /// Phase 2b: typed payloads passed to go_router routes via `state.extra`.
 /// Kept in their own file (not app_router.dart) so screens that are themselves
 /// route targets can import the arg type without a circular import back into the
@@ -7,4 +9,28 @@ class TailorArgs {
   const TailorArgs({required this.jobId, required this.jobTitle});
   final String jobId;
   final String jobTitle;
+}
+
+/// §4.6 Match detail: the tapped match, passed whole so the detail screen
+/// renders instantly without a refetch (the list already holds every field).
+/// Transient like [TailorArgs] — not restored across a cold start.
+class MatchArgs {
+  const MatchArgs({required this.match});
+  final MatchItem match;
+}
+
+/// §4.8 in-app WebView: the prefilled Google Form URL plus the labels the user
+/// still has to attach by hand (file-upload questions Google won't let us
+/// prefill). Transient like the others.
+class FormWebViewArgs {
+  const FormWebViewArgs({
+    required this.prefillUrl,
+    required this.formTitle,
+    this.filledCount = 0,
+    this.fileUploadLabels = const [],
+  });
+  final String prefillUrl;
+  final String formTitle;
+  final int filledCount;
+  final List<String> fileUploadLabels;
 }

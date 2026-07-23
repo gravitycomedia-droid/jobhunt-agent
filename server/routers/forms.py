@@ -23,6 +23,7 @@ from services.form_parser import (
     is_google_form_url,
     normalize_question,
     parse_google_form,
+    redact_for_storage,
     verify_choice_answers,
 )
 from services.job_ingestion import insert_manual_job
@@ -187,6 +188,12 @@ async def fill_form(body: FillFormRequest, profile: dict = Depends(get_current_p
 
     prefill_url = build_prefill_url(schema, answers)
 
+    # §4.8: sensitive answers (govt ID, DOB, bank, passwords) are returned to
+    # the client and go into the prefill URL for ONE-TIME use, but are never
+    # persisted. Both the stored answers AND the stored prefill URL are built
+    # from the redacted set so no secret lands in a row (the prefill URL carries
+    # answers as query params, so it would leak them just as `answers` would).
+    stored_answers = redact_for_storage(answers)
     fill_row = (
         supabase.table("form_fills")
         .insert(
@@ -194,8 +201,8 @@ async def fill_form(body: FillFormRequest, profile: dict = Depends(get_current_p
                 "profile_id": profile["id"],
                 "form_url": schema.form_url,
                 "form_title": schema.title,
-                "answers": [a.model_dump() for a in answers],
-                "prefill_url": prefill_url,
+                "answers": [a.model_dump() for a in stored_answers],
+                "prefill_url": build_prefill_url(schema, stored_answers),
             }
         )
         .execute()
@@ -220,7 +227,10 @@ async def update_fill_answers(fill_id: str, body: UpdateFillAnswersRequest, prof
     """
     result = (
         supabase.table("form_fills")
-        .update({"answers": [a.model_dump() for a in body.answers]})
+        # §4.8: redact here too — the user's final edits may have typed a
+        # sensitive value into a sensitive question, and history reuse reads
+        # this row back.
+        .update({"answers": [a.model_dump() for a in redact_for_storage(body.answers)]})
         .eq("id", fill_id)
         .eq("profile_id", profile["id"])  # owner-scoped — can't touch another profile's history
         .execute()

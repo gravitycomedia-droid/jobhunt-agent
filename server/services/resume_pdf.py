@@ -89,15 +89,24 @@ def _styles(accent: HexColor, scale: float) -> dict[str, ParagraphStyle]:
     }
 
 
-def _is_included(b: dict) -> bool:
-    """A bullet lands on the résumé iff the human accepted it — the same
-    resolution the approve endpoint uses. Trimmed bullets (R2) default to not
-    accepted, so they're excluded until the user restores one."""
+def _accepted(b: dict) -> bool:
+    """Whether to use the TAILORED text (vs the original). Missing `accepted`
+    (pre-approval rows) falls back to guardrail_pass, matching the approve
+    endpoint's default."""
     return bool(b.get("accepted", b.get("guardrail_pass", False)))
 
 
+def _on_resume(b: dict) -> bool:
+    """Whether the bullet appears on the résumé at all. A SELECTED bullet (R2)
+    always does — 'keep original' means use its original text, not drop it. A
+    TRIMMED bullet only appears once restored (accepted flipped true). Legacy
+    rows have no `selected` key and default to on-résumé, preserving the old
+    all-bullets-render behaviour."""
+    return bool(b.get("selected", True)) or _accepted(b)
+
+
 def _bullet_text(b: dict) -> str:
-    return b["tailored"] if _is_included(b) else b["original"]
+    return b["tailored"] if _accepted(b) else b["original"]
 
 
 def compile_final_bullets(bullets: list[dict]) -> list[str]:
@@ -118,7 +127,7 @@ def _tailored_experiences(experience: list[dict], bullets: list[dict]) -> list[d
 
     out: list[dict] = []
     for ei, exp in enumerate(experience):
-        chosen = [b for b in bullets if b.get("experience_index") == ei and _is_included(b)]
+        chosen = [b for b in bullets if b.get("experience_index") == ei and _on_resume(b)]
         # Best-first within the role; original order breaks ties deterministically.
         chosen.sort(key=lambda b: -(b.get("relevance") or 0.0))
         texts = [_bullet_text(b) for b in chosen]

@@ -177,7 +177,10 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
                       style: AppTypography.label.copyWith(color: AppColors.textTertiary),
                     ),
                     const SizedBox(height: AppSpacing.space3),
-                    ...resume.bullets.map(
+                    // R2 (ADR-034): a bullet is on the résumé if it was SELECTED
+                    // or a trimmed one was restored (accepted). 'Keep original'
+                    // (selected, not accepted) still shows — as original text.
+                    ...resume.bullets.where((b) => b.selected || (b.accepted ?? false)).map(
                       (b) => Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Row(

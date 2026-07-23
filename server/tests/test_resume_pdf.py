@@ -113,6 +113,18 @@ def test_r2_grouped_rendering_omits_trimmed_and_honours_restore():
     assert "shipped y" in text2
 
 
+def test_r2_selected_but_kept_original_still_renders():
+    # 'Keep original' on a SELECTED bullet (accepted=False) means use its
+    # original text — NOT drop the bullet. Only trimmed bullets drop.
+    bullets = [
+        {"original": "built x", "tailored": "Built X with Flutter", "guardrail_pass": True,
+         "experience_index": 0, "relevance": 0.9, "selected": True, "accepted": False},
+    ]
+    text = _extract(compile_ats_pdf(PROFILE, {"job_id": "j", "bullets": bullets, "analysis": {}}))
+    assert "built x" in text  # original kept, still on the résumé
+    assert "Built X with Flutter" not in text
+
+
 def test_r2_role_with_all_bullets_trimmed_drops_off():
     # A role whose every bullet is trimmed must not render as a bare header.
     bullets = [

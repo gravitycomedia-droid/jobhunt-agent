@@ -274,6 +274,9 @@ class _MatchesBodyState extends ConsumerState<MatchesBody> {
       // no collapse affordance — MatchCard already supported this via
       // defaultExpanded, just unused until now.
       defaultExpanded: true,
+      // §4.6: the card body opens the full match detail; the inline Tailor
+      // button still jumps straight into tailoring.
+      onPress: () => context.push('/match', extra: MatchArgs(match: item)),
       onTailor: () => context.push('/tailor', extra: TailorArgs(jobId: job.id, jobTitle: job.title)),
     );
   }

@@ -9,9 +9,11 @@ import '../screens/auth_screen.dart';
 import '../screens/cost_stats_screen.dart';
 import '../screens/debug_gallery_screen.dart';
 import '../screens/form_fill_screen.dart';
+import '../screens/form_webview_screen.dart';
 import '../screens/home_body.dart';
 import '../screens/jd_resume_screen.dart';
 import '../screens/jobs_list_body.dart';
+import '../screens/match_detail_screen.dart';
 import '../screens/matches_body.dart';
 import '../screens/onboarding_flow.dart';
 import '../screens/profile_body.dart';
@@ -160,6 +162,19 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
+      path: '/form-webview',
+      builder: (context, state) {
+        final args = state.extra as FormWebViewArgs;
+        return FormWebViewScreen(
+          prefillUrl: args.prefillUrl,
+          formTitle: args.formTitle,
+          filledCount: args.filledCount,
+          fileUploadLabels: args.fileUploadLabels,
+        );
+      },
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
       path: '/add-job',
       builder: (context, state) => const AddJobScreen(),
     ),
@@ -167,6 +182,11 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/resume-upload',
       builder: (context, state) => const ResumeUploadScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/match',
+      builder: (context, state) => MatchDetailScreen(match: (state.extra as MatchArgs).match),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,

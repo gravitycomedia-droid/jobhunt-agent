@@ -158,10 +158,18 @@ class _FormFillScreenState extends State<FormFillScreen> {
     if (fillId != null) {
       unawaited(_apiClient.updateFormFillAnswers(fillId, _editedAnswers).catchError((_) {}));
     }
-    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open the form')));
-    }
+    // §4.8: host the PREFILLED form in an in-app WebView (not the external
+    // browser) so the review→attach→submit handoff stays inside the app.
+    final filled = _editedAnswers.where((a) => a.answer != null && a.answer.toString().trim().isNotEmpty).length;
+    context.push(
+      '/form-webview',
+      extra: FormWebViewArgs(
+        prefillUrl: url,
+        formTitle: _parsed?.form.title ?? 'Application form',
+        filledCount: filled,
+        fileUploadLabels: _fileUploadQuestions.map((q) => q.text).toList(),
+      ),
+    );
   }
 
   Future<void> _openPlain() async {

@@ -9,8 +9,10 @@ from services.form_parser import (
     apply_answer_history,
     build_prefill_url,
     is_google_form_url,
+    is_sensitive_question,
     normalize_question,
     parse_google_form,
+    redact_for_storage,
     verify_choice_answers,
 )
 
@@ -43,6 +45,48 @@ FORM_URL = "https://docs.google.com/forms/d/e/abc123/viewform"
 
 def _parsed():
     return parse_google_form(FIXTURE_HTML, form_url=FORM_URL)
+
+
+def test_sensitive_questions_detected():
+    for q in [
+        "Aadhaar number",
+        "PAN Card No",
+        "Date of Birth",
+        "What is your DOB?",
+        "Bank account number",
+        "IFSC code",
+        "Enter your password",
+        "Debit card number",
+    ]:
+        assert is_sensitive_question(q), q
+    for q in ["Full name", "Years of experience", "Notice period", "Current CTC"]:
+        assert not is_sensitive_question(q), q
+
+
+def test_redact_for_storage_nulls_sensitive_values_only():
+    answers = [
+        FormAnswer(entry_id="1", question="Full name", answer="Jane Doe"),
+        FormAnswer(entry_id="2", question="Aadhaar number", answer="1234 5678 9012"),
+        FormAnswer(entry_id="3", question="Date of Birth", answer="1999-01-01"),
+        FormAnswer(entry_id="4", question="Years of experience", answer="3"),
+    ]
+    stored = redact_for_storage(answers)
+    by_id = {a.entry_id: a for a in stored}
+    assert by_id["1"].answer == "Jane Doe"  # non-sensitive untouched
+    assert by_id["4"].answer == "3"
+    assert by_id["2"].answer is None  # aadhaar stripped
+    assert by_id["3"].answer is None  # DOB stripped
+    assert by_id["2"].source_field == "not stored (sensitive)"
+    # The metadata (question, entry_id) is preserved so the row still records
+    # the question existed — only the secret value is gone.
+    assert by_id["2"].question == "Aadhaar number"
+
+
+def test_redact_is_a_copy_original_untouched():
+    # The un-redacted answers must still flow to the response + prefill URL.
+    answers = [FormAnswer(entry_id="2", question="PAN card number", answer="ABCDE1234F")]
+    redact_for_storage(answers)
+    assert answers[0].answer == "ABCDE1234F"
 
 
 def test_parses_title_description_and_questions():

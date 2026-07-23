@@ -23,6 +23,44 @@ from services.job_ingestion import _MAX_REDIRECTS, ManualJobFetchError, _assert_
 # normalize_question) to reuse that past answer — see apply_answer_history.
 _HISTORY_MATCH_THRESHOLD = 88
 
+# §4.8 hard constraint: government ID, DOB, bank details, and passwords are
+# filled ONCE (into the prefill URL the user reviews) and NEVER persisted to
+# form_fills.answers. Detection is by QUESTION TEXT — reliable and low false-
+# positive, unlike sniffing values. A sensitive answer is nulled before storage
+# (redact_for_storage) so it can neither leak from the row nor be reused across
+# forms by apply_answer_history (which reads from stored rows).
+_SENSITIVE_QUESTION_RE = re.compile(
+    r"\b("
+    r"aadha?ar|pan\s*(card|number|no)|passport|ssn|social\s*security|national\s*id|"
+    r"govern(ment|ing)?\s*id|govt\.?\s*id|voter\s*id|driv(er'?s|ing)\s*licen[cs]e|"
+    r"date\s*of\s*birth|d\.?o\.?b\.?|birth\s*date|"
+    r"bank\s*(account|acc|a/c)|account\s*number|ifsc|routing\s*number|"
+    r"card\s*number|cvv|upi\s*(id|pin)?|"
+    r"password|passcode|\botp\b|\bpin\b"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_sensitive_question(question: str) -> bool:
+    return _SENSITIVE_QUESTION_RE.search(question or "") is not None
+
+
+def redact_for_storage(answers: list[FormAnswer]) -> list[FormAnswer]:
+    """§4.8: return a copy of `answers` safe to persist — every sensitive
+    answer's value is stripped (set to None) while its question/entry metadata
+    is kept, so the fill row records that the question existed without ever
+    storing the secret. The un-redacted answers still travel in the API response
+    and the prefill URL (used once, in the user's own review), just never to the
+    database."""
+    out: list[FormAnswer] = []
+    for a in answers:
+        if is_sensitive_question(a.question) and a.answer is not None:
+            out.append(a.model_copy(update={"answer": None, "source_field": "not stored (sensitive)"}))
+        else:
+            out.append(a)
+    return out
+
 # Google's internal item-type enum inside FB_PUBLIC_LOAD_DATA_.
 _GOOGLE_TYPE = {
     0: "short",
