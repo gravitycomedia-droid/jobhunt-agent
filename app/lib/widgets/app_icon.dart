@@ -42,6 +42,7 @@ enum AppIconName {
   trendingUp,
   settings,
   autoAwesome,
+  sliders,
 }
 
 const Map<AppIconName, IconData> _iconMap = {
@@ -75,6 +76,7 @@ const Map<AppIconName, IconData> _iconMap = {
   AppIconName.trendingUp: Icons.trending_up,
   AppIconName.settings: Icons.settings_outlined,
   AppIconName.autoAwesome: Icons.auto_awesome_outlined,
+  AppIconName.sliders: Icons.tune, // §4.4 filter button
 };
 
 /// Line-icon primitive — use for all in-app iconography instead of

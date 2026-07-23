@@ -12,6 +12,11 @@ class Job {
   final double? salaryMax;
   final String? salaryCurrency; // ISO 4217, e.g. "INR" — Phase 1D
 
+  /// Migration 019: 'remote' | 'hybrid' | 'onsite', or null when the ingestion
+  /// classifier (job_filter.py::is_remote) couldn't decide. Null renders as
+  /// "unknown" in the filter facets and is excluded by any work-type filter.
+  final String? workType;
+
   /// Phase 5: exact server JSON, cached verbatim for round-tripping.
   final Map<String, dynamic> raw;
 
@@ -26,6 +31,7 @@ class Job {
     this.salaryMin,
     this.salaryMax,
     this.salaryCurrency,
+    this.workType,
     this.raw = const {},
   });
 
@@ -42,6 +48,7 @@ class Job {
       salaryMin: (json['salary_min'] as num?)?.toDouble(),
       salaryMax: (json['salary_max'] as num?)?.toDouble(),
       salaryCurrency: json['salary_currency'] as String?,
+      workType: json['work_type'] as String?,
     );
   }
 

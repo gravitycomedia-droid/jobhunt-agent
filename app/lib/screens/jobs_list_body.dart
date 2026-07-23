@@ -1,18 +1,21 @@
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/application_item.dart';
 import '../models/job.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
+import '../services/job_filter.dart';
 import '../services/refresh_throttle.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';
+import '../widgets/job_filter_sheet.dart';
 import '../widgets/page_header.dart';
 import '../widgets/stale_banner.dart';
 import '../widgets/task_toast.dart';
@@ -25,14 +28,14 @@ import 'shortlist_screen.dart';
 /// Flutter's pull-to-refresh — wrap a scrollable, give it an `onRefresh`
 /// callback that returns a Future, and it shows the spinner until that
 /// Future completes.
-class JobsListBody extends StatefulWidget {
+class JobsListBody extends ConsumerStatefulWidget {
   const JobsListBody({super.key});
 
   @override
-  State<JobsListBody> createState() => _JobsListBodyState();
+  ConsumerState<JobsListBody> createState() => _JobsListBodyState();
 }
 
-class _JobsListBodyState extends State<JobsListBody> {
+class _JobsListBodyState extends ConsumerState<JobsListBody> {
   final ApiClient _apiClient = ApiClient();
   final RefreshThrottle _throttle = RefreshThrottle();
 
@@ -43,7 +46,6 @@ class _JobsListBodyState extends State<JobsListBody> {
   DateTime? _lastUpdated; // ADR-028: for the "updated Xm ago" indicator
   List<Job> _jobs = [];
   List<ApplicationItem> _applications = [];
-  String? _sourceFilter;
 
   @override
   void initState() {
@@ -150,7 +152,11 @@ class _JobsListBodyState extends State<JobsListBody> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredJobs = _sourceFilter == null ? _jobs : _jobs.where((j) => j.source == _sourceFilter).toList();
+    // Phase 6 (§4.4): the one shared filter narrows the in-memory pool — the
+    // list, the sheet's "Show N", and the header dot all read this same state,
+    // so they can't disagree. Toggling never fetches.
+    final filter = ref.watch(jobFilterProvider);
+    final filteredJobs = _jobs.where(filter.matches).toList();
 
     // Phase 3A: the header stays up in every state (loading, error,
     // loaded) — only the content region below it changes.
@@ -162,6 +168,12 @@ class _JobsListBodyState extends State<JobsListBody> {
           title: 'Jobs',
           subtitle: _isLoading ? null : '${filteredJobs.length} posting${filteredJobs.length == 1 ? '' : 's'}',
           actions: [
+            HeaderActionButton(
+              icon: AppIconName.sliders,
+              tooltip: 'Filter jobs',
+              showDot: filter.isActive,
+              onPressed: _jobs.isEmpty ? null : () => showJobFilterSheet(context, pool: _jobs),
+            ),
             HeaderActionButton(
               icon: AppIconName.autoAwesome,
               tooltip: 'Customize resume for a JD',
@@ -213,7 +225,6 @@ class _JobsListBodyState extends State<JobsListBody> {
     }
 
     final shortlistCount = _applications.where((a) => a.state == 'saved').length;
-    final sources = _jobs.map((j) => j.source).toSet().toList()..sort();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,42 +257,30 @@ class _JobsListBodyState extends State<JobsListBody> {
             ),
           ],
         ),
-        if (sources.length > 1) ...[
-          const SizedBox(height: AppSpacing.space3),
-          SizedBox(
-            height: 32,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                _filterChip('All', _sourceFilter == null, () => setState(() => _sourceFilter = null)),
-                for (final s in sources) ...[
-                  const SizedBox(width: 7),
-                  _filterChip(s, _sourceFilter == s, () => setState(() => _sourceFilter = s)),
-                ],
-              ],
-            ),
-          ),
-        ],
         const SizedBox(height: AppSpacing.space3),
         Expanded(child: _jobList(filteredJobs)),
       ],
     );
   }
 
-  Widget _filterChip(String label, bool selected, VoidCallback onTap) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-      selectedColor: AppColors.brandSoft,
-      labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? AppColors.brand700 : AppColors.textSecondary),
-      side: BorderSide(color: selected ? AppColors.brandSoftBorder : AppColors.border),
-      shape: const StadiumBorder(),
-    );
-  }
-
   Widget _jobList(List<Job> jobs) {
     if (jobs.isEmpty) {
+      // Distinguish "no postings at all" from "your filter hid them all" — the
+      // fix for the latter is Clear filters, not pull-to-refresh.
+      final filter = ref.read(jobFilterProvider);
+      if (_jobs.isNotEmpty && filter.isActive) {
+        return ListView(
+          children: [
+            EmptyState(
+              icon: AppIconName.sliders,
+              title: 'No jobs match your filters',
+              message: 'Widen or clear your filters to see more of the pool.',
+              actionLabel: 'Clear filters',
+              onAction: () => ref.read(jobFilterProvider.notifier).clearAll(),
+            ),
+          ],
+        );
+      }
       return RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(

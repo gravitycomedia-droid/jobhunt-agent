@@ -104,6 +104,7 @@ class HeaderActionButton extends StatelessWidget {
     required this.tooltip,
     this.onPressed,
     this.busy = false,
+    this.showDot = false,
   });
 
   final AppIconName icon;
@@ -114,9 +115,13 @@ class HeaderActionButton extends StatelessWidget {
   /// actions that start background tasks (refresh, re-rank).
   final bool busy;
 
+  /// A small brand dot in the top-right corner — the "a filter is active"
+  /// indicator on the Jobs filter button (§4.3). Suppressed while [busy].
+  final bool showDot;
+
   @override
   Widget build(BuildContext context) {
-    return IconButton(
+    final button = IconButton(
       tooltip: tooltip,
       onPressed: busy ? null : onPressed,
       icon: busy
@@ -131,6 +136,26 @@ class HeaderActionButton extends StatelessWidget {
         side: const BorderSide(color: AppColors.border),
         shape: const CircleBorder(),
       ),
+    );
+    if (!showDot || busy) return button;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        button,
+        Positioned(
+          top: 2,
+          right: 2,
+          child: Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: AppColors.brand600,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.surface, width: 1.5),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
