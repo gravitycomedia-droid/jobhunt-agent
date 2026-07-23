@@ -335,6 +335,12 @@ def _provider_for(task: str) -> str:
         provider = settings.tailor_provider.strip().lower()
         if provider not in (GEMINI, DEEPSEEK):
             provider = GEMINI
+    elif task == "chat":
+        # Phase 4: the grounded assistant. Configurable like tailor (CHAT_PROVIDER),
+        # defaulting to DeepSeek, with the same "unknown value → Gemini" guard.
+        provider = settings.chat_provider.strip().lower()
+        if provider not in (GEMINI, DEEPSEEK):
+            provider = GEMINI
     else:
         provider = _TASK_PROVIDERS.get(task, GEMINI)
 

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import (
     account,
     applications,
+    chat,
     forms,
     jobs,
     matches,
@@ -30,6 +31,7 @@ app.include_router(tasks.router)
 app.include_router(forms.router)
 app.include_router(notifications.router)
 app.include_router(account.router)
+app.include_router(chat.router)
 
 # Dev-only: lets Flutter web (served from its own localhost port) call this
 # API from the browser. Native iOS/Android builds never hit CORS at all —
