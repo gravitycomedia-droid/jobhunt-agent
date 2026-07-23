@@ -6,9 +6,29 @@ from db.supabase_client import supabase
 from services.activity import build_activity_feed
 from services.auth import get_current_profile
 from services.cost_stats import summarize_costs
+from services.score_history import compute_score_history
 from services.skill_growth import get_skill_growth
 
 router = APIRouter(prefix="/stats", tags=["stats"])
+
+
+@router.get("/score-history")
+async def get_score_history(profile: dict = Depends(get_current_profile)):
+    """Phase 4: the fit-score delta chip + sparkline (R-D). Reads this profile's
+    score_snapshots and returns the current point, a day-over-day delta against
+    the latest snapshot >=24h older (None until one exists — the client then hides
+    the chip rather than showing a fabricated 0), and the series for the sparkline.
+    See services/score_history.py."""
+    rows = (
+        supabase.table("score_snapshots")
+        .select("top_fit_score,avg_fit_score,match_count,captured_at")
+        .eq("profile_id", profile["id"])
+        .order("captured_at", desc=True)
+        .limit(60)
+        .execute()
+        .data
+    )
+    return {"data": compute_score_history(rows), "error": None}
 
 
 @router.get("/costs")

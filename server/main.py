@@ -3,7 +3,19 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import applications, forms, jobs, matches, pipeline, resume, stats, tailor, tasks
+from routers import (
+    account,
+    applications,
+    forms,
+    jobs,
+    matches,
+    notifications,
+    pipeline,
+    resume,
+    stats,
+    tailor,
+    tasks,
+)
 
 app = FastAPI(title="Job-Hunt Agent API")
 
@@ -16,6 +28,8 @@ app.include_router(pipeline.router)
 app.include_router(stats.router)
 app.include_router(tasks.router)
 app.include_router(forms.router)
+app.include_router(notifications.router)
+app.include_router(account.router)
 
 # Dev-only: lets Flutter web (served from its own localhost port) call this
 # API from the browser. Native iOS/Android builds never hit CORS at all —

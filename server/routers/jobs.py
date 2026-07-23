@@ -102,6 +102,37 @@ async def list_jobs(limit: int = Query(20, le=100), offset: int = Query(0, ge=0)
     return {"data": result.data, "error": None}
 
 
+def build_facets(jobs: list[dict]) -> dict:
+    """Pure histogram of the shared job pool for the filter sheet (§4.4). Counts
+    are computed in Python over the fetched rows rather than a SQL GROUP BY: the
+    pool is a small fresh window (max_job_age_days) so one select + a Python pass
+    beats a Supabase RPC, and it's unit-testable without a DB. NULL work_type
+    (migration 019's honest "unclassified") buckets as 'unknown', never dropped."""
+    work_type: dict[str, int] = {"remote": 0, "hybrid": 0, "onsite": 0, "unknown": 0}
+    source: dict[str, int] = {}
+    for j in jobs:
+        wt = j.get("work_type") or "unknown"
+        work_type[wt] = work_type.get(wt, 0) + 1
+        src = j.get("source") or "unknown"
+        source[src] = source.get(src, 0) + 1
+    return {
+        "total": len(jobs),
+        "work_type": work_type,
+        # busiest source first — the client renders chips in this order
+        "source": dict(sorted(source.items(), key=lambda kv: kv[1], reverse=True)),
+    }
+
+
+@router.get("/facets")
+async def job_facets(user_id: str = Depends(get_current_user_id)):
+    """Filter-sheet histogram (§4.4): job counts per work_type and per source
+    across the shared pool. Login-gated like GET /jobs, not profile-scoped — the
+    pool has no owner. Toggling these filters is a client-side narrowing of the
+    already-fetched list; this endpoint just supplies the counts on the chips."""
+    rows = supabase.table("jobs").select("work_type,source").execute().data
+    return {"data": build_facets(rows), "error": None}
+
+
 @router.post("/backfill-embeddings")
 async def backfill_embeddings(user_id: str = Depends(get_current_user_id)):
     result = backfill_job_embeddings()
