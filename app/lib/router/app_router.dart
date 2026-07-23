@@ -18,6 +18,7 @@ import '../screens/resume_preview_screen.dart';
 import '../screens/resume_upload_screen.dart';
 import '../screens/skill_growth_screen.dart';
 import '../screens/splash_screen.dart';
+import '../services/haptic_service.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/app_shell.dart';
 import 'app_router_notifier.dart';
@@ -194,6 +195,7 @@ class _TabShell extends StatelessWidget {
       onNavigate: (key) {
         final index = _tabKeys.indexOf(key);
         if (index >= 0) {
+          HapticService.instance.selection();
           // goBranch to the current branch again pops it to its root — matches
           // the usual "tap the active tab to reset" expectation.
           shell.goBranch(index, initialLocation: index == shell.currentIndex);

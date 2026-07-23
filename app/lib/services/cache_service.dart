@@ -51,6 +51,7 @@ class CacheService {
   /// The `app:` prefix can never collide with a user id namespace (UUIDs), so
   /// [clearForUser] leaves it untouched.
   static const _keyThemeMode = 'app:theme_mode';
+  static const _keyHapticsEnabled = 'app:haptics_enabled';
 
   Future<String?> readThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -60,6 +61,16 @@ class CacheService {
   Future<void> writeThemeMode(String mode) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyThemeMode, mode);
+  }
+
+  Future<bool?> readHapticsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyHapticsEnabled);
+  }
+
+  Future<void> writeHapticsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyHapticsEnabled, enabled);
   }
 
   String? get _userId => Supabase.instance.client.auth.currentUser?.id;
