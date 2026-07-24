@@ -22,6 +22,7 @@ import '../models/shortlist_item.dart';
 import '../models/skill_growth_item.dart';
 import '../models/subscription.dart';
 import '../models/tailored_resume.dart';
+import '../models/wallet.dart';
 
 /// Golden Rule 1 (see CLAUDE.md): the phone never talks to Gemini/Supabase/etc
 /// directly — it only ever talks to OUR FastAPI server. This class is the one
@@ -841,6 +842,51 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return NotificationFeed.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Phase 9: mark one notification read (§4.13). Server returns the updated
+  /// row; the screen only needs the success, so this returns nothing.
+  Future<void> markNotificationRead(String id) async {
+    final uri = Uri.parse('$_baseUrl/notifications/$id/read');
+    final response = await http.patch(uri, headers: _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+  }
+
+  /// Phase 9: clear the whole unread badge in one call (§4.13, "Mark all
+  /// read"). Idempotent server-side — only touches still-unread rows.
+  Future<void> markAllNotificationsRead() async {
+    final uri = Uri.parse('$_baseUrl/notifications/read-all');
+    final response = await http.post(uri, headers: _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+  }
+
+  /// Phase 9: the cosmetic credits meter (§4.12 / R-B). Denominated in paise
+  /// (₹), derived server-side from real spend — never gates. See [Wallet].
+  Future<Wallet> fetchWallet() async {
+    final uri = Uri.parse('$_baseUrl/wallet');
+    final response = await http.get(uri, headers: _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return Wallet.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Phase 9: irreversibly delete the caller's account (§4.15). The UI gates
+  /// this behind a [HoldButton], never a plain tap — this method assumes that
+  /// confirmation already happened. Server cascades every profile-scoped row
+  /// and removes the auth user; a 502 means data was deleted but the sign-in
+  /// removal failed (surface its message so the user knows to contact support).
+  Future<void> deleteAccount() async {
+    final uri = Uri.parse('$_baseUrl/account');
+    final response = await http.delete(uri, headers: _authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
   }
 
   /// Phase 6: parse a pasted application-form URL. Google Forms parse

@@ -364,7 +364,10 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
 
   Widget _activityBellButton() {
     return GestureDetector(
-      onTap: () => context.push('/activity'),
+      // §4.13: the bell badge counts unread notifications, so it opens the
+      // notification feed (the activity log stays reachable from Home's
+      // "Recent activity → View all").
+      onTap: () => context.push('/notifications'),
       child: Container(
         width: 42,
         height: 42,

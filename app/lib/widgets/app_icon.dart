@@ -46,6 +46,7 @@ enum AppIconName {
   messageCircle, // §4.10 career chat
   send, // §4.10 chat send button
   edit, // §4.10 new-chat (reset)
+  trash, // §4.15 delete account
 }
 
 const Map<AppIconName, IconData> _iconMap = {
@@ -83,6 +84,7 @@ const Map<AppIconName, IconData> _iconMap = {
   AppIconName.messageCircle: Icons.chat_bubble_outline,
   AppIconName.send: Icons.send,
   AppIconName.edit: Icons.edit_outlined,
+  AppIconName.trash: Icons.delete_outline,
 };
 
 /// Line-icon primitive — use for all in-app iconography instead of

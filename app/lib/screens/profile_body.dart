@@ -47,6 +47,7 @@ class _ProfileBodyState extends State<ProfileBody> {
   // the plan card hidden rather than blanking Profile.
   List<ApplicationItem> _applications = [];
   Subscription? _subscription;
+  int _unreadCount = 0; // Phase 9 (§4.13): the Notifications row's "N new" meta
 
   @override
   void initState() {
@@ -119,6 +120,14 @@ class _ProfileBodyState extends State<ProfileBody> {
       if (mounted) setState(() => _subscription = sub);
     } catch (_) {
       /* plan card stays hidden */
+    }
+    try {
+      // Only the unread count matters here (the "N new" meta) — the full feed
+      // lives on the Notifications screen. A failed fetch just drops the meta.
+      final feed = await _apiClient.fetchNotifications(limit: 1);
+      if (mounted) setState(() => _unreadCount = feed.unreadCount);
+    } catch (_) {
+      /* notifications row shows no meta */
     }
   }
 
@@ -238,9 +247,44 @@ class _ProfileBodyState extends State<ProfileBody> {
           const SizedBox(height: AppSpacing.space4),
           _navRows(),
         ],
+        // §4.14 / §4.15: About + Delete account, always available (independent
+        // of whether a résumé has been uploaded yet).
+        const SizedBox(height: AppSpacing.space4),
+        _accountRows(),
         const SizedBox(height: AppSpacing.space4),
         _signOutRow(),
       ],
+    );
+  }
+
+  /// The About / Delete-account group card (prototype's second Profile card).
+  /// Delete is rendered in the critical colour and routes to the §4.15
+  /// hold-to-confirm screen — never deletes from here directly.
+  Widget _accountRows() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: AppRadius.lgRadius,
+        boxShadow: AppElevation.e1,
+      ),
+      child: Column(
+        children: [
+          _navRow(
+            icon: AppIconName.info,
+            label: 'About FirstRole',
+            onTap: () => context.push('/about'),
+            showDivider: true,
+          ),
+          _navRow(
+            icon: AppIconName.trash,
+            label: 'Delete account',
+            onTap: () => context.push('/delete-account'),
+            showDivider: false,
+            danger: true,
+          ),
+        ],
+      ),
     );
   }
 
@@ -283,6 +327,13 @@ class _ProfileBodyState extends State<ProfileBody> {
             showDivider: true,
           ),
           _navRow(
+            icon: AppIconName.bell,
+            label: 'Notifications',
+            trailing: _unreadCount > 0 ? '${_unreadCount > 9 ? '9+' : _unreadCount} new' : null,
+            onTap: () => context.push('/notifications'),
+            showDivider: true,
+          ),
+          _navRow(
             icon: AppIconName.messageCircle,
             label: 'Ask the agent',
             onTap: () => context.push('/chat'),
@@ -317,7 +368,9 @@ class _ProfileBodyState extends State<ProfileBody> {
     String? trailing,
     required VoidCallback onTap,
     required bool showDivider,
+    bool danger = false,
   }) {
+    final tint = danger ? AppColors.criticalFill : AppColors.brand600;
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -325,12 +378,19 @@ class _ProfileBodyState extends State<ProfileBody> {
         decoration: BoxDecoration(border: showDivider ? const Border(bottom: BorderSide(color: AppColors.border)) : null),
         child: Row(
           children: [
-            AppIcon(icon, size: 20, color: AppColors.brand600),
+            AppIcon(icon, size: 20, color: tint),
             const SizedBox(width: AppSpacing.space3),
             Expanded(
               child: Row(
                 children: [
-                  Text(label, style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+                  Text(
+                    label,
+                    style: AppTypography.title.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: danger ? AppColors.criticalFill : null,
+                    ),
+                  ),
                   if (trailing != null) ...[
                     const SizedBox(width: 4),
                     Text('· $trailing', style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary)),

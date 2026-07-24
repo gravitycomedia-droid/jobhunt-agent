@@ -2,13 +2,14 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../screens/about_screen.dart';
 import '../screens/activity_log_screen.dart';
 import '../screens/add_job_screen.dart';
 import '../screens/applications_body.dart';
 import '../screens/auth_screen.dart';
 import '../screens/career_chat_screen.dart';
-import '../screens/cost_stats_screen.dart';
 import '../screens/debug_gallery_screen.dart';
+import '../screens/delete_account_screen.dart';
 import '../screens/form_fill_screen.dart';
 import '../screens/form_webview_screen.dart';
 import '../screens/home_body.dart';
@@ -16,6 +17,7 @@ import '../screens/jd_resume_screen.dart';
 import '../screens/jobs_list_body.dart';
 import '../screens/match_detail_screen.dart';
 import '../screens/matches_body.dart';
+import '../screens/notifications_screen.dart';
 import '../screens/onboarding_flow.dart';
 import '../screens/profile_body.dart';
 import '../screens/resume_diff_screen.dart';
@@ -23,6 +25,7 @@ import '../screens/resume_preview_screen.dart';
 import '../screens/resume_upload_screen.dart';
 import '../screens/skill_growth_screen.dart';
 import '../screens/splash_screen.dart';
+import '../screens/wallet_screen.dart';
 import '../services/haptic_service.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/app_shell.dart';
@@ -137,9 +140,25 @@ final GoRouter appRouter = GoRouter(
 
     // --- sub-screens pushed above the shell (root navigator) ------------
     GoRoute(
+      // §4.12 — the agent wallet (was the raw LLM-cost screen).
       parentNavigatorKey: _rootNavigatorKey,
       path: '/cost',
-      builder: (context, state) => const CostStatsScreen(),
+      builder: (context, state) => const WalletScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/notifications',
+      builder: (context, state) => const NotificationsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/about',
+      builder: (context, state) => const AboutScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/delete-account',
+      builder: (context, state) => const DeleteAccountScreen(),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
