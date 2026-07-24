@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'status_pill.dart';
 
 /// One pipeline lane for the Applications Kanban board (Brick 7).
@@ -43,8 +44,8 @@ class KanbanColumn extends StatelessWidget {
       duration: const Duration(milliseconds: 120),
       width: width,
       decoration: BoxDecoration(
-        color: highlighted ? AppColors.brandSoft : AppColors.surfaceSunken,
-        border: Border.all(color: highlighted ? AppColors.brand : AppColors.border, width: highlighted ? 1.5 : 1),
+        color: highlighted ? context.c.accentSoft : context.c.surface2,
+        border: Border.all(color: highlighted ? context.c.accent : context.c.border, width: highlighted ? 1.5 : 1),
         borderRadius: AppRadius.lgRadius,
       ),
       child: Column(
@@ -63,7 +64,7 @@ class KanbanColumn extends StatelessWidget {
                     fontFamily: AppTypography.monoData.fontFamily,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textTertiary,
+                    color: context.c.inkFaint,
                   ),
                 ),
               ],

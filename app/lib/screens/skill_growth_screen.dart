@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../models/skill_growth_item.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/loading_skeleton.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/page_header.dart';
 
 /// Phase 4 (prototype `ui.isSkillGrowth`): skills-to-learn derived from
@@ -61,11 +62,9 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
   }
 
   Widget _body() {
+    // Phase 10: skeletons retired — cold load shows the brand AppLoader.
     if (_isLoading) {
-      return ListView(
-        padding: const EdgeInsets.all(AppSpacing.screenPadX),
-        children: const [LoadingSkeleton(variant: SkeletonVariant.card)],
-      );
+      return const Center(child: AppLoader());
     }
 
     if (_errorMessage != null) {
@@ -102,10 +101,10 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
       children: [
         Text(
           'Skills, courses and projects the agent thinks would move the needle most.',
-          style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+          style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
         ),
         const SizedBox(height: AppSpacing.space5),
-        Text('SKILLS TO LEARN', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+        Text('SKILLS TO LEARN', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
         const SizedBox(height: AppSpacing.space2),
         for (final item in _items) ...[
           _skillCard(item),
@@ -113,7 +112,7 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
         ],
         if (courses.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.space3),
-          Text('RECOMMENDED COURSES', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          Text('RECOMMENDED COURSES', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space2),
           for (final (skill, course) in courses) ...[
             _courseRow(skill, course),
@@ -122,7 +121,7 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
         ],
         if (projects.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.space3),
-          Text('PROJECT IDEAS', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          Text('PROJECT IDEAS', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space2),
           for (final (_, project) in projects) ...[
             _projectCard(project),
@@ -138,8 +137,8 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.space3),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.mdRadius,
       ),
       child: child,
@@ -157,22 +156,22 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
               const SizedBox(width: AppSpacing.space2),
               DecoratedBox(
                 decoration: BoxDecoration(
-                  color: AppColors.successSoft,
-                  border: Border.all(color: AppColors.successBorder),
+                  color: context.c.success.withValues(alpha: 0.12),
+                  border: Border.all(color: context.c.success.withValues(alpha: 0.30)),
                   borderRadius: AppRadius.pillRadius,
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   child: Text(
                     item.frequencyLabel,
-                    style: AppTypography.caption.copyWith(color: AppColors.successText, fontWeight: FontWeight.w600),
+                    style: AppTypography.caption.copyWith(color: context.c.success, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          Text(item.reason, style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+          Text(item.reason, style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
         ],
       ),
     );
@@ -186,8 +185,8 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
             width: 36,
             height: 36,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
-            child: const AppIcon(AppIconName.fileText, size: 18, color: AppColors.brand600),
+            decoration: BoxDecoration(color: context.c.accentSoft, shape: BoxShape.circle),
+            child: AppIcon(AppIconName.fileText, size: 18, color: context.c.accent),
           ),
           const SizedBox(width: AppSpacing.space3),
           Expanded(
@@ -196,7 +195,7 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
               children: [
                 Text(course.title, style: AppTypography.body.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
-                Text('${course.provider} · ${course.duration}', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+                Text('${course.provider} · ${course.duration}', style: AppTypography.caption.copyWith(color: context.c.inkFaint)),
               ],
             ),
           ),
@@ -212,7 +211,7 @@ class _SkillGrowthScreenState extends State<SkillGrowthScreen> {
         children: [
           Text(project.title, style: AppTypography.body.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text(project.impact, style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+          Text(project.impact, style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
         ],
       ),
     );

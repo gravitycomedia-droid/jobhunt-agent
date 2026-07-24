@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/application_item.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/job_card.dart';

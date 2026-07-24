@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/activity_item.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
 import 'app_icon.dart';
 
 /// Icon + colors for one [ActivityItem], shared between
@@ -15,26 +15,32 @@ class ActivityGlyph {
   final Color fg;
 }
 
-ActivityGlyph activityGlyphFor(ActivityItem item) {
+/// Colours come from the active theme, so glyphs flip with dark mode. Soft
+/// backgrounds are the role tint at 12% (mirrors the old `*Soft` aliases).
+ActivityGlyph activityGlyphFor(BuildContext context, ActivityItem item) {
+  final c = context.c;
+  ActivityGlyph glyph(AppIconName icon, Color role) =>
+      ActivityGlyph(icon, role.withValues(alpha: 0.12), role);
+
   if (item.type == 'followup') {
-    return const ActivityGlyph(AppIconName.bell, AppColors.infoSoft, AppColors.infoText);
+    return glyph(AppIconName.bell, c.info);
   }
   if (item.type == 'tailored') {
-    return const ActivityGlyph(AppIconName.fileText, AppColors.brandSoft, AppColors.brand700);
+    return glyph(AppIconName.fileText, c.accent);
   }
   // stage_change
   switch (item.stage) {
     case 'offer':
-      return const ActivityGlyph(AppIconName.check, AppColors.successSoft, AppColors.successText);
+      return glyph(AppIconName.check, c.success);
     case 'rejected':
-      return const ActivityGlyph(AppIconName.x, AppColors.criticalSoft, AppColors.criticalText);
+      return glyph(AppIconName.x, c.critical);
     case 'interview':
     case 'replied':
-      return const ActivityGlyph(AppIconName.arrowUpRight, AppColors.infoSoft, AppColors.infoText);
+      return glyph(AppIconName.arrowUpRight, c.info);
     case 'applied':
-      return const ActivityGlyph(AppIconName.check, AppColors.infoSoft, AppColors.infoText);
+      return glyph(AppIconName.check, c.info);
     case 'saved':
     default:
-      return const ActivityGlyph(AppIconName.bookmark, AppColors.neutralSoft, AppColors.neutralText);
+      return glyph(AppIconName.bookmark, c.inkSoft);
   }
 }

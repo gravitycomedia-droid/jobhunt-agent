@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/brand_mark.dart';
 import '../widgets/page_header.dart';
@@ -32,18 +33,18 @@ class AboutScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space5, vertical: AppSpacing.space4),
         children: [
           const SizedBox(height: AppSpacing.space3),
-          _identity(),
+          _identity(context),
           const SizedBox(height: AppSpacing.space6),
-          _versionCard(),
+          _versionCard(context),
           const SizedBox(height: AppSpacing.space5),
-          _missionCard(),
+          _missionCard(context),
           const SizedBox(height: AppSpacing.space6),
           _legalLinks(context),
           const SizedBox(height: AppSpacing.space4),
           Text(
             '© 2026 FirstRole. All rights reserved.',
             textAlign: TextAlign.center,
-            style: AppTypography.label.copyWith(color: AppColors.textTertiary),
+            style: AppTypography.label.copyWith(color: context.c.inkFaint),
           ),
           const SizedBox(height: AppSpacing.space6),
         ],
@@ -51,7 +52,7 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  Widget _identity() {
+  Widget _identity(BuildContext context) {
     return Column(
       children: [
         Container(
@@ -60,13 +61,13 @@ class AboutScreen extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [AppColors.brand600, AppColors.brand800],
+              colors: [context.c.accent, context.c.accent],
             ),
             boxShadow: [
-              BoxShadow(color: AppColors.brand600.withValues(alpha: 0.3), blurRadius: 24, offset: const Offset(0, 12)),
+              BoxShadow(color: context.c.accent.withValues(alpha: 0.3), blurRadius: 24, offset: Offset(0, 12)),
             ],
           ),
           child: const BrandMark(size: 46, color: Colors.white),
@@ -76,26 +77,26 @@ class AboutScreen extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           'for Android · $_appVersion',
-          style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+          style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
         ),
         const SizedBox(height: 2),
         Text(
           'AI agent for entry-level & internship roles',
           style: AppTypography.label.copyWith(
             fontFamily: AppTypography.monoData.fontFamily,
-            color: AppColors.textTertiary,
+            color: context.c.inkFaint,
           ),
         ),
       ],
     );
   }
 
-  Widget _versionCard() {
+  Widget _versionCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.mdRadius,
       ),
       child: Row(
@@ -104,19 +105,19 @@ class AboutScreen extends StatelessWidget {
           const Spacer(),
           Text(
             _appVersion,
-            style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+            style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 14, fontWeight: FontWeight.w600, color: context.c.ink),
           ),
         ],
       ),
     );
   }
 
-  Widget _missionCard() {
+  Widget _missionCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.mdRadius,
       ),
       child: Column(
@@ -124,14 +125,14 @@ class AboutScreen extends StatelessWidget {
         children: [
           Text(
             'OUR MISSION',
-            style: AppTypography.label.copyWith(color: AppColors.brand600, letterSpacing: 0.5),
+            style: AppTypography.label.copyWith(color: context.c.accent, letterSpacing: 0.5),
           ),
           const SizedBox(height: AppSpacing.space2),
           Text(
             'Job hunting should feel like having a tireless ally, not a second job. '
             'The agent searches, ranks, and tailors while you sleep — but every '
             'decision that matters stays yours.',
-            style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary, height: 1.6),
+            style: AppTypography.bodySm.copyWith(color: context.c.inkSoft, height: 1.6),
           ),
         ],
       ),
@@ -157,9 +158,9 @@ class AboutScreen extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(label, style: AppTypography.body.copyWith(color: AppColors.brand600, fontWeight: FontWeight.w500)),
+            Text(label, style: AppTypography.body.copyWith(color: context.c.accent, fontWeight: FontWeight.w500)),
             const SizedBox(width: 4),
-            const AppIcon(AppIconName.externalLink, size: 14, color: AppColors.brand600),
+            AppIcon(AppIconName.externalLink, size: 14, color: context.c.accent),
           ],
         ),
       ),

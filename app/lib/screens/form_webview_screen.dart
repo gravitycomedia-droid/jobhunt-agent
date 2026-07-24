@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
 
@@ -100,7 +101,7 @@ class _FormWebViewScreenState extends State<FormWebViewScreen> {
         ? ' Attach manually: ${widget.fileUploadLabels.join(' · ')}.'
         : '';
     return Container(
-      color: AppColors.brandSoft,
+      color: context.c.accentSoft,
       padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadX, AppSpacing.space3, AppSpacing.space2, AppSpacing.space3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,13 +114,13 @@ class _FormWebViewScreenState extends State<FormWebViewScreen> {
                   widget.filledCount > 0
                       ? 'We prefilled ${widget.filledCount} field${widget.filledCount == 1 ? '' : 's'} — check them, then submit yourself.'
                       : 'Review the form, then submit yourself.',
-                  style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w700, color: AppColors.brand700),
+                  style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w700, color: context.c.accent),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Google won’t let us attach files or tap Submit. You attach your résumé PDF and submit — '
                   'the agent never submits anything for you.$attach',
-                  style: AppTypography.caption.copyWith(color: AppColors.brand700),
+                  style: AppTypography.caption.copyWith(color: context.c.accent),
                 ),
               ],
             ),
@@ -128,7 +129,7 @@ class _FormWebViewScreenState extends State<FormWebViewScreen> {
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
             onPressed: () => setState(() => _showBanner = false),
-            icon: const AppIcon(AppIconName.x, size: 16, color: AppColors.brand700),
+            icon: AppIcon(AppIconName.x, size: 16, color: context.c.accent),
           ),
         ],
       ),

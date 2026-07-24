@@ -7,7 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/form_fill.dart';
 import '../router/route_args.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/app_icon.dart';
@@ -274,7 +275,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: _openPrefilled,
-                    icon: const AppIcon(AppIconName.externalLink, size: 18, color: AppColors.textOnBrand),
+                    icon: AppIcon(AppIconName.externalLink, size: 18, color: context.onAccent),
                     label: const Text('Open prefilled form'),
                   ),
                 ),
@@ -283,7 +284,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
                 'Review every answer above, then submit the form yourself in the browser — '
                 'the agent never submits anything for you.',
                 textAlign: TextAlign.center,
-                style: AppTypography.caption.copyWith(color: AppColors.textTertiary),
+                style: AppTypography.caption.copyWith(color: context.c.inkFaint),
               ),
             ],
           ],
@@ -311,8 +312,8 @@ class _FormFillScreenState extends State<FormFillScreen> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space3),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: flagged ? AppColors.warningBorder : AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: flagged ? context.c.warning.withValues(alpha: 0.30) : context.c.border),
         borderRadius: AppRadius.mdRadius,
       ),
       child: Column(
@@ -321,7 +322,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
           Text(answer.question, style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w700)),
           if (options.isNotEmpty) ...[
             const SizedBox(height: 2),
-            Text('Options: ${options.join(' · ')}', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+            Text('Options: ${options.join(' · ')}', style: AppTypography.caption.copyWith(color: context.c.inkFaint)),
           ],
           const SizedBox(height: AppSpacing.space2),
           if (controller != null)
@@ -329,15 +330,15 @@ class _FormFillScreenState extends State<FormFillScreen> {
           if (answer.sourceField != null && answer.answer != null) ...[
             const SizedBox(height: 2),
             Text('From your profile: ${answer.sourceField}',
-                style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+                style: AppTypography.caption.copyWith(color: context.c.inkFaint)),
           ],
           if (flagText != null) ...[
             const SizedBox(height: AppSpacing.space2),
             Row(
               children: [
-                const AppIcon(AppIconName.alertTriangle, size: 13, color: AppColors.warningText),
+                AppIcon(AppIconName.alertTriangle, size: 13, color: context.c.warning),
                 const SizedBox(width: 4),
-                Expanded(child: Text(flagText, style: AppTypography.caption.copyWith(color: AppColors.warningText))),
+                Expanded(child: Text(flagText, style: AppTypography.caption.copyWith(color: context.c.warning))),
               ],
             ),
           ],

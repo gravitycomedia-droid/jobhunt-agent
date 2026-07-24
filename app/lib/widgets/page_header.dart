@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// Phase 3A: the one header every screen uses instead of the old
@@ -14,7 +15,8 @@ import 'app_icon.dart';
 ///   pushed screen the same back affordance via [Navigator.pop].
 ///
 /// Large title, optional subtitle/count line, contextual action icons on
-/// the right. All values from app_tokens — no hardcoded hex/px.
+/// the right. Colours from `context.c`, sizing from app_metrics — no hardcoded
+/// hex/px.
 class PageHeader extends StatelessWidget implements PreferredSizeWidget {
   const PageHeader({
     super.key,
@@ -59,7 +61,7 @@ class PageHeader extends StatelessWidget implements PreferredSizeWidget {
               if (subtitle != null)
                 Text(
                   subtitle!,
-                  style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+                  style: AppTypography.caption.copyWith(color: context.c.inkSoft),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -80,9 +82,9 @@ class PageHeader extends StatelessWidget implements PreferredSizeWidget {
       return SizedBox(height: AppSpacing.headerH, child: content);
     }
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+      decoration: BoxDecoration(
+        color: context.c.surface,
+        border: Border(bottom: BorderSide(color: context.c.border)),
       ),
       child: SafeArea(
         bottom: false,
@@ -125,15 +127,15 @@ class HeaderActionButton extends StatelessWidget {
       tooltip: tooltip,
       onPressed: busy ? null : onPressed,
       icon: busy
-          ? const SizedBox(
+          ? SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brand),
+              child: CircularProgressIndicator(strokeWidth: 2, color: context.c.accent),
             )
-          : AppIcon(icon, size: 18, color: AppColors.textSecondary),
+          : AppIcon(icon, size: 18, color: context.c.inkSoft),
       style: IconButton.styleFrom(
-        backgroundColor: AppColors.surface,
-        side: const BorderSide(color: AppColors.border),
+        backgroundColor: context.c.surface,
+        side: BorderSide(color: context.c.border),
         shape: const CircleBorder(),
       ),
     );
@@ -149,9 +151,9 @@ class HeaderActionButton extends StatelessWidget {
             width: 9,
             height: 9,
             decoration: BoxDecoration(
-              color: AppColors.brand600,
+              color: context.c.accent,
               shape: BoxShape.circle,
-              border: Border.all(color: AppColors.surface, width: 1.5),
+              border: Border.all(color: context.c.surface, width: 1.5),
             ),
           ),
         ),

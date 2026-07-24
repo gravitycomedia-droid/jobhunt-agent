@@ -2,13 +2,16 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Brick 9: Supabase project coordinates for client-side auth only — the
 /// app never queries Supabase tables directly (Golden Rule 1: it only
-/// ever talks to our FastAPI server). The anon key is safe to embed here;
-/// it's designed to be public and is meaningless without RLS on the server
-/// side, same as a Firebase client config. Mirrors server/.env's
+/// ever talks to our FastAPI server). The publishable key is safe to embed
+/// here; it's designed to be public and is meaningless without RLS on the
+/// server side, same as a Firebase client config. Mirrors server/.env's
 /// SUPABASE_URL / SUPABASE_ANON_KEY — keep the two in sync by hand.
+///
+/// Phase 10: renamed `anonKey` → `publishableKey` to track supabase_flutter's
+/// deprecation (the JWT value is unchanged; `anon` is still its role claim).
 class SupabaseConfig {
   static const String url = 'https://mlraykxgariyvxlmlmxv.supabase.co';
-  static const String anonKey =
+  static const String publishableKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1scmF5a3hnYXJpeXZ4bG1sbXh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM0OTk4MjUsImV4cCI6MjA5OTA3NTgyNX0.WIAe8hDR6IB_CfhspInZzXvMqT5uMiyxjHnN7cSoTkY';
 
   /// Where Supabase's OAuth flow returns after Google sign-in — platform

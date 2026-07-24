@@ -11,7 +11,8 @@ import '../services/cache_service.dart';
 import '../services/match_feed.dart';
 import '../services/refresh_throttle.dart';
 import '../services/task_center.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
@@ -248,7 +249,7 @@ class _MatchesBodyState extends ConsumerState<MatchesBody> {
     if (label != null) {
       return Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.space2),
-        child: Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary)),
+        child: Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.c.inkFaint)),
       );
     }
     return const SizedBox.shrink();

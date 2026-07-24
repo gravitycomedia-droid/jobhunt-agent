@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 
 /// The onboarding fork (§4.1): student vs. experienced professional. One card
@@ -63,7 +64,7 @@ class _StudentInfoScreenState extends State<StudentInfoScreen> {
               const SizedBox(height: 6),
               Text(
                 'This tailors what the agent asks next and how it frames your background.',
-                style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
               ),
               const SizedBox(height: AppSpacing.space5),
               Row(
@@ -91,7 +92,7 @@ class _StudentInfoScreenState extends State<StudentInfoScreen> {
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: AppSpacing.space3),
-                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
               ],
               const Spacer(),
               SizedBox(
@@ -128,24 +129,24 @@ class _StudentInfoScreenState extends State<StudentInfoScreen> {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: AppSpacing.space5, horizontal: AppSpacing.space3),
           decoration: BoxDecoration(
-            color: selected ? AppColors.brandSoft : AppColors.surface,
-            border: Border.all(color: selected ? AppColors.brand500 : AppColors.border, width: selected ? 1.5 : 1),
+            color: selected ? context.c.accentSoft : context.c.surface,
+            border: Border.all(color: selected ? context.c.accent : context.c.border, width: selected ? 1.5 : 1),
             borderRadius: AppRadius.lgRadius,
           ),
           child: Column(
             children: [
-              AppIcon(icon, size: 26, color: selected ? AppColors.brand600 : AppColors.textSecondary),
+              AppIcon(icon, size: 26, color: selected ? context.c.accent : context.c.inkSoft),
               const SizedBox(height: AppSpacing.space2),
               Text(
                 label,
                 style: AppTypography.title.copyWith(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: selected ? AppColors.brand700 : AppColors.textPrimary,
+                  color: selected ? context.c.accent : context.c.ink,
                 ),
               ),
               const SizedBox(height: 2),
-              Text(caption, style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+              Text(caption, style: AppTypography.caption.copyWith(color: context.c.inkFaint)),
             ],
           ),
         ),

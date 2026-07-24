@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:jobhunt_agent/main.dart';
 import 'package:jobhunt_agent/screens/jobs_list_body.dart';
+import 'package:jobhunt_agent/theme/app_theme.dart';
 import 'package:jobhunt_agent/widgets/app_loader.dart';
 
 void main() {
@@ -17,7 +18,7 @@ void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues({});
-    await Supabase.initialize(url: 'https://test.supabase.co', anonKey: 'test-anon-key');
+    await Supabase.initialize(url: 'https://test.supabase.co', publishableKey: 'test-anon-key');
   });
 
   testWidgets('App shows the splash screen when there is no session',
@@ -47,7 +48,10 @@ void main() {
     // JobsListBody reads Riverpod providers (Phase 2c), so it needs a
     // ProviderScope ancestor even in this render-only smoke test.
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: Scaffold(body: JobsListBody()))),
+      // Phase 10: JobsListBody now reads theme-aware `context.c`, so the test
+      // MaterialApp must carry `appLight` (which registers the AppColors
+      // ThemeExtension) — a bare MaterialApp has no extension and would throw.
+      ProviderScope(child: MaterialApp(theme: appLight, home: const Scaffold(body: JobsListBody()))),
     );
 
     // Phase 5 (§Phase 5 acceptance): no skeleton survives in the tabs — a cold

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_form_field.dart';
 
 /// Professional branch of the onboarding fork (§4.1): current employer, total
@@ -73,7 +74,7 @@ class _ExperienceScreenState extends State<ExperienceScreen> {
                     const SizedBox(height: 6),
                     Text(
                       'Helps the agent weigh seniority and time-to-join against each role.',
-                      style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                      style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                     ),
                     const SizedBox(height: AppSpacing.space5),
                     AppFormField(label: 'Current company', placeholder: 'e.g. Infosys', controller: _companyController),
@@ -102,7 +103,7 @@ class _ExperienceScreenState extends State<ExperienceScreen> {
                     ),
                     if (_errorMessage != null) ...[
                       const SizedBox(height: AppSpacing.space3),
-                      Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+                      Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
                     ],
                     const SizedBox(height: AppSpacing.space5),
                   ],

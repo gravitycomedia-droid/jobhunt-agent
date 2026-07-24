@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// Token/tag input for target roles, skills, locations (Brick 9
@@ -107,9 +108,9 @@ class _ChipInputState extends State<ChipInput> {
             constraints: const BoxConstraints(minHeight: 44),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: context.c.surface,
               borderRadius: AppRadius.smRadius,
-              border: Border.all(color: _focused ? AppColors.brand500 : AppColors.borderStrong, width: 1.5),
+              border: Border.all(color: _focused ? context.c.accent : context.c.border, width: 1.5),
               boxShadow: _focused ? AppElevation.focusShadow : null,
             ),
             child: Wrap(
@@ -159,8 +160,8 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppColors.brandSoft,
-        border: Border.all(color: AppColors.brandSoftBorder),
+        color: context.c.accentSoft,
+        border: Border.all(color: context.c.accentSoft),
         borderRadius: AppRadius.pillRadius,
       ),
       child: Padding(
@@ -168,11 +169,11 @@ class _Chip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.brand700)),
+            Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.c.accent)),
             const SizedBox(width: 5),
             InkWell(
               onTap: onRemove,
-              child: const AppIcon(AppIconName.x, size: 13, color: AppColors.brand600),
+              child: AppIcon(AppIconName.x, size: 13, color: context.c.accent),
             ),
           ],
         ),

@@ -4,7 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../models/match_item.dart';
 import '../router/route_args.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/hold_button.dart';
@@ -97,9 +98,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.c.surface,
         borderRadius: AppRadius.lgRadius,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.c.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -116,7 +117,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
                     Text(job.title, style: AppTypography.title.copyWith(fontSize: 17, fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
                     Text(meta.join(' · '),
-                        style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+                        style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
                     const SizedBox(height: AppSpacing.space2),
                     StatusPill(context: PillContext.verdict, value: m.verdict),
                   ],
@@ -137,7 +138,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+        Text(label.toUpperCase(), style: AppTypography.label.copyWith(color: context.c.inkFaint)),
         const SizedBox(height: AppSpacing.space2),
         Wrap(
           spacing: AppSpacing.space2,
@@ -150,8 +151,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   Widget _chip(String label, _ChipTone tone) {
     final (bg, fg, border) = switch (tone) {
-      _ChipTone.match => (AppColors.successSoft, AppColors.success700, AppColors.success200),
-      _ChipTone.gap => (AppColors.warningSoft, AppColors.warningText, AppColors.warningBorder),
+      _ChipTone.match => (context.c.success.withValues(alpha: 0.12), context.c.success, context.c.success.withValues(alpha: 0.30)),
+      _ChipTone.gap => (context.c.warning.withValues(alpha: 0.12), context.c.warning, context.c.warning.withValues(alpha: 0.30)),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -171,7 +172,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
           children: [
             ElevatedButton.icon(
               onPressed: () => context.push('/tailor', extra: TailorArgs(jobId: jobId, jobTitle: jobTitle)),
-              icon: const AppIcon(AppIconName.fileText, size: 18, color: AppColors.textOnBrand),
+              icon: AppIcon(AppIconName.fileText, size: 18, color: context.onAccent),
               label: const Text('Tailor résumé for this JD'),
             ),
             const SizedBox(height: AppSpacing.space2),

@@ -6,7 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/task_center.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_loader.dart';
 
 /// Onboarding step 5 (frontend rebuild Phase 1, prototype `ui.isMatching`):
@@ -62,7 +63,7 @@ class _MatchingLoadingScreenState extends ConsumerState<MatchingLoadingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.c.paper,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space8),
@@ -75,7 +76,7 @@ class _MatchingLoadingScreenState extends ConsumerState<MatchingLoadingScreen> {
               const SizedBox(height: 6),
               Text(
                 'Refreshing postings and scoring them against your profile — this continues in the background.',
-                style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                 textAlign: TextAlign.center,
               ),
             ],

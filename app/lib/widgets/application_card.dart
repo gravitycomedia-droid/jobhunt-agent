@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 
 /// Compact card for one lane of the Applications Kanban board (Brick 7).
 /// Deliberately smaller than [JobCard]/[MatchCard] — it lives inside a
@@ -31,7 +32,7 @@ class ApplicationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
+      color: context.c.surface,
       borderRadius: AppRadius.mdRadius,
       child: InkWell(
         onTap: onTap,
@@ -39,7 +40,7 @@ class ApplicationCard extends StatelessWidget {
         child: Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.c.border),
             borderRadius: AppRadius.mdRadius,
           ),
           padding: const EdgeInsets.all(AppSpacing.space3),
@@ -48,14 +49,14 @@ class ApplicationCard extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: context.c.ink),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
               Text(
                 company,
-                style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.caption.copyWith(color: context.c.inkSoft),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -67,7 +68,7 @@ class ApplicationCard extends StatelessWidget {
                     fontFamily: AppTypography.monoData.fontFamily,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
-                    color: AppColors.textTertiary,
+                    color: context.c.inkFaint,
                   ),
                 ),
               ],

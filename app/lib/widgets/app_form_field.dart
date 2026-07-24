@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 
 /// Labeled text input with hint + error states — the base text-entry
 /// surface for Profile Review, and later Settings / Sign In (Brick 9).
@@ -57,7 +58,7 @@ class AppFormField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasError = error != null;
-    final borderColor = hasError ? AppColors.criticalFill : AppColors.borderStrong;
+    final borderColor = hasError ? context.c.critical : context.c.border;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,7 +71,7 @@ class AppFormField extends StatelessWidget {
                 text: label,
                 style: AppTypography.caption.copyWith(fontWeight: FontWeight.w600),
                 children: required
-                    ? const [TextSpan(text: ' *', style: TextStyle(color: AppColors.criticalFill))]
+                    ? [TextSpan(text: ' *', style: TextStyle(color: context.c.critical))]
                     : null,
               ),
             ),
@@ -86,21 +87,21 @@ class AppFormField extends StatelessWidget {
           decoration: InputDecoration(
             hintText: placeholder,
             filled: true,
-            fillColor: disabled ? AppColors.neutral100 : AppColors.surface,
+            fillColor: disabled ? context.c.surface2 : context.c.surface,
             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             border: OutlineInputBorder(borderRadius: AppRadius.smRadius, borderSide: BorderSide(color: borderColor, width: 1.5)),
             enabledBorder: OutlineInputBorder(borderRadius: AppRadius.smRadius, borderSide: BorderSide(color: borderColor, width: 1.5)),
             focusedBorder: OutlineInputBorder(
               borderRadius: AppRadius.smRadius,
-              borderSide: BorderSide(color: hasError ? AppColors.criticalFill : AppColors.brand500, width: 1.5),
+              borderSide: BorderSide(color: hasError ? context.c.critical : context.c.accent, width: 1.5),
             ),
-            errorBorder: OutlineInputBorder(borderRadius: AppRadius.smRadius, borderSide: const BorderSide(color: AppColors.criticalFill, width: 1.5)),
+            errorBorder: OutlineInputBorder(borderRadius: AppRadius.smRadius, borderSide: BorderSide(color: context.c.critical, width: 1.5)),
           ),
         ),
         if (hasError)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(error!, style: AppTypography.caption.copyWith(color: AppColors.criticalText, fontWeight: FontWeight.w500)),
+            child: Text(error!, style: AppTypography.caption.copyWith(color: context.c.critical, fontWeight: FontWeight.w500)),
           )
         else if (hint != null)
           Padding(

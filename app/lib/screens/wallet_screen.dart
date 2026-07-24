@@ -4,7 +4,8 @@ import '../models/cost_stats.dart';
 import '../models/wallet.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
@@ -138,7 +139,7 @@ class _WalletScreenState extends State<WalletScreen> {
         ],
         if (activities.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.space5),
-          Text('WHERE IT WENT', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          Text('WHERE IT WENT', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space3),
           for (var i = 0; i < activities.length; i++) ...[
             _bar(
@@ -170,14 +171,14 @@ class _WalletScreenState extends State<WalletScreen> {
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.brand600, AppColors.brand800],
+          colors: [context.c.accent, context.c.accent],
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.brand600.withValues(alpha: 0.35),
+            color: context.c.accent.withValues(alpha: 0.35),
             blurRadius: 40,
             offset: const Offset(0, 18),
           ),
@@ -289,7 +290,7 @@ class _WalletScreenState extends State<WalletScreen> {
               fontFamily: AppTypography.body.fontFamily,
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
-              color: filled ? AppColors.brand700 : Colors.white,
+              color: filled ? context.c.accent : Colors.white,
             ),
           ),
         ),
@@ -326,7 +327,7 @@ class _WalletScreenState extends State<WalletScreen> {
         Expanded(child: Text(title, style: AppTypography.body.copyWith(fontWeight: FontWeight.w600))),
         Text(
           amount,
-          style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+          style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 14, fontWeight: FontWeight.w600, color: context.c.ink),
         ),
       ],
     );
@@ -348,12 +349,12 @@ class _WalletScreenState extends State<WalletScreen> {
             const SizedBox(width: AppSpacing.space2 + 1),
             Expanded(child: Text(label, style: AppTypography.body.copyWith(fontSize: 13, fontWeight: FontWeight.w500))),
             if (trailing != null) ...[
-              Text(trailing, style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+              Text(trailing, style: AppTypography.label.copyWith(color: context.c.inkFaint)),
               const SizedBox(width: AppSpacing.space3),
             ],
             Text(
               _rupees(amountPaise / 100),
-              style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+              style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 12.5, fontWeight: FontWeight.w600, color: context.c.ink),
             ),
           ],
         ),
@@ -363,7 +364,7 @@ class _WalletScreenState extends State<WalletScreen> {
           child: LinearProgressIndicator(
             value: (pct / 100).clamp(0.0, 1.0),
             minHeight: 8,
-            backgroundColor: AppColors.surfaceSunken,
+            backgroundColor: context.c.surface2,
             valueColor: AlwaysStoppedAnimation(color),
           ),
         ),
@@ -372,19 +373,21 @@ class _WalletScreenState extends State<WalletScreen> {
   }
 
   Color _providerColor(String provider) => switch (provider) {
-        'gemini' => AppColors.warningFill,
-        'deepseek' => AppColors.brand600,
-        _ => AppColors.neutral400,
+        'gemini' => context.c.warning,
+        'deepseek' => context.c.accent,
+        _ => context.c.inkFaint,
       };
 
-  static const List<Color> _activityColors = [
-    AppColors.brand600,
-    AppColors.infoFill,
-    AppColors.successFill,
-    AppColors.warningFill,
-    AppColors.criticalFill,
-    AppColors.neutral400,
-  ];
+  // Theme-aware palette for the per-provider usage bars (resolved live so it
+  // flips with dark mode); indexed cyclically at the call site.
+  List<Color> get _activityColors => [
+        context.c.accent,
+        context.c.info,
+        context.c.success,
+        context.c.warning,
+        context.c.critical,
+        context.c.inkFaint,
+      ];
 }
 
 /// ₹ with two decimals, or four for sub-paisa amounts so a tiny real spend

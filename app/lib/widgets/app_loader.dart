@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
 
 /// The app's loading indicator: three ascending bars that fill in sequence,
 /// echoing the staircase in the launcher icon.
@@ -17,14 +17,16 @@ import '../theme/app_tokens.dart';
 ///   90% is worse than one that never claimed to know.
 /// - It collapses to a static mark under the OS "reduce motion" setting.
 class AppLoader extends StatefulWidget {
-  const AppLoader({super.key, this.size = 64, this.color = AppColors.brand600});
+  const AppLoader({super.key, this.size = 64, this.color});
 
   /// Compact variant for buttons and inline rows.
-  const AppLoader.small({super.key, this.color = AppColors.brand600}) : size = 20;
+  const AppLoader.small({super.key, this.color}) : size = 20;
 
   /// Height of the tallest bar; the widget lays out at roughly [size] square.
   final double size;
-  final Color color;
+
+  /// Bar colour; defaults to the theme accent when null (resolved in [build]).
+  final Color? color;
 
   @override
   State<AppLoader> createState() => _AppLoaderState();
@@ -45,16 +47,17 @@ class _AppLoaderState extends State<AppLoader> with SingleTickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final color = widget.color ?? context.c.accent;
 
     return SizedBox(
       width: widget.size,
       height: widget.size,
       child: reduceMotion
-          ? CustomPaint(painter: _StairsPainter(phase: 0, color: widget.color, static_: true))
+          ? CustomPaint(painter: _StairsPainter(phase: 0, color: color, static_: true))
           : AnimatedBuilder(
               animation: _controller,
               builder: (context, _) => CustomPaint(
-                painter: _StairsPainter(phase: _controller.value, color: widget.color),
+                painter: _StairsPainter(phase: _controller.value, color: color),
               ),
             ),
     );

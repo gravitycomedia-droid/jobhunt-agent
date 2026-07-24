@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import 'academics_screen.dart';
 import 'experience_screen.dart';
@@ -183,7 +184,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.c.paper,
       body: SafeArea(
         child: Column(
           children: [
@@ -211,7 +212,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 : IconButton(
                     tooltip: 'Back',
                     onPressed: () => _goTo(back),
-                    icon: const AppIcon(AppIconName.chevronLeft, size: 20, color: AppColors.textSecondary),
+                    icon: AppIcon(AppIconName.chevronLeft, size: 20, color: context.c.inkSoft),
                   ),
           ),
           Expanded(
@@ -226,7 +227,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                         width: 28,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: i <= _stepNumber ? AppColors.brand600 : AppColors.border,
+                          color: i <= _stepNumber ? context.c.accent : context.c.border,
                           borderRadius: AppRadius.pillRadius,
                         ),
                       ),
@@ -234,7 +235,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text('Step $_stepNumber of $_totalSteps', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+                Text('Step $_stepNumber of $_totalSteps', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
               ],
             ),
           ),

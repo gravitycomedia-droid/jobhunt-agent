@@ -2,7 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 
 class _Tone {
   const _Tone(this.stroke, this.text);
@@ -11,11 +12,13 @@ class _Tone {
 }
 
 /// Score → verdict tone, mirrors [StatusPill]'s verdict mapping
-/// (≥75 apply/green · ≥50 stretch/amber · <50 skip/red).
-_Tone _toneFor(int score) {
-  if (score >= 75) return const _Tone(AppColors.successFill, AppColors.successText);
-  if (score >= 50) return const _Tone(AppColors.warningFill, AppColors.warningText);
-  return const _Tone(AppColors.criticalFill, AppColors.criticalText);
+/// (≥75 apply/green · ≥50 stretch/amber · <50 skip/red). Colours come from
+/// the active theme, so the gauge flips with dark mode.
+_Tone _toneFor(BuildContext context, int score) {
+  final c = context.c;
+  if (score >= 75) return _Tone(c.success, c.success);
+  if (score >= 50) return _Tone(c.warning, c.warning);
+  return _Tone(c.critical, c.critical);
 }
 
 /// Circular match-score gauge. Color follows the verdict thresholds
@@ -48,7 +51,7 @@ class ScoreRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final v = score.round().clamp(0, 100);
-    final tone = _toneFor(v);
+    final tone = _toneFor(context, v);
     final stroke = color ?? tone.stroke;
 
     return SizedBox(
@@ -61,7 +64,7 @@ class ScoreRing extends StatelessWidget {
           children: [
             CustomPaint(
               size: Size(size, size),
-              painter: _RingPainter(value: v, thickness: thickness, trackColor: AppColors.neutral200, fillColor: stroke),
+              painter: _RingPainter(value: v, thickness: thickness, trackColor: context.c.border, fillColor: stroke),
             ),
             if (showLabel)
               RichText(

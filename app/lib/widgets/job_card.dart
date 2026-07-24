@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// Base job card — logo, title, company, location, source chip, plus
@@ -79,7 +80,7 @@ class JobCard extends StatelessWidget {
     final hasMetaRow = location != null || postedAt != null || salary != null || source != null;
 
     return Material(
-      color: AppColors.surface,
+      color: context.c.surface,
       borderRadius: AppRadius.lgRadius,
       child: InkWell(
         onTap: onPress,
@@ -87,7 +88,7 @@ class JobCard extends StatelessWidget {
         child: Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.c.border),
             borderRadius: AppRadius.lgRadius,
             boxShadow: AppElevation.e1,
           ),
@@ -114,7 +115,7 @@ class JobCard extends StatelessWidget {
                         Text(
                           company,
                           style: AppTypography.bodySm.copyWith(
-                            color: AppColors.textSecondary,
+                            color: context.c.inkSoft,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -165,15 +166,15 @@ class _Logo extends StatelessWidget {
       height: 42,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: logoUrl == null ? AppColors.brandSoft : null,
+        color: logoUrl == null ? context.c.accentSoft : null,
         borderRadius: AppRadius.mdRadius,
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.c.border),
         image: logoUrl != null ? DecorationImage(image: NetworkImage(logoUrl!), fit: BoxFit.cover) : null,
       ),
       child: logoUrl == null
           ? Text(
               initial,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: AppColors.brand700),
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: context.c.accent),
             )
           : null,
     );
@@ -193,13 +194,13 @@ class _Meta extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (icon != null) ...[
-          AppIcon(icon!, size: 13, color: AppColors.textTertiary),
+          AppIcon(icon!, size: 13, color: context.c.inkFaint),
           const SizedBox(width: 4),
         ],
         Text(
           text,
           style: mono
-              ? AppTypography.caption.copyWith(fontFamily: AppTypography.monoData.fontFamily, color: AppColors.textPrimary, fontWeight: FontWeight.w500)
+              ? AppTypography.caption.copyWith(fontFamily: AppTypography.monoData.fontFamily, color: context.c.ink, fontWeight: FontWeight.w500)
               : AppTypography.caption,
         ),
       ],
@@ -229,12 +230,12 @@ class _SourceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = url != null && url!.isNotEmpty;
-    final fg = enabled ? AppColors.infoText : AppColors.textTertiary;
+    final fg = enabled ? context.c.info : context.c.inkFaint;
 
     final chip = DecoratedBox(
       decoration: BoxDecoration(
-        color: enabled ? AppColors.infoSoft : AppColors.neutralSoft,
-        border: Border.all(color: enabled ? AppColors.infoBorder : AppColors.border),
+        color: enabled ? context.c.info.withValues(alpha: 0.12) : context.c.surface2,
+        border: Border.all(color: enabled ? context.c.info.withValues(alpha: 0.30) : context.c.border),
         borderRadius: AppRadius.pillRadius,
       ),
       child: Padding(
@@ -276,7 +277,7 @@ class _BookmarkButton extends StatelessWidget {
       icon: AppIcon(
         AppIconName.bookmark,
         size: 20,
-        color: bookmarked ? AppColors.brand600 : AppColors.neutral400,
+        color: bookmarked ? context.c.accent : context.c.inkFaint,
       ),
     );
   }

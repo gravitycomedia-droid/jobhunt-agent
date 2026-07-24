@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
 import '../services/job_filter.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 
 /// Target-locations step of onboarding (§4.1). Multi-select landmark chips over
@@ -56,7 +57,7 @@ class _TargetLocationsScreenState extends State<TargetLocationsScreen> {
               const SizedBox(height: 6),
               Text(
                 'Pick any that fit — you can change these anytime from the jobs filter.',
-                style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
               ),
               const SizedBox(height: AppSpacing.space5),
               Wrap(
@@ -76,7 +77,7 @@ class _TargetLocationsScreenState extends State<TargetLocationsScreen> {
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: AppSpacing.space3),
-                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
               ],
               const Spacer(),
               SizedBox(
@@ -105,20 +106,20 @@ class _TargetLocationsScreenState extends State<TargetLocationsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
         decoration: BoxDecoration(
-          color: selected ? AppColors.brandSoft : AppColors.surface,
-          border: Border.all(color: selected ? AppColors.brand500 : AppColors.border, width: selected ? 1.5 : 1),
+          color: selected ? context.c.accentSoft : context.c.surface,
+          border: Border.all(color: selected ? context.c.accent : context.c.border, width: selected ? 1.5 : 1),
           borderRadius: AppRadius.pillRadius,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AppIcon(icon, size: 16, color: selected ? AppColors.brand600 : AppColors.textSecondary),
+            AppIcon(icon, size: 16, color: selected ? context.c.accent : context.c.inkSoft),
             const SizedBox(width: 6),
             Text(
               label,
               style: AppTypography.body.copyWith(
                 fontWeight: FontWeight.w600,
-                color: selected ? AppColors.brand700 : AppColors.textPrimary,
+                color: selected ? context.c.accent : context.c.ink,
               ),
             ),
           ],

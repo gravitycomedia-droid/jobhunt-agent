@@ -6,7 +6,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/chat_message.dart';
 import '../services/career_chat.dart';
 import '../services/haptic_service.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/agent_mascot.dart';
 import '../widgets/agent_orb.dart';
 import '../widgets/app_icon.dart';
@@ -95,7 +96,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
     });
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.c.paper,
       body: SafeArea(
         child: Column(
           children: [
@@ -134,11 +135,11 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
         width: 38,
         height: 38,
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border.all(color: AppColors.border),
+          color: context.c.surface,
+          border: Border.all(color: context.c.border),
           borderRadius: BorderRadius.circular(11),
         ),
-        child: AppIcon(icon, size: 18, color: AppColors.textPrimary),
+        child: AppIcon(icon, size: 18, color: context.c.ink),
       ),
     );
   }
@@ -181,7 +182,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
               fontSize: 27,
               height: 1.2,
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              color: context.c.ink,
             ),
           ),
           const SizedBox(height: 10),
@@ -190,7 +191,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
             'I know your résumé and matches.',
             style: AppTypography.bodySm.copyWith(
               height: 1.5,
-              color: AppColors.textSecondary,
+              color: context.c.inkSoft,
             ),
           ),
         ],
@@ -205,7 +206,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
       fontSize: 13.5,
       height: 1.5,
       fontWeight: FontWeight.w400,
-      color: isUser ? AppColors.textOnBrand : AppColors.textPrimary,
+      color: isUser ? context.onAccent : context.c.ink,
     );
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -216,8 +217,8 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
-            color: isUser ? AppColors.brand : AppColors.surface,
-            border: isUser ? null : Border.all(color: AppColors.border),
+            color: isUser ? context.c.accent : context.c.surface,
+            border: isUser ? null : Border.all(color: context.c.border),
             // Tail on the sender's side (bottom-right for user, bottom-left agent).
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(16),
@@ -244,8 +245,8 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.border),
+              color: context.c.surface,
+              border: Border.all(color: context.c.border),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const _TypingDots(),
@@ -260,18 +261,18 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.criticalSoft,
-        border: Border.all(color: AppColors.criticalBorder),
+        color: context.c.critical.withValues(alpha: 0.12),
+        border: Border.all(color: context.c.critical.withValues(alpha: 0.30)),
         borderRadius: AppRadius.mdRadius,
       ),
       child: Row(
         children: [
-          const AppIcon(AppIconName.alertTriangle, size: 18, color: AppColors.criticalText),
+          AppIcon(AppIconName.alertTriangle, size: 18, color: context.c.critical),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: AppTypography.bodySm.copyWith(color: AppColors.criticalText),
+              style: AppTypography.bodySm.copyWith(color: context.c.critical),
             ),
           ),
           const SizedBox(width: 8),
@@ -281,7 +282,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
               'Retry',
               style: AppTypography.bodySm.copyWith(
                 fontWeight: FontWeight.w700,
-                color: AppColors.brand,
+                color: context.c.accent,
               ),
             ),
           ),
@@ -321,15 +322,15 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          border: Border.all(color: AppColors.border),
+          color: context.c.surface,
+          border: Border.all(color: context.c.border),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Text(
           text,
           style: AppTypography.caption.copyWith(
             fontSize: 12.5,
-            color: AppColors.textPrimary,
+            color: context.c.ink,
           ),
         ),
       ),
@@ -340,8 +341,8 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(15, 7, 8, 7),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Row(
@@ -350,7 +351,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
             decoration: BoxDecoration(
-              color: AppColors.brandSoft,
+              color: context.c.accentSoft,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
@@ -358,7 +359,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: AppColors.brand,
+                color: context.c.accent,
               ),
             ),
           ),
@@ -377,7 +378,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
                 hintText: 'Ask about your career…',
                 hintStyle: AppTypography.bodySm.copyWith(
                   fontSize: 13.5,
-                  color: AppColors.textTertiary,
+                  color: context.c.inkFaint,
                 ),
               ),
             ),
@@ -398,10 +399,10 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
         decoration: BoxDecoration(
           // Dim while a turn is in flight — the controller ignores a second
           // send anyway, this just makes that visible.
-          color: sending ? AppColors.brand.withValues(alpha: 0.45) : AppColors.brand,
+          color: sending ? context.c.accent.withValues(alpha: 0.45) : context.c.accent,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const AppIcon(AppIconName.send, size: 18, color: AppColors.textOnBrand),
+        child: AppIcon(AppIconName.send, size: 18, color: context.onAccent),
       ),
     );
   }
@@ -452,8 +453,8 @@ class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderState
       child: Container(
         width: 7,
         height: 7,
-        decoration: const BoxDecoration(
-          color: AppColors.textTertiary,
+        decoration: BoxDecoration(
+          color: context.c.inkFaint,
           shape: BoxShape.circle,
         ),
       ),

@@ -6,14 +6,15 @@ import '../models/tailored_resume.dart';
 import '../router/route_args.dart';
 import '../services/api_client.dart';
 import '../services/task_center.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/background_task_dialog.dart';
 import '../widgets/diff_row.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/page_header.dart';
-import '../widgets/page_skeletons.dart';
+import '../widgets/app_loader.dart';
 
 /// Brick 6 → frontend rebuild Phase 7 (Track B, ADR-034): the tailored resume
 /// is now a SECTION-LEVEL review, not just a bullet-by-bullet diff.
@@ -159,17 +160,11 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
             padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadX, AppSpacing.space3, AppSpacing.screenPadX, 0),
             child: Text(
               'Choosing and rewriting your best bullets for ${widget.jobTitle}…',
-              style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+              style: AppTypography.caption.copyWith(color: context.c.inkSoft),
             ),
           ),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.screenPadX),
-              itemCount: 4,
-              separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-              itemBuilder: (_, _) => const DiffRowSkeleton(),
-            ),
-          ),
+          // Phase 10: skeletons retired — the brand AppLoader carries the wait.
+          const Expanded(child: Center(child: AppLoader())),
         ],
       );
     }
@@ -250,8 +245,8 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
               child: OutlinedButton(
                 onPressed: () => setState(() => _accepted[i] = false),
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: _accepted[i] ? null : AppColors.neutralSoft,
-                  side: BorderSide(color: _accepted[i] ? AppColors.border : AppColors.borderStrong),
+                  backgroundColor: _accepted[i] ? null : context.c.surface2,
+                  side: BorderSide(color: _accepted[i] ? context.c.border : context.c.border),
                 ),
                 child: const Text('Keep original'),
               ),
@@ -261,8 +256,8 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
               child: OutlinedButton(
                 onPressed: bullet.guardrailPass ? () => setState(() => _accepted[i] = true) : null,
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: _accepted[i] ? AppColors.brandSoft : null,
-                  side: BorderSide(color: _accepted[i] ? AppColors.brand500 : AppColors.border),
+                  backgroundColor: _accepted[i] ? context.c.accentSoft : null,
+                  side: BorderSide(color: _accepted[i] ? context.c.accent : context.c.border),
                 ),
                 child: const Text('Use tailored'),
               ),
@@ -283,13 +278,13 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.criticalSoft,
+              color: context.c.critical.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(AppRadius.pill),
-              border: Border.all(color: AppColors.critical600),
+              border: Border.all(color: context.c.critical),
             ),
             child: Text(
               'Not in your resume: ${a.text}',
-              style: AppTypography.caption.copyWith(color: AppColors.criticalText),
+              style: AppTypography.caption.copyWith(color: context.c.critical),
             ),
           ),
       ],
@@ -301,12 +296,12 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AppIcon(AppIconName.info, size: 14, color: AppColors.textSecondary),
+        AppIcon(AppIconName.info, size: 14, color: context.c.inkSoft),
         const SizedBox(width: AppSpacing.space2),
         Expanded(
           child: Text(
             f.message,
-            style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.caption.copyWith(color: context.c.inkSoft),
           ),
         ),
       ],
@@ -319,9 +314,9 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
     final restoredCount = trimmed.where((i) => _accepted[i]).length;
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.neutralSoft,
+        color: context.c.surface2,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.c.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -353,7 +348,7 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
                   Text(
                     'These were set aside to keep the resume to one focused page. '
                     'Restore any that still matter.',
-                    style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
+                    style: AppTypography.caption.copyWith(color: context.c.inkSoft),
                   ),
                   for (final i in trimmed) ...[
                     const SizedBox(height: AppSpacing.space3),
@@ -373,9 +368,9 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space3),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.c.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: restored ? AppColors.brand500 : AppColors.border),
+        border: Border.all(color: restored ? context.c.accent : context.c.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -383,7 +378,7 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
           Text(bullet.original, style: AppTypography.body),
           if ((bullet.trimReason ?? '').isNotEmpty) ...[
             const SizedBox(height: AppSpacing.space1),
-            Text(bullet.trimReason!, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
+            Text(bullet.trimReason!, style: AppTypography.caption.copyWith(color: context.c.inkSoft)),
           ],
           const SizedBox(height: AppSpacing.space2),
           Align(
@@ -391,8 +386,8 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
             child: OutlinedButton(
               onPressed: () => setState(() => _accepted[i] = !restored),
               style: OutlinedButton.styleFrom(
-                backgroundColor: restored ? AppColors.brandSoft : null,
-                side: BorderSide(color: restored ? AppColors.brand500 : AppColors.border),
+                backgroundColor: restored ? context.c.accentSoft : null,
+                side: BorderSide(color: restored ? context.c.accent : context.c.border),
               ),
               child: Text(restored ? 'Restored ✓' : 'Restore'),
             ),

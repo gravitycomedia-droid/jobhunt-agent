@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
@@ -224,15 +225,15 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
           if (_errorMessage != null)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.space3),
-              child: Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+              child: Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
             ),
           ElevatedButton(
             onPressed: _isSaving ? null : _confirm,
             child: _isSaving
-                ? const SizedBox(
+                ? SizedBox(
                     height: 20,
                     width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textOnBrand),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: context.onAccent),
                   )
                 : const Text('Confirm'),
           ),
@@ -250,7 +251,7 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
   Widget _addButton(String label, VoidCallback onPressed) {
     return OutlinedButton.icon(
       onPressed: onPressed,
-      icon: const AppIcon(AppIconName.plus, size: 16, color: AppColors.brand),
+      icon: AppIcon(AppIconName.plus, size: 16, color: context.c.accent),
       label: Text(label),
     );
   }
@@ -260,8 +261,8 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
       margin: const EdgeInsets.only(bottom: AppSpacing.space3),
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.lgRadius,
         boxShadow: AppElevation.e1,
       ),
@@ -273,9 +274,9 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
             child: InkWell(
               onTap: onDelete,
               borderRadius: AppRadius.smRadius,
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(4),
-                child: AppIcon(AppIconName.x, size: 16, color: AppColors.textTertiary),
+                child: AppIcon(AppIconName.x, size: 16, color: context.c.inkFaint),
               ),
             ),
           ),

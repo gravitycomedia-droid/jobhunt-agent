@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 
 class _WelcomeStep {
@@ -42,8 +43,8 @@ class WelcomeScreen extends StatelessWidget {
                       width: 76,
                       height: 76,
                       alignment: Alignment.center,
-                      decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
-                      child: const AppIcon(AppIconName.check, size: 36, color: AppColors.brand600),
+                      decoration: BoxDecoration(color: context.c.accentSoft, shape: BoxShape.circle),
+                      child: AppIcon(AppIconName.check, size: 36, color: context.c.accent),
                     ),
                     const SizedBox(height: AppSpacing.space3),
                     Text("You're all set, $name", style: AppTypography.headingSm, textAlign: TextAlign.center),
@@ -51,7 +52,7 @@ class WelcomeScreen extends StatelessWidget {
                     Text(
                       "Here's how the agent works. Three steps and you'll have tailored applications going out.",
                       textAlign: TextAlign.center,
-                      style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                      style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                     ),
                     const SizedBox(height: AppSpacing.space5),
                     Column(
@@ -88,8 +89,8 @@ class _StepRow extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.space3),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.lgRadius,
       ),
       child: Row(
@@ -98,10 +99,10 @@ class _StepRow extends StatelessWidget {
             width: 34,
             height: 34,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: context.c.accentSoft, shape: BoxShape.circle),
             child: Text(
               '${step.n}',
-              style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontWeight: FontWeight.w700, fontSize: 15, color: AppColors.brand700),
+              style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontWeight: FontWeight.w700, fontSize: 15, color: context.c.accent),
             ),
           ),
           const SizedBox(width: AppSpacing.space3),
@@ -110,7 +111,7 @@ class _StepRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(step.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-                Text(step.desc, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
+                Text(step.desc, style: AppTypography.caption.copyWith(color: context.c.inkSoft)),
               ],
             ),
           ),

@@ -7,11 +7,12 @@ import 'package:share_plus/share_plus.dart';
 import '../models/resume_profile.dart';
 import '../models/tailored_resume.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/loading_skeleton.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/page_header.dart';
 
 /// The compiled tailored-resume preview (frontend rebuild Phase 2,
@@ -131,13 +132,9 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
   }
 
   Widget _buildBody() {
+    // Phase 10: skeletons retired — cold load shows the brand AppLoader.
     if (_isLoading) {
-      return ListView.separated(
-        padding: const EdgeInsets.all(AppSpacing.screenPadX),
-        itemCount: 3,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (_, _) => const LoadingSkeleton(variant: SkeletonVariant.card),
-      );
+      return const Center(child: AppLoader());
     }
 
     if (_errorMessage != null) {
@@ -169,12 +166,12 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
                     Text(profile.name, style: AppTypography.title.copyWith(fontSize: 19, fontWeight: FontWeight.w800)),
                     if (profile.headline != null) ...[
                       const SizedBox(height: 2),
-                      Text(profile.headline!, style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+                      Text(profile.headline!, style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
                     ],
                     const Divider(height: AppSpacing.space5),
                     Text(
                       'TAILORED FOR ${widget.jobTitle.toUpperCase()}',
-                      style: AppTypography.label.copyWith(color: AppColors.textTertiary),
+                      style: AppTypography.label.copyWith(color: context.c.inkFaint),
                     ),
                     const SizedBox(height: AppSpacing.space3),
                     // R2 (ADR-034): a bullet is on the résumé if it was SELECTED
@@ -199,13 +196,13 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
                     ),
                     if (profile.skills.isNotEmpty) ...[
                       const Divider(height: AppSpacing.space5),
-                      Text('SKILLS', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+                      Text('SKILLS', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
                       const SizedBox(height: AppSpacing.space2),
                       Text(profile.skills.join(' · '), style: const TextStyle(fontSize: 12.5, height: 1.4)),
                     ],
                     if (profile.education.isNotEmpty) ...[
                       const Divider(height: AppSpacing.space5),
-                      Text('EDUCATION', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+                      Text('EDUCATION', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
                       const SizedBox(height: AppSpacing.space2),
                       for (final ed in profile.education)
                         Padding(
@@ -216,7 +213,7 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
                               Expanded(child: Text('${ed.institution} — ${ed.degree}', style: const TextStyle(fontSize: 12.5))),
                               Text(
                                 ed.year,
-                                style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 12, color: AppColors.textSecondary),
+                                style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 12, color: context.c.inkSoft),
                               ),
                             ],
                           ),
@@ -240,12 +237,12 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
                 ElevatedButton.icon(
                   onPressed: _isDownloadingPdf ? null : _createPdf,
                   icon: _isDownloadingPdf
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textOnBrand),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: context.onAccent),
                         )
-                      : const AppIcon(AppIconName.fileText, size: 18, color: AppColors.textOnBrand),
+                      : AppIcon(AppIconName.fileText, size: 18, color: context.onAccent),
                   label: Text(_isDownloadingPdf ? 'Creating PDF…' : 'Create Resume PDF'),
                 ),
                 const SizedBox(height: AppSpacing.space2),

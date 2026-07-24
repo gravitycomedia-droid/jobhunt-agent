@@ -3,7 +3,8 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../models/application_item.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/page_header.dart';
 import '../widgets/status_pill.dart';
@@ -141,7 +142,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [
           Text(job.title, style: AppTypography.title),
-          Text(job.company ?? 'Unknown company', style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+          Text(job.company ?? 'Unknown company', style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
           const SizedBox(height: AppSpacing.space4),
           Row(
             children: [
@@ -155,7 +156,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.space4),
-          Text('MOVE TO STAGE', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          Text('MOVE TO STAGE', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space2),
           Wrap(
             spacing: AppSpacing.space2,
@@ -165,8 +166,8 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
                 OutlinedButton(
                   onPressed: _isMovingStage ? null : () => _moveStage(state),
                   style: OutlinedButton.styleFrom(
-                    backgroundColor: state == _application.state ? AppColors.brandSoft : null,
-                    side: BorderSide(color: state == _application.state ? AppColors.brand500 : AppColors.border),
+                    backgroundColor: state == _application.state ? context.c.accentSoft : null,
+                    side: BorderSide(color: state == _application.state ? context.c.accent : context.c.border),
                   ),
                   child: StatusPill(context: PillContext.stage, value: state, size: PillSize.sm),
                 ),
@@ -202,7 +203,7 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
           if (_application.followupBody != null) _followupCard() else _draftFollowupButton(),
           if (_errorMessage != null) ...[
             const SizedBox(height: AppSpacing.space3),
-            Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+            Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
           ],
         ],
       ),
@@ -224,14 +225,14 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(AppSpacing.space3),
       decoration: BoxDecoration(
-        color: AppColors.infoSoft,
-        border: Border.all(color: AppColors.infoBorder),
+        color: context.c.info.withValues(alpha: 0.12),
+        border: Border.all(color: context.c.info.withValues(alpha: 0.30)),
         borderRadius: AppRadius.mdRadius,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Follow-up draft', style: AppTypography.caption.copyWith(color: AppColors.infoText, fontWeight: FontWeight.w700)),
+          Text('Follow-up draft', style: AppTypography.caption.copyWith(color: context.c.info, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(_application.followupSubject ?? '', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
@@ -264,9 +265,9 @@ class _AppDetailScreenState extends State<AppDetailScreen> {
     if (_application.followupSentAt != null) {
       return Row(
         children: [
-          const Icon(Icons.check_circle, color: AppColors.successFill, size: 16),
+          Icon(Icons.check_circle, color: context.c.success, size: 16),
           const SizedBox(width: AppSpacing.space1),
-          Text('Sent', style: AppTypography.bodySm.copyWith(color: AppColors.successText, fontWeight: FontWeight.w600)),
+          Text('Sent', style: AppTypography.bodySm.copyWith(color: context.c.success, fontWeight: FontWeight.w600)),
         ],
       );
     }

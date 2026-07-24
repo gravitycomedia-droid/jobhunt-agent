@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// One bottom-nav tab: a stable [key] (matched against [AppShell.active]),
@@ -75,14 +76,14 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: context.c.paper,
       appBar: showHeader
           ? PreferredSize(
               preferredSize: const Size.fromHeight(AppSpacing.headerH),
               child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border(bottom: BorderSide(color: AppColors.border)),
+                decoration: BoxDecoration(
+                  color: context.c.surface,
+                  border: Border(bottom: BorderSide(color: context.c.border)),
                 ),
                 child: SafeArea(
                   bottom: false,
@@ -132,9 +133,9 @@ class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
+      decoration: BoxDecoration(
+        color: context.c.surface,
+        border: Border(top: BorderSide(color: context.c.border)),
         boxShadow: AppElevation.e3,
       ),
       child: SafeArea(
@@ -168,7 +169,7 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isActive ? AppColors.navActive : AppColors.navInactive;
+    final color = isActive ? context.c.accent : context.c.inkFaint;
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -181,7 +182,7 @@ class _NavButton extends StatelessWidget {
               height: 24,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: isActive ? AppColors.brandSoft : Colors.transparent,
+                color: isActive ? context.c.accentSoft : Colors.transparent,
                 borderRadius: AppRadius.pillRadius,
               ),
               child: AppIcon(destination.icon, size: 21, color: color),

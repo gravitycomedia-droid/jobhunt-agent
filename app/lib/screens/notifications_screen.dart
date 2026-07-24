@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/notification_item.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
@@ -113,7 +114,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               onPressed: _markAllRead,
               child: Text(
                 'Mark all read',
-                style: AppTypography.caption.copyWith(color: AppColors.brand600, fontWeight: FontWeight.w600),
+                style: AppTypography.caption.copyWith(color: context.c.accent, fontWeight: FontWeight.w600),
               ),
             ),
         ],
@@ -153,7 +154,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.screenPadX, vertical: AppSpacing.space3),
       itemCount: _items.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.border),
+      separatorBuilder: (_, _) => Divider(height: 1, color: context.c.border),
       itemBuilder: (_, i) => _row(_items[i]),
     );
   }
@@ -177,7 +178,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   children: [
                     Text(n.title, style: AppTypography.body.copyWith(fontSize: 14, fontWeight: FontWeight.w600, height: 1.35)),
                     const SizedBox(height: 2),
-                    Text(n.body, style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary, height: 1.4)),
+                    Text(n.body, style: AppTypography.bodySm.copyWith(color: context.c.inkSoft, height: 1.4)),
                   ],
                 ),
               ),
@@ -189,12 +190,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     _relativeTime(n.createdAt),
                     style: AppTypography.label.copyWith(
                       fontFamily: AppTypography.monoData.fontFamily,
-                      color: AppColors.textTertiary,
+                      color: context.c.inkFaint,
                     ),
                   ),
                   if (unread) ...[
                     const SizedBox(height: 6),
-                    Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.brand600, shape: BoxShape.circle)),
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: context.c.accent, shape: BoxShape.circle)),
                   ],
                 ],
               ),
@@ -211,7 +212,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       width: 34,
       height: 34,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: AppColors.brandSoft, borderRadius: AppRadius.mdRadius),
+      decoration: BoxDecoration(color: context.c.accentSoft, borderRadius: AppRadius.mdRadius),
       child: AppIcon(icon, size: 18, color: color),
     );
   }
@@ -219,12 +220,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   /// `kind` is free-text server-side (migration 023 has no CHECK, so new kinds
   /// ship without a migration) — map the ones we know, default gracefully.
   (AppIconName, Color) _kindStyle(String kind) => switch (kind) {
-        'agent_run' => (AppIconName.bot, AppColors.brand600),
-        'match' => (AppIconName.target, AppColors.brand600),
-        'application' => (AppIconName.briefcase, AppColors.infoText),
-        'followup' => (AppIconName.send, AppColors.warningText),
-        'chat' => (AppIconName.messageCircle, AppColors.brand600),
-        _ => (AppIconName.bell, AppColors.brand600),
+        'agent_run' => (AppIconName.bot, context.c.accent),
+        'match' => (AppIconName.target, context.c.accent),
+        'application' => (AppIconName.briefcase, context.c.info),
+        'followup' => (AppIconName.send, context.c.warning),
+        'chat' => (AppIconName.messageCircle, context.c.accent),
+        _ => (AppIconName.bell, context.c.accent),
       };
 }
 

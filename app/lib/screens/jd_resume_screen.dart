@@ -5,7 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../models/job_extraction.dart';
 import '../router/route_args.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/app_icon.dart';
@@ -133,20 +134,20 @@ class _JdResumeScreenState extends State<JdResumeScreen> {
         children: [
           Text(
             'Paste a job description, or upload it as a PDF — get a resume tailored to it, ready to download.',
-            style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
           ),
           const SizedBox(height: AppSpacing.space4),
           if (_pdfBytes != null)
             Container(
               padding: const EdgeInsets.all(AppSpacing.space3),
               decoration: BoxDecoration(
-                color: AppColors.brandSoft,
-                border: Border.all(color: AppColors.brand500),
+                color: context.c.accentSoft,
+                border: Border.all(color: context.c.accent),
                 borderRadius: AppRadius.mdRadius,
               ),
               child: Row(
                 children: [
-                  const AppIcon(AppIconName.fileText, size: 18, color: AppColors.brand600),
+                  AppIcon(AppIconName.fileText, size: 18, color: context.c.accent),
                   const SizedBox(width: AppSpacing.space2),
                   Expanded(child: Text(_pdfFilename ?? 'JD.pdf', style: AppTypography.bodySm)),
                   InkWell(
@@ -154,7 +155,7 @@ class _JdResumeScreenState extends State<JdResumeScreen> {
                       _pdfBytes = null;
                       _pdfFilename = null;
                     }),
-                    child: const AppIcon(AppIconName.x, size: 16, color: AppColors.textTertiary),
+                    child: AppIcon(AppIconName.x, size: 16, color: context.c.inkFaint),
                   ),
                 ],
               ),
@@ -170,7 +171,7 @@ class _JdResumeScreenState extends State<JdResumeScreen> {
             const SizedBox(height: AppSpacing.space2),
             OutlinedButton.icon(
               onPressed: _pickPdf,
-              icon: const AppIcon(AppIconName.upload, size: 16, color: AppColors.brand),
+              icon: AppIcon(AppIconName.upload, size: 16, color: context.c.accent),
               label: const Text('Upload PDF instead'),
             ),
           ],

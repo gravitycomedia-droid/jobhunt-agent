@@ -3,7 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/job.dart';
 import '../services/job_filter.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 import 'source_chip.dart';
 
@@ -16,7 +17,7 @@ Future<void> showJobFilterSheet(BuildContext context, {required List<Job> pool})
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppColors.surface,
+    backgroundColor: context.c.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
     ),
@@ -104,7 +105,7 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
                   IconButton(
                     tooltip: 'Close',
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const AppIcon(AppIconName.x, size: 20, color: AppColors.textSecondary),
+                    icon: AppIcon(AppIconName.x, size: 20, color: context.c.inkSoft),
                   ),
                 ],
               ),
@@ -142,18 +143,18 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
   Widget _grabber() => Container(
         width: 40,
         height: 4,
-        decoration: BoxDecoration(color: AppColors.border, borderRadius: AppRadius.pillRadius),
+        decoration: BoxDecoration(color: context.c.border, borderRadius: AppRadius.pillRadius),
       );
 
   Widget _sectionLabel(String text) => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.space3),
-        child: Text(text.toUpperCase(), style: AppTypography.label.copyWith(color: AppColors.textTertiary, letterSpacing: 0.6)),
+        child: Text(text.toUpperCase(), style: AppTypography.label.copyWith(color: context.c.inkFaint, letterSpacing: 0.6)),
       );
 
   // ── Source cards ──────────────────────────────────────────────────────────
   Widget _sourceRow(List<String> sources, Map<String, int> counts, JobFilter filter, JobFilterNotifier notifier) {
     if (sources.isEmpty) {
-      return Text('No sources in the current pool', style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary));
+      return Text('No sources in the current pool', style: AppTypography.bodySm.copyWith(color: context.c.inkFaint));
     }
     return SizedBox(
       height: 96,
@@ -180,7 +181,7 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
   Widget _workTypeControl(JobFilter filter, JobFilterNotifier notifier) {
     return Container(
       padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: AppColors.surfaceSunken, borderRadius: AppRadius.pillRadius),
+      decoration: BoxDecoration(color: context.c.surface2, borderRadius: AppRadius.pillRadius),
       child: Row(
         children: [
           for (final (value, label) in _kWorkTypes)
@@ -193,7 +194,7 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: filter.workType == value ? AppColors.surface : Colors.transparent,
+                    color: filter.workType == value ? context.c.surface : Colors.transparent,
                     borderRadius: AppRadius.pillRadius,
                     boxShadow: filter.workType == value ? AppElevation.e1 : null,
                   ),
@@ -201,7 +202,7 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
                     label,
                     style: AppTypography.bodySm.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: filter.workType == value ? AppColors.brand700 : AppColors.textSecondary,
+                      color: filter.workType == value ? context.c.accent : context.c.inkSoft,
                     ),
                   ),
                 ),
@@ -253,8 +254,8 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
           values: current,
           min: domainMin,
           max: domainMax,
-          activeColor: AppColors.brand600,
-          inactiveColor: AppColors.border,
+          activeColor: context.c.accent,
+          inactiveColor: context.c.border,
           labels: RangeLabels(_formatInr(current.start), _formatInr(current.end)),
           onChanged: (v) => setState(() => _salaryDraft = v),
           onChangeEnd: (v) => notifier.setSalary(_isFullDomain(v, domainMin, domainMax) ? null : SalaryRange(v.start, v.end)),
@@ -262,8 +263,8 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(_formatInr(current.start), style: AppTypography.monoData.copyWith(fontSize: 12, color: AppColors.textSecondary)),
-            Text(_formatInr(current.end), style: AppTypography.monoData.copyWith(fontSize: 12, color: AppColors.textSecondary)),
+            Text(_formatInr(current.start), style: AppTypography.monoData.copyWith(fontSize: 12, color: context.c.inkSoft)),
+            Text(_formatInr(current.end), style: AppTypography.monoData.copyWith(fontSize: 12, color: context.c.inkSoft)),
           ],
         ),
       ],
@@ -277,7 +278,7 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
         heightFactor: fraction <= 0 ? 0.04 : fraction, // keep an empty bucket faintly visible
         child: Container(
           decoration: BoxDecoration(
-            color: active ? AppColors.brand500 : AppColors.border,
+            color: active ? context.c.accent : context.c.border,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
           ),
         ),
@@ -306,9 +307,9 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
   Widget _footer(int shownCount, bool canClear, JobFilterNotifier notifier) {
     return Container(
       padding: const EdgeInsets.fromLTRB(AppSpacing.space5, AppSpacing.space3, AppSpacing.space5, AppSpacing.space4),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
+      decoration: BoxDecoration(
+        color: context.c.surface,
+        border: Border(top: BorderSide(color: context.c.border)),
       ),
       child: Row(
         children: [
@@ -345,8 +346,8 @@ class _SourceCard extends StatelessWidget {
         width: 84,
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3, horizontal: AppSpacing.space2),
         decoration: BoxDecoration(
-          color: selected ? AppColors.brandSoft : AppColors.surface,
-          border: Border.all(color: selected ? AppColors.brand500 : AppColors.border, width: selected ? 1.5 : 1),
+          color: selected ? context.c.accentSoft : context.c.surface,
+          border: Border.all(color: selected ? context.c.accent : context.c.border, width: selected ? 1.5 : 1),
           borderRadius: AppRadius.lgRadius,
         ),
         child: Column(
@@ -360,10 +361,10 @@ class _SourceCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: AppTypography.caption.copyWith(
                 fontWeight: FontWeight.w600,
-                color: selected ? AppColors.brand700 : AppColors.textPrimary,
+                color: selected ? context.c.accent : context.c.ink,
               ),
             ),
-            Text('$count', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+            Text('$count', style: AppTypography.caption.copyWith(color: context.c.inkFaint)),
           ],
         ),
       ),
@@ -386,20 +387,20 @@ class _LocationChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3, vertical: AppSpacing.space2),
         decoration: BoxDecoration(
-          color: selected ? AppColors.brandSoft : AppColors.surface,
-          border: Border.all(color: selected ? AppColors.brand500 : AppColors.border, width: selected ? 1.5 : 1),
+          color: selected ? context.c.accentSoft : context.c.surface,
+          border: Border.all(color: selected ? context.c.accent : context.c.border, width: selected ? 1.5 : 1),
           borderRadius: AppRadius.pillRadius,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            AppIcon(icon, size: 15, color: selected ? AppColors.brand600 : AppColors.textSecondary),
+            AppIcon(icon, size: 15, color: selected ? context.c.accent : context.c.inkSoft),
             const SizedBox(width: 6),
             Text(
               label,
               style: AppTypography.bodySm.copyWith(
                 fontWeight: FontWeight.w600,
-                color: selected ? AppColors.brand700 : AppColors.textSecondary,
+                color: selected ? context.c.accent : context.c.inkSoft,
               ),
             ),
           ],

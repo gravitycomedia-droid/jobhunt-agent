@@ -14,7 +14,8 @@ import '../services/cache_service.dart';
 import '../services/match_feed.dart';
 import '../services/refresh_throttle.dart';
 import '../services/task_center.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
@@ -254,7 +255,7 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: () => context.push('/resume-upload'),
-              icon: const AppIcon(AppIconName.upload, color: AppColors.textOnBrand),
+              icon: AppIcon(AppIconName.upload, color: context.onAccent),
               label: const Text('Upload Resume'),
             ),
           ),
@@ -274,7 +275,7 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
             // ADR-028: keep the passive 5-minute freshness window visible.
             Text(
               lastUpdatedLabel(_lastUpdated)!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.c.inkFaint),
             ),
             const SizedBox(height: AppSpacing.space3),
           ],
@@ -289,7 +290,7 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
                     const SizedBox(height: 2),
                     Text(
                       _matches.isEmpty ? 'No matches yet' : '${_matches.length} match${_matches.length == 1 ? '' : 'es'} ranked for you',
-                      style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                      style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                     ),
                   ],
                 ),
@@ -328,7 +329,7 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
                 const Spacer(),
                 GestureDetector(
                   onTap: () => widget.onNavigateToTab?.call('matches'),
-                  child: Text('See all', style: AppTypography.caption.copyWith(color: AppColors.brand600, fontWeight: FontWeight.w600)),
+                  child: Text('See all', style: AppTypography.caption.copyWith(color: context.c.accent, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
@@ -354,10 +355,10 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
         width: 42,
         height: 42,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), shape: BoxShape.circle),
         child: _isRunningPipeline
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brand))
-            : const AppIcon(AppIconName.bot, size: 20, color: AppColors.textSecondary),
+            ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: context.c.accent))
+            : AppIcon(AppIconName.bot, size: 20, color: context.c.inkSoft),
       ),
     );
   }
@@ -372,11 +373,11 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
         width: 42,
         height: 42,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), shape: BoxShape.circle),
+        decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), shape: BoxShape.circle),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            const AppIcon(AppIconName.bell, size: 20, color: AppColors.textSecondary),
+            AppIcon(AppIconName.bell, size: 20, color: context.c.inkSoft),
             // §4.2: real unread count from GET /notifications (best-effort —
             // 0 or a failed fetch shows no badge). 9+ caps the pill width.
             if (_unreadCount > 0)
@@ -389,13 +390,13 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: AppColors.criticalFill,
+                    color: context.c.critical,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.surface, width: 2),
+                    border: Border.all(color: context.c.surface, width: 2),
                   ),
                   child: Text(
                     _unreadCount > 9 ? '9+' : '$_unreadCount',
-                    style: const TextStyle(color: AppColors.textOnBrand, fontSize: 9, fontWeight: FontWeight.w700, height: 1),
+                    style: TextStyle(color: context.onAccent, fontSize: 9, fontWeight: FontWeight.w700, height: 1),
                   ),
                 ),
               ),
@@ -407,31 +408,31 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
 
   Widget _newMatchesBanner() {
     return Material(
-      color: AppColors.infoSoft,
+      color: context.c.info.withValues(alpha: 0.12),
       borderRadius: AppRadius.mdRadius,
       child: InkWell(
         borderRadius: AppRadius.mdRadius,
         onTap: () => widget.onNavigateToTab?.call('matches'),
         child: Container(
-          decoration: BoxDecoration(borderRadius: AppRadius.mdRadius, border: Border.all(color: AppColors.infoBorder)),
+          decoration: BoxDecoration(borderRadius: AppRadius.mdRadius, border: Border.all(color: context.c.info.withValues(alpha: 0.30))),
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3 + 2, vertical: AppSpacing.space3),
           child: Row(
             children: [
-              const AppIcon(AppIconName.info, size: 18, color: AppColors.infoText),
+              AppIcon(AppIconName.info, size: 18, color: context.c.info),
               const SizedBox(width: AppSpacing.space2 + 2),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('New matches ready', style: AppTypography.bodySm.copyWith(color: AppColors.infoText, fontWeight: FontWeight.w700)),
+                    Text('New matches ready', style: AppTypography.bodySm.copyWith(color: context.c.info, fontWeight: FontWeight.w700)),
                     Text(
                       '${_matches.length} job${_matches.length == 1 ? '' : 's'} matched your profile.',
-                      style: AppTypography.label.copyWith(color: AppColors.infoText),
+                      style: AppTypography.label.copyWith(color: context.c.info),
                     ),
                   ],
                 ),
               ),
-              AppIcon(AppIconName.chevronRight, size: 18, color: AppColors.infoText),
+              AppIcon(AppIconName.chevronRight, size: 18, color: context.c.info),
             ],
           ),
         ),
@@ -449,18 +450,18 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
             const Spacer(),
             GestureDetector(
               onTap: () => context.push('/activity'),
-              child: Text('View all', style: AppTypography.caption.copyWith(color: AppColors.brand600, fontWeight: FontWeight.w600)),
+              child: Text('View all', style: AppTypography.caption.copyWith(color: context.c.accent, fontWeight: FontWeight.w600)),
             ),
           ],
         ),
         const SizedBox(height: AppSpacing.space3),
         Container(
           padding: const EdgeInsets.all(AppSpacing.space4),
-          decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), borderRadius: AppRadius.lgRadius),
+          decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), borderRadius: AppRadius.lgRadius),
           child: Column(
             children: [
               for (var i = 0; i < _activity.length; i++) ...[
-                _activityRow(_activity[i]),
+                _activityRow(context, _activity[i]),
                 if (i != _activity.length - 1) const SizedBox(height: AppSpacing.space3),
               ],
             ],
@@ -470,8 +471,8 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
     );
   }
 
-  Widget _activityRow(ActivityItem item) {
-    final glyph = activityGlyphFor(item);
+  Widget _activityRow(BuildContext context, ActivityItem item) {
+    final glyph = activityGlyphFor(context, item);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -489,7 +490,7 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
             children: [
               Text(item.title, style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(height: 1),
-              Text(item.detail, style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+              Text(item.detail, style: AppTypography.label.copyWith(color: context.c.inkFaint)),
             ],
           ),
         ),
@@ -499,13 +500,13 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
 
   Widget _heroMatchCard(MatchItem m) {
     return Material(
-      color: AppColors.surface,
+      color: context.c.surface,
       borderRadius: AppRadius.lgRadius,
       child: InkWell(
         borderRadius: AppRadius.lgRadius,
         onTap: () => context.push('/tailor', extra: TailorArgs(jobId: m.job.id, jobTitle: m.job.title)),
         child: Container(
-          decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
+          decoration: BoxDecoration(border: Border.all(color: context.c.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
           padding: const EdgeInsets.all(AppSpacing.space4),
           child: Row(
             children: [
@@ -515,10 +516,10 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('BEST MATCH', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+                    Text('BEST MATCH', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
                     const SizedBox(height: 2),
                     Text(m.job.title, style: AppTypography.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text(m.job.company ?? '', style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+                    Text(m.job.company ?? '', style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
                     const SizedBox(height: AppSpacing.space2),
                     StatusPill(context: PillContext.verdict, value: m.verdict, size: PillSize.sm),
                   ],
@@ -535,9 +536,9 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
     final applied = _applications.where((a) => a.state != 'saved').length;
     final saved = _applications.where((a) => a.state == 'saved').length;
     final stats = [
-      ('${_matches.length}', 'Matches', AppColors.brand600),
-      ('$applied', 'Applied', AppColors.infoText),
-      ('$saved', 'Saved', AppColors.successText),
+      ('${_matches.length}', 'Matches', context.c.accent),
+      ('$applied', 'Applied', context.c.info),
+      ('$saved', 'Saved', context.c.success),
     ];
     return Row(
       children: [
@@ -551,13 +552,13 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
 
   Widget _matchRow(MatchItem m) {
     return Material(
-      color: AppColors.surface,
+      color: context.c.surface,
       borderRadius: AppRadius.lgRadius,
       child: InkWell(
         borderRadius: AppRadius.lgRadius,
         onTap: () => context.push('/tailor', extra: TailorArgs(jobId: m.job.id, jobTitle: m.job.title)),
         child: Container(
-          decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
+          decoration: BoxDecoration(border: Border.all(color: context.c.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
           padding: const EdgeInsets.all(AppSpacing.space3),
           child: Row(
             children: [
@@ -568,7 +569,7 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(m.job.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text(m.job.company ?? '', style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+                    Text(m.job.company ?? '', style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
                   ],
                 ),
               ),
@@ -591,7 +592,7 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: AppColors.surface, border: Border.all(color: AppColors.border), borderRadius: AppRadius.mdRadius),
+      decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), borderRadius: AppRadius.mdRadius),
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3, horizontal: 4),
       child: Column(
         children: [
@@ -602,7 +603,7 @@ class _StatTile extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             label.toUpperCase(),
-            style: AppTypography.label.copyWith(color: AppColors.textTertiary),
+            style: AppTypography.label.copyWith(color: context.c.inkFaint),
             textAlign: TextAlign.center,
           ),
         ],

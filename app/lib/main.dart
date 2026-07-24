@@ -18,7 +18,7 @@ Future<void> main() async {
   // from AuthGate after sign-in instead), auth is on the critical path to
   // first paint since every screen depends on knowing sign-in state.
   WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(url: SupabaseConfig.url, anonKey: SupabaseConfig.anonKey);
+  await Supabase.initialize(url: SupabaseConfig.url, publishableKey: SupabaseConfig.publishableKey);
   // Phase 2: restore the persisted light/dark/system choice before first paint
   // so there's no theme flash on launch.
   await ThemeController.instance.load();

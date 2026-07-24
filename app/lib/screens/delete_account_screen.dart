@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/hold_button.dart';
 
@@ -59,7 +60,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 alignment: Alignment.centerLeft,
                 child: IconButton(
                   onPressed: _deleting ? null : () => Navigator.of(context).pop(),
-                  icon: const AppIcon(AppIconName.x, size: 24, color: AppColors.textPrimary),
+                  icon: AppIcon(AppIconName.x, size: 24, color: context.c.ink),
                   padding: EdgeInsets.zero,
                 ),
               ),
@@ -70,7 +71,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 'You can keep your account and come back anytime — your résumé, '
                 'matches, and history stay safe until you return. Deleting is '
                 'permanent and can\'t be undone.',
-                style: AppTypography.body.copyWith(color: AppColors.textSecondary, height: 1.55),
+                style: AppTypography.body.copyWith(color: context.c.inkSoft, height: 1.55),
               ),
               const Expanded(child: Center(child: _DeletionMark())),
               // Retention off-ramp first, as the prominent (brand) action.
@@ -79,8 +80,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 child: FilledButton(
                   onPressed: _deleting ? null : () => Navigator.of(context).pop(),
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.brand600,
-                    foregroundColor: AppColors.textOnBrand,
+                    backgroundColor: context.c.accent,
+                    foregroundColor: context.onAccent,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),
@@ -94,13 +95,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                   height: 56,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: context.c.border),
                     borderRadius: BorderRadius.circular(15),
                   ),
-                  child: const SizedBox(
+                  child: SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.criticalFill),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: context.c.critical),
                   ),
                 )
               else
@@ -113,7 +114,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               Text(
                 'Press and hold to confirm',
                 textAlign: TextAlign.center,
-                style: AppTypography.label.copyWith(color: AppColors.textTertiary),
+                style: AppTypography.label.copyWith(color: context.c.inkFaint),
               ),
             ],
           ),
@@ -136,9 +137,9 @@ class _DeletionMark extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: AppColors.criticalFill.withValues(alpha: 0.1),
+        color: context.c.critical.withValues(alpha: 0.1),
       ),
-      child: const AppIcon(AppIconName.trash, size: 56, color: AppColors.criticalFill),
+      child: AppIcon(AppIconName.trash, size: 56, color: context.c.critical),
     );
   }
 }

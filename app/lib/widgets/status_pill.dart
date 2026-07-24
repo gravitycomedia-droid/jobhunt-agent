@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// Which semantic system a [StatusPill] represents.
@@ -16,33 +17,28 @@ class _ToneColors {
   final Color dot;
 }
 
-const Map<_Tone, _ToneColors> _toneMap = {
-  _Tone.success: _ToneColors(
-    AppColors.successSoft,
-    AppColors.successText,
-    AppColors.successBorder,
-    AppColors.successFill,
-  ),
-  _Tone.warning: _ToneColors(
-    AppColors.warningSoft,
-    AppColors.warningText,
-    AppColors.warningBorder,
-    AppColors.warningFill,
-  ),
-  _Tone.critical: _ToneColors(
-    AppColors.criticalSoft,
-    AppColors.criticalText,
-    AppColors.criticalBorder,
-    AppColors.criticalFill,
-  ),
-  _Tone.info: _ToneColors(AppColors.infoSoft, AppColors.infoText, AppColors.infoBorder, AppColors.infoFill),
-  _Tone.neutral: _ToneColors(
-    AppColors.neutralSoft,
-    AppColors.neutralText,
-    AppColors.neutralChipBorder,
-    AppColors.neutralFill,
-  ),
-};
+/// Tone → concrete colours, resolved from the active theme so pills flip with
+/// dark mode. `bg` is the role tint at 12%, `border` at 30% (mirrors the old
+/// `*Soft` / `*Border` aliases). Neutral rides the ink/surface roles.
+_ToneColors _toneColors(BuildContext context, _Tone tone) {
+  final c = context.c;
+  if (tone == _Tone.neutral) {
+    return _ToneColors(c.surface2, c.inkSoft, c.border, c.inkSoft);
+  }
+  final role = switch (tone) {
+    _Tone.success => c.success,
+    _Tone.warning => c.warning,
+    _Tone.critical => c.critical,
+    _Tone.info => c.info,
+    _Tone.neutral => c.inkSoft, // unreachable, handled above
+  };
+  return _ToneColors(
+    role.withValues(alpha: 0.12),
+    role,
+    role.withValues(alpha: 0.30),
+    role,
+  );
+}
 
 class _PillSpec {
   const _PillSpec(this.tone, this.label, [this.icon]);
@@ -112,7 +108,7 @@ class StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext ctx) {
     final spec = _spec();
-    final t = _toneMap[spec.tone]!;
+    final t = _toneColors(ctx, spec.tone);
     final sm = size == PillSize.sm;
 
     return DecoratedBox(

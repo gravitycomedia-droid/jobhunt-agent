@@ -5,13 +5,11 @@ import 'package:flutter/material.dart';
 /// `Theme.of(context).extension<AppColors>()!` swaps automatically with the
 /// active (light/dark) theme.
 ///
-/// This is deliberately a *different* class from the legacy palette in
-/// `app_tokens.dart` (which is also called `AppColors`, but is a static
-/// light-only scale). The two coexist during the phased migration: new screens
-/// and the signature widgets read these role-based tokens via `context.c`;
-/// legacy screens keep using `app_tokens.dart` until they migrate. The legacy
-/// file is deleted in Phase 10. **Never import both unprefixed in one file** —
-/// the class names collide by design of the migration, not by accident.
+/// Phase 10 completed the migration: every screen and widget now reads these
+/// role-based tokens via `context.c`, so the whole app flips between light and
+/// dark. The old static light-only `AppColors` in `app_tokens.dart` (a class of
+/// the same name) has been removed; its sizing/typography half lives on in
+/// `app_metrics.dart`.
 ///
 /// Dart note: a `ThemeExtension` must implement [copyWith] and [lerp] so
 /// Flutter can animate between themes; that's the boilerplate below.
@@ -133,4 +131,10 @@ class AppColors extends ThemeExtension<AppColors> {
 /// `Theme.of(context).extension<AppColors>()!.accent`.
 extension AppColorsX on BuildContext {
   AppColors get c => Theme.of(this).extension<AppColors>()!;
+
+  /// Foreground colour for content sitting on an `accent` fill (buttons,
+  /// badges). White on the saturated light accent, dark ink on the lighter
+  /// dark-mode accent — mirrors `ColorScheme.onPrimary` set in `app_theme.dart`,
+  /// so this flips with the theme. Replaces the old static `textOnBrand`.
+  Color get onAccent => Theme.of(this).colorScheme.onPrimary;
 }

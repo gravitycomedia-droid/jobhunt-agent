@@ -10,7 +10,8 @@ import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/job_filter.dart';
 import '../services/refresh_throttle.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
@@ -239,18 +240,18 @@ class _JobsListBodyState extends ConsumerState<JobsListBody> {
             if (_staleSince == null && lastUpdatedLabel(_lastUpdated) != null)
               Text(
                 lastUpdatedLabel(_lastUpdated)!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.c.inkFaint),
               ),
             const Spacer(),
             TextButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => ShortlistScreen(applications: _applications)),
               ),
-              icon: const AppIcon(AppIconName.bookmark, size: 15, color: AppColors.brand600),
+              icon: AppIcon(AppIconName.bookmark, size: 15, color: context.c.accent),
               label: Text('Shortlist · $shortlistCount'),
               style: TextButton.styleFrom(
-                backgroundColor: AppColors.brandSoft,
-                foregroundColor: AppColors.brand700,
+                backgroundColor: context.c.accentSoft,
+                foregroundColor: context.c.accent,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 shape: const StadiumBorder(),
               ),

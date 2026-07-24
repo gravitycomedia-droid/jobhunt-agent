@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/chip_input.dart';
 
@@ -75,7 +76,7 @@ class _TargetRolesScreenState extends State<TargetRolesScreen> {
               const SizedBox(height: 6),
               Text(
                 'Add target roles. The agent matches new postings against these.',
-                style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
               ),
               const SizedBox(height: AppSpacing.space5),
               ChipInput(
@@ -99,7 +100,7 @@ class _TargetRolesScreenState extends State<TargetRolesScreen> {
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          side: const BorderSide(color: AppColors.borderStrong),
+                          side: BorderSide(color: context.c.border),
                           shape: const StadiumBorder(),
                         ),
                       ),
@@ -114,7 +115,7 @@ class _TargetRolesScreenState extends State<TargetRolesScreen> {
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: AppSpacing.space3),
-                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
               ],
               const Spacer(),
               SizedBox(

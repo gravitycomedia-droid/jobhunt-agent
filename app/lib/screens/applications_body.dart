@@ -4,7 +4,8 @@ import '../models/application_item.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/refresh_throttle.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/application_card.dart';
@@ -173,7 +174,7 @@ class _ApplicationsBodyState extends State<ApplicationsBody> {
             padding: const EdgeInsets.only(bottom: AppSpacing.space2),
             child: Text(
               lastUpdatedLabel(_lastUpdated)!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textTertiary),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.c.inkFaint),
             ),
           ),
         ],

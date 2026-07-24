@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 
 /// Horizontal 0–100 bar for resume↔job similarity, keyword coverage,
 /// etc. Color follows the same verdict thresholds as [ScoreRing]
@@ -28,7 +29,7 @@ class SimilarityBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final v = value.round().clamp(0, 100);
-    final fill = color ?? (v >= 75 ? AppColors.successFill : v >= 50 ? AppColors.warningFill : AppColors.criticalFill);
+    final fill = color ?? (v >= 75 ? context.c.success : v >= 50 ? context.c.warning : context.c.critical);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -54,7 +55,7 @@ class SimilarityBar extends StatelessWidget {
                       fontFamily: AppTypography.monoData.fontFamily,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                      color: context.c.ink,
                     ),
                   ),
               ],
@@ -65,7 +66,7 @@ class SimilarityBar extends StatelessWidget {
           child: LinearProgressIndicator(
             value: v / 100,
             minHeight: height,
-            backgroundColor: AppColors.neutral200,
+            backgroundColor: context.c.border,
             valueColor: AlwaysStoppedAnimation(fill),
           ),
         ),

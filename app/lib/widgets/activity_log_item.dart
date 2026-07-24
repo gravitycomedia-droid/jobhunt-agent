@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 enum ActivityKind { agent, match, applied, warning, rejected, info }
@@ -12,14 +13,20 @@ class _KindSpec {
   final Color fg;
 }
 
-const Map<ActivityKind, _KindSpec> _kindMap = {
-  ActivityKind.agent: _KindSpec(AppIconName.bot, AppColors.brandSoft, AppColors.brand700),
-  ActivityKind.match: _KindSpec(AppIconName.target, AppColors.infoSoft, AppColors.infoText),
-  ActivityKind.applied: _KindSpec(AppIconName.check, AppColors.successSoft, AppColors.successText),
-  ActivityKind.warning: _KindSpec(AppIconName.alertTriangle, AppColors.warningSoft, AppColors.warningText),
-  ActivityKind.rejected: _KindSpec(AppIconName.x, AppColors.criticalSoft, AppColors.criticalText),
-  ActivityKind.info: _KindSpec(AppIconName.info, AppColors.neutralSoft, AppColors.neutralText),
-};
+/// Kind → glyph + colours, resolved from the active theme so entries flip with
+/// dark mode. Soft backgrounds are the role tint at 12% (agent uses accentSoft,
+/// info rides the surface/ink roles).
+_KindSpec _kindSpec(BuildContext context, ActivityKind kind) {
+  final c = context.c;
+  return switch (kind) {
+    ActivityKind.agent => _KindSpec(AppIconName.bot, c.accentSoft, c.accent),
+    ActivityKind.match => _KindSpec(AppIconName.target, c.info.withValues(alpha: 0.12), c.info),
+    ActivityKind.applied => _KindSpec(AppIconName.check, c.success.withValues(alpha: 0.12), c.success),
+    ActivityKind.warning => _KindSpec(AppIconName.alertTriangle, c.warning.withValues(alpha: 0.12), c.warning),
+    ActivityKind.rejected => _KindSpec(AppIconName.x, c.critical.withValues(alpha: 0.12), c.critical),
+    ActivityKind.info => _KindSpec(AppIconName.info, c.surface2, c.inkSoft),
+  };
+}
 
 /// One entry in the Agent Activity Log (Brick 8): icon by [kind], title,
 /// optional detail, right-aligned timestamp, connected to neighboring
@@ -55,7 +62,7 @@ class ActivityLogItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final spec = _kindMap[kind]!;
+    final spec = _kindSpec(context, kind);
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -73,7 +80,7 @@ class ActivityLogItem extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Container(width: 2, color: AppColors.border),
+                    child: Container(width: 2, color: context.c.border),
                   ),
                 ),
             ],
@@ -101,7 +108,7 @@ class ActivityLogItem extends StatelessWidget {
                           style: TextStyle(
                             fontFamily: AppTypography.monoData.fontFamily,
                             fontSize: 11,
-                            color: AppColors.textTertiary,
+                            color: context.c.inkFaint,
                           ),
                         ),
                     ],

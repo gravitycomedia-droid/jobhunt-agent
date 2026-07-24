@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 import 'job_card.dart';
 import 'score_ring.dart';
@@ -17,8 +18,8 @@ class _Chip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (bg, fg, bd) = tone == _ChipTone.strength
-        ? (AppColors.successSoft, AppColors.successText, AppColors.successBorder)
-        : (AppColors.warningSoft, AppColors.warningText, AppColors.warningBorder);
+        ? (context.c.success.withValues(alpha: 0.12), context.c.success, context.c.success.withValues(alpha: 0.30))
+        : (context.c.warning.withValues(alpha: 0.12), context.c.warning, context.c.warning.withValues(alpha: 0.30));
     return DecoratedBox(
       decoration: BoxDecoration(color: bg, border: Border.all(color: bd), borderRadius: AppRadius.pillRadius),
       child: Padding(
@@ -123,7 +124,7 @@ class _MatchCardState extends State<MatchCard> {
       trailing: ScoreRing(score: widget.score, size: 52),
       children: [
         DecoratedBox(
-          decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: context.c.border))),
           child: Padding(
             padding: const EdgeInsets.only(top: AppSpacing.space3),
             child: Column(
@@ -135,10 +136,10 @@ class _MatchCardState extends State<MatchCard> {
                     if (widget.isNew) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(color: AppColors.brand600, borderRadius: AppRadius.smRadius),
-                        child: const Text(
+                        decoration: BoxDecoration(color: context.c.accent, borderRadius: AppRadius.smRadius),
+                        child: Text(
                           'NEW',
-                          style: TextStyle(color: AppColors.textOnBrand, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                          style: TextStyle(color: context.onAccent, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -157,13 +158,13 @@ class _MatchCardState extends State<MatchCard> {
                         children: [
                           Text(
                             _open ? 'Less' : (hidden > 0 ? '+$hidden more' : 'Details'),
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.c.inkSoft),
                           ),
                           const SizedBox(width: 3),
                           AnimatedRotation(
                             turns: _open ? 0.5 : 0,
                             duration: const Duration(milliseconds: 150),
-                            child: const AppIcon(AppIconName.chevronDown, size: 15, color: AppColors.textSecondary),
+                            child: AppIcon(AppIconName.chevronDown, size: 15, color: context.c.inkSoft),
                           ),
                         ],
                       ),

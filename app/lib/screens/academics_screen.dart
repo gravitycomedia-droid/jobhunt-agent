@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_form_field.dart';
 
 /// Student branch of the onboarding fork (§4.1): the academic facts the résumé
@@ -86,7 +87,7 @@ class _AcademicsScreenState extends State<AcademicsScreen> {
                     const SizedBox(height: 6),
                     Text(
                       'A few academic details help match internships and fresher roles.',
-                      style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                      style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                     ),
                     const SizedBox(height: AppSpacing.space5),
                     AppFormField(label: 'Branch / major', placeholder: 'e.g. Computer Science', controller: _branchController),
@@ -127,7 +128,7 @@ class _AcademicsScreenState extends State<AcademicsScreen> {
                     ],
                     if (_errorMessage != null) ...[
                       const SizedBox(height: AppSpacing.space3),
-                      Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+                      Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
                     ],
                     const SizedBox(height: AppSpacing.space5),
                   ],

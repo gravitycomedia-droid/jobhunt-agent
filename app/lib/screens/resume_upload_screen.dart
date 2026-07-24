@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../models/resume_profile.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
 import 'profile_review_screen.dart';
@@ -96,37 +97,37 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                 width: 72,
                 height: 72,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
-                child: const AppIcon(AppIconName.fileText, size: 32, color: AppColors.brand600),
+                decoration: BoxDecoration(color: context.c.accentSoft, shape: BoxShape.circle),
+                child: AppIcon(AppIconName.fileText, size: 32, color: context.c.accent),
               ),
               const SizedBox(height: AppSpacing.space4),
               Text(
                 'Upload your resume as a PDF to get started.',
                 textAlign: TextAlign.center,
-                style: AppTypography.body.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.body.copyWith(color: context.c.inkSoft),
               ),
               const SizedBox(height: AppSpacing.space6),
               if (_isUploading) ...[
-                const CircularProgressIndicator(color: AppColors.brand),
+                CircularProgressIndicator(color: context.c.accent),
                 const SizedBox(height: AppSpacing.space3),
                 // Phase 2 honest copy: parsing is a real vision-LLM call.
                 Text(
                   'Reading your resume with AI — this usually takes 30–60 seconds. '
                   'Keep the app open.',
                   textAlign: TextAlign.center,
-                  style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                  style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                 ),
               ] else
                 ElevatedButton.icon(
                   onPressed: _pickAndUpload,
-                  icon: const AppIcon(AppIconName.upload, size: 18, color: AppColors.textOnBrand),
+                  icon: AppIcon(AppIconName.upload, size: 18, color: context.onAccent),
                   label: const Text('Choose PDF'),
                 ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: AppSpacing.space4),
                 Text(
                   _errorMessage!,
-                  style: AppTypography.bodySm.copyWith(color: AppColors.criticalText),
+                  style: AppTypography.bodySm.copyWith(color: context.c.critical),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -138,7 +139,7 @@ class _ResumeUploadScreenState extends State<ResumeUploadScreen> {
                   'This step can\'t be skipped — the agent matches and tailors '
                   'against your real resume.',
                   textAlign: TextAlign.center,
-                  style: AppTypography.caption.copyWith(color: AppColors.textTertiary),
+                  style: AppTypography.caption.copyWith(color: context.c.inkFaint),
                 ),
               ],
             ],

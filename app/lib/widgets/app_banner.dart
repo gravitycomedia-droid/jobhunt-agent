@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 enum BannerTone { info, success, warning, critical }
@@ -13,12 +14,18 @@ class _ToneSpec {
   final AppIconName icon;
 }
 
-const Map<BannerTone, _ToneSpec> _toneMap = {
-  BannerTone.info: _ToneSpec(AppColors.infoSoft, AppColors.infoBorder, AppColors.infoText, AppIconName.info),
-  BannerTone.success: _ToneSpec(AppColors.successSoft, AppColors.successBorder, AppColors.successText, AppIconName.check),
-  BannerTone.warning: _ToneSpec(AppColors.warningSoft, AppColors.warningBorder, AppColors.warningText, AppIconName.alertTriangle),
-  BannerTone.critical: _ToneSpec(AppColors.criticalSoft, AppColors.criticalBorder, AppColors.criticalText, AppIconName.alertTriangle),
-};
+/// Tone → colours + glyph, resolved from the active theme so banners flip with
+/// dark mode. `bg` is the role tint at 12%, `border` at 30%.
+_ToneSpec _toneSpec(BuildContext context, BannerTone tone) {
+  final c = context.c;
+  final (role, icon) = switch (tone) {
+    BannerTone.info => (c.info, AppIconName.info),
+    BannerTone.success => (c.success, AppIconName.check),
+    BannerTone.warning => (c.warning, AppIconName.alertTriangle),
+    BannerTone.critical => (c.critical, AppIconName.alertTriangle),
+  };
+  return _ToneSpec(role.withValues(alpha: 0.12), role.withValues(alpha: 0.30), role, icon);
+}
 
 /// Inline contextual message — e.g. the "needs follow-up" stale
 /// -application warning (Brick 7) or a guardrail notice (Brick 6).
@@ -55,7 +62,7 @@ class AppBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = _toneMap[tone]!;
+    final t = _toneSpec(context, tone);
     return DecoratedBox(
       decoration: BoxDecoration(color: t.bg, border: Border.all(color: t.border), borderRadius: AppRadius.mdRadius),
       child: Padding(

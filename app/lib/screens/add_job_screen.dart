@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/job_extraction.dart';
 import '../services/api_client.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
 import '../widgets/app_form_field.dart';
 import '../widgets/page_header.dart';
@@ -105,7 +106,7 @@ class _AddJobScreenState extends State<AddJobScreen> {
         children: [
           Text(
             "Paste a job posting link — we'll pull in the details.",
-            style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+            style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
           ),
           const SizedBox(height: AppSpacing.space4),
           AppFormField(

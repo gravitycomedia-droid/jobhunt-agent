@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 
 /// Phase 2: one ScaffoldMessenger for the whole app, attached to
 /// [MaterialApp.scaffoldMessengerKey] in main.dart. Completion toasts fire
@@ -15,27 +16,29 @@ void showTaskToast({required bool success, required String message, VoidCallback
   final messenger = appScaffoldMessengerKey.currentState;
   if (messenger == null) return; // app not mounted yet — nothing to show on
 
+  // The messenger carries a BuildContext, so the toast can read theme-aware
+  // colours even though it's fired from a service with no context of its own.
+  final c = messenger.context.c;
+  final accent = success ? c.success : c.critical;
+
   messenger.showSnackBar(
     SnackBar(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: success ? AppColors.successSoft : AppColors.criticalSoft,
+      backgroundColor: accent.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
         borderRadius: AppRadius.mdRadius,
-        side: BorderSide(color: success ? AppColors.successText : AppColors.criticalText, width: 1),
+        side: BorderSide(color: accent, width: 1),
       ),
       duration: Duration(seconds: success ? 4 : 8),
       content: Text(
         '${success ? '✓' : '✗'} $message',
-        style: AppTypography.monoData.copyWith(
-          fontSize: 13,
-          color: success ? AppColors.successText : AppColors.criticalText,
-        ),
+        style: AppTypography.monoData.copyWith(fontSize: 13, color: accent),
       ),
       action: onRetry == null
           ? null
           : SnackBarAction(
               label: 'Retry',
-              textColor: AppColors.criticalText,
+              textColor: c.critical,
               onPressed: onRetry,
             ),
     ),

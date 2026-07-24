@@ -2,21 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
-// Only the sizing tokens — `show` avoids the deliberate `AppColors` name clash
-// between app_tokens.dart (legacy static palette) and app_colors.dart (the new
-// ThemeExtension). See app_colors.dart's header note.
-import 'app_tokens.dart' show AppSpacing, AppRadius;
+import 'app_metrics.dart' show AppSpacing, AppRadius;
 
 /// Phase 2 (frontend rebuild v2) — light/dark [ThemeData] built from the
 /// semantic [AppColors] token layer. `MaterialApp(theme: appLight, darkTheme:
 /// appDark, themeMode: …)` in main.dart; the mode is owned by `ThemeController`.
 ///
-/// The component theming (buttons, inputs, cards, app bar, bottom nav) is ported
-/// from the previous light-only `AppTheme.light` but now reads every colour from
-/// the theme-appropriate `AppColors c`, so dark mode is real rather than a
-/// re-tinted light theme. Legacy screens that still read `app_tokens.dart`
-/// statics stay light-coloured until they migrate (Phase 5+); that's the
-/// deliberate opportunistic-migration path, not a bug.
+/// The component theming (buttons, inputs, cards, app bar, bottom nav) reads
+/// every colour from the theme-appropriate `AppColors c`, so dark mode is real
+/// rather than a re-tinted light theme. As of Phase 10 every screen reads
+/// `context.c`, so the whole app honours the active theme.
 
 /// Monospace numerals (fit scores, salaries, token counts, dates, costs).
 TextStyle mono(double size, {FontWeight w = FontWeight.w500, Color? color}) =>

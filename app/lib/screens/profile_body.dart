@@ -9,7 +9,8 @@ import '../models/resume_profile.dart';
 import '../models/subscription.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
@@ -263,8 +264,8 @@ class _ProfileBodyState extends State<ProfileBody> {
   Widget _accountRows() {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.lgRadius,
         boxShadow: AppElevation.e1,
       ),
@@ -291,8 +292,8 @@ class _ProfileBodyState extends State<ProfileBody> {
   Widget _navRows() {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.lgRadius,
         boxShadow: AppElevation.e1,
       ),
@@ -370,12 +371,12 @@ class _ProfileBodyState extends State<ProfileBody> {
     required bool showDivider,
     bool danger = false,
   }) {
-    final tint = danger ? AppColors.criticalFill : AppColors.brand600;
+    final tint = danger ? context.c.critical : context.c.accent;
     return InkWell(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3 + 3),
-        decoration: BoxDecoration(border: showDivider ? const Border(bottom: BorderSide(color: AppColors.border)) : null),
+        decoration: BoxDecoration(border: showDivider ? Border(bottom: BorderSide(color: context.c.border)) : null),
         child: Row(
           children: [
             AppIcon(icon, size: 20, color: tint),
@@ -388,17 +389,17 @@ class _ProfileBodyState extends State<ProfileBody> {
                     style: AppTypography.title.copyWith(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
-                      color: danger ? AppColors.criticalFill : null,
+                      color: danger ? context.c.critical : null,
                     ),
                   ),
                   if (trailing != null) ...[
                     const SizedBox(width: 4),
-                    Text('· $trailing', style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary)),
+                    Text('· $trailing', style: AppTypography.bodySm.copyWith(color: context.c.inkFaint)),
                   ],
                 ],
               ),
             ),
-            const AppIcon(AppIconName.chevronRight, size: 18, color: AppColors.textTertiary),
+            AppIcon(AppIconName.chevronRight, size: 18, color: context.c.inkFaint),
           ],
         ),
       ),
@@ -414,8 +415,8 @@ class _ProfileBodyState extends State<ProfileBody> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.lgRadius,
         boxShadow: AppElevation.e1,
       ),
@@ -428,8 +429,8 @@ class _ProfileBodyState extends State<ProfileBody> {
                 width: 44,
                 height: 44,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
-                child: const AppIcon(AppIconName.user, size: 22, color: AppColors.brand600),
+                decoration: BoxDecoration(color: context.c.accentSoft, shape: BoxShape.circle),
+                child: AppIcon(AppIconName.user, size: 22, color: context.c.accent),
               ),
               const SizedBox(width: AppSpacing.space3),
               Expanded(
@@ -440,11 +441,11 @@ class _ProfileBodyState extends State<ProfileBody> {
                     const SizedBox(height: 2),
                     Text(
                       role ?? email ?? 'Signed in',
-                      style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                      style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (role != null && email != null)
-                      Text(email, style: AppTypography.label.copyWith(color: AppColors.textTertiary), overflow: TextOverflow.ellipsis),
+                      Text(email, style: AppTypography.label.copyWith(color: context.c.inkFaint), overflow: TextOverflow.ellipsis),
                   ],
                 ),
               ),
@@ -454,7 +455,7 @@ class _ProfileBodyState extends State<ProfileBody> {
             const SizedBox(height: AppSpacing.space4),
             Row(
               children: [
-                Text('Résumé completeness', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+                Text('Résumé completeness', style: AppTypography.caption.copyWith(color: context.c.inkFaint)),
                 const Spacer(),
                 Text(
                   '${profile.completionPercent}%',
@@ -462,7 +463,7 @@ class _ProfileBodyState extends State<ProfileBody> {
                     fontFamily: AppTypography.monoData.fontFamily,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.brand600,
+                    color: context.c.accent,
                   ),
                 ),
               ],
@@ -482,34 +483,34 @@ class _ProfileBodyState extends State<ProfileBody> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.space4),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.lgRadius,
         boxShadow: AppElevation.e1,
       ),
       child: Row(
         children: [
-          const AppIcon(AppIconName.dollarSign, size: 20, color: AppColors.brand600),
+          AppIcon(AppIconName.dollarSign, size: 20, color: context.c.accent),
           const SizedBox(width: AppSpacing.space3),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('${sub.isPro ? 'Pro' : 'Free'} plan', style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
-                Text(sub.status, style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+                Text(sub.status, style: AppTypography.label.copyWith(color: context.c.inkFaint)),
               ],
             ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: sub.isPro ? AppColors.brandSoft : AppColors.surfaceSunken,
+              color: sub.isPro ? context.c.accentSoft : context.c.surface2,
               borderRadius: AppRadius.smRadius,
             ),
             child: Text(
               sub.tier.toUpperCase(),
               style: AppTypography.label.copyWith(
-                color: sub.isPro ? AppColors.brand700 : AppColors.textSecondary,
+                color: sub.isPro ? context.c.accent : context.c.inkSoft,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -526,9 +527,9 @@ class _ProfileBodyState extends State<ProfileBody> {
     final interviews = _applications.where((a) => a.state == 'interview').length;
     final offers = _applications.where((a) => a.state == 'offer').length;
     final stats = [
-      ('$applied', 'Applied', AppColors.infoText),
-      ('$interviews', 'Interviews', AppColors.brand600),
-      ('$offers', 'Offers', AppColors.successText),
+      ('$applied', 'Applied', context.c.info),
+      ('$interviews', 'Interviews', context.c.accent),
+      ('$offers', 'Offers', context.c.success),
     ];
     return Row(
       children: [
@@ -543,8 +544,8 @@ class _ProfileBodyState extends State<ProfileBody> {
   Widget _statTile(String value, String label, Color color) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: context.c.surface,
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.mdRadius,
       ),
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3, horizontal: 4),
@@ -555,7 +556,7 @@ class _ProfileBodyState extends State<ProfileBody> {
             style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 22, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.4),
           ),
           const SizedBox(height: 2),
-          Text(label.toUpperCase(), style: AppTypography.label.copyWith(color: AppColors.textTertiary), textAlign: TextAlign.center),
+          Text(label.toUpperCase(), style: AppTypography.label.copyWith(color: context.c.inkFaint), textAlign: TextAlign.center),
         ],
       ),
     );
@@ -567,8 +568,8 @@ class _ProfileBodyState extends State<ProfileBody> {
       child: OutlinedButton(
         onPressed: () => Supabase.instance.client.auth.signOut(),
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.textSecondary,
-          side: const BorderSide(color: AppColors.border),
+          foregroundColor: context.c.inkSoft,
+          side: BorderSide(color: context.c.border),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
         child: const Text('Sign out'),

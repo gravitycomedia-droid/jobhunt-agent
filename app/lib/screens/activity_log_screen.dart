@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/activity_item.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/activity_style.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/loading_skeleton.dart';
+import '../widgets/app_loader.dart';
 import '../widgets/page_header.dart';
 
 /// Frontend rebuild Phase 3 (prototype `ui.isActivity`): "what the agent
@@ -79,13 +80,10 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   }
 
   Widget _body() {
+    // Phase 10: skeletons retired — a cold load shows the brand AppLoader
+    // (matches the tab pattern); warm reloads keep the current list painted.
     if (_isLoading) {
-      return ListView.separated(
-        padding: const EdgeInsets.all(AppSpacing.screenPadX),
-        itemCount: 5,
-        separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (_, _) => const LoadingSkeleton(variant: SkeletonVariant.block, height: 56),
-      );
+      return const Center(child: AppLoader());
     }
 
     if (_errorMessage != null) {
@@ -120,7 +118,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
       itemBuilder: (context, index) {
         final item = _activity[index];
         final isLast = index == _activity.length - 1;
-        final glyph = activityGlyphFor(item);
+        final glyph = activityGlyphFor(context, item);
 
         return IntrinsicHeight(
           child: Row(
@@ -135,7 +133,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                     decoration: BoxDecoration(color: glyph.bg, shape: BoxShape.circle),
                     child: AppIcon(glyph.icon, size: 16, color: glyph.fg),
                   ),
-                  if (!isLast) Expanded(child: Container(width: 2, color: AppColors.border, margin: const EdgeInsets.only(top: 4))),
+                  if (!isLast) Expanded(child: Container(width: 2, color: context.c.border, margin: EdgeInsets.only(top: 4))),
                 ],
               ),
               const SizedBox(width: AppSpacing.space3),
@@ -150,12 +148,12 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                           Expanded(child: Text(item.title, style: AppTypography.body.copyWith(fontWeight: FontWeight.w600))),
                           Text(
                             _formatTimestamp(item.timestamp),
-                            style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 11, color: AppColors.textTertiary),
+                            style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 11, color: context.c.inkFaint),
                           ),
                         ],
                       ),
                       const SizedBox(height: 2),
-                      Text(item.detail, style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+                      Text(item.detail, style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
                     ],
                   ),
                 ),

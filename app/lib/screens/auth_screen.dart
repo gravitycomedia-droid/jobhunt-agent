@@ -4,7 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart'
     show AuthException, GoTrueClientSignInProvider, LaunchMode, OAuthProvider, Supabase;
 
 import '../config/supabase_config.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_form_field.dart';
 
 /// Onboarding step 1b (frontend rebuild Phase 1, prototype `ui.isAuth`):
@@ -152,7 +153,7 @@ class _AuthScreenState extends State<AuthScreen> {
               if (widget.onBack != null)
                 IconButton(
                   onPressed: widget.onBack,
-                  icon: const Icon(Icons.arrow_back, color: AppColors.textSecondary),
+                  icon: Icon(Icons.arrow_back, color: context.c.inkSoft),
                   padding: EdgeInsets.zero,
                   alignment: Alignment.centerLeft,
                 ),
@@ -161,7 +162,7 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 6),
               Text(
                 _isSignUp ? 'Set up your job-search agent in a minute.' : 'Sign in to keep hunting.',
-                style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
               ),
               const SizedBox(height: AppSpacing.space6),
               AppFormField(
@@ -179,7 +180,7 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: AppSpacing.space5),
               if (_errorMessage != null) ...[
-                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: AppColors.criticalText)),
+                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
                 const SizedBox(height: AppSpacing.space3),
               ],
               SizedBox(
@@ -192,12 +193,12 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: AppSpacing.space5),
               Row(
                 children: [
-                  const Expanded(child: Divider(color: AppColors.border)),
+                  Expanded(child: Divider(color: context.c.border)),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Text('or', style: AppTypography.caption.copyWith(color: AppColors.textTertiary)),
+                    child: Text('or', style: AppTypography.caption.copyWith(color: context.c.inkFaint)),
                   ),
-                  const Expanded(child: Divider(color: AppColors.border)),
+                  Expanded(child: Divider(color: context.c.border)),
                 ],
               ),
               const SizedBox(height: AppSpacing.space5),

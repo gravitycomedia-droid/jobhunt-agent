@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// Shared zero-data pattern for Jobs, Shortlist, Matches, Applications,
@@ -41,8 +42,8 @@ class EmptyState extends StatelessWidget {
             width: 60,
             height: 60,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(color: AppColors.brandSoft, shape: BoxShape.circle),
-            child: AppIcon(icon, size: 28, color: AppColors.brand600),
+            decoration: BoxDecoration(color: context.c.accentSoft, shape: BoxShape.circle),
+            child: AppIcon(icon, size: 28, color: context.c.accent),
           ),
           const SizedBox(height: AppSpacing.space4),
           if (title != null)
@@ -55,7 +56,7 @@ class EmptyState extends StatelessWidget {
                 child: Text(
                   message!,
                   textAlign: TextAlign.center,
-                  style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary),
+                  style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
                 ),
               ),
             ),

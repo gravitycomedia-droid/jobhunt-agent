@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 
 /// Phase 2 start-of-task dialog: tells the user a long operation kicked off
 /// and runs in the background, then gets out of the way. Informational
@@ -10,20 +11,20 @@ Future<void> showBackgroundTaskDialog(BuildContext context, String title, String
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      backgroundColor: AppColors.surface,
+      backgroundColor: context.c.surface,
       shape: RoundedRectangleBorder(borderRadius: AppRadius.lgRadius),
       title: Row(
         children: [
-          const SizedBox(
+          SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.brand600),
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: context.c.accent),
           ),
           const SizedBox(width: AppSpacing.space3),
           Expanded(child: Text(title, style: AppTypography.title)),
         ],
       ),
-      content: Text(message, style: AppTypography.bodySm.copyWith(color: AppColors.textSecondary)),
+      content: Text(message, style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),

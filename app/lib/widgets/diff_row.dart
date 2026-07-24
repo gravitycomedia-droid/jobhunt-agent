@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// One tailoring change: original resume bullet vs tailored bullet.
@@ -40,9 +41,9 @@ class DiffRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.c.border),
         borderRadius: AppRadius.mdRadius,
-        color: AppColors.surface,
+        color: context.c.surface,
       ),
       child: ClipRRect(
         borderRadius: AppRadius.mdRadius,
@@ -51,9 +52,9 @@ class DiffRow extends StatelessWidget {
           children: [
             // original
             DecoratedBox(
-              decoration: const BoxDecoration(
-                color: AppColors.neutral50,
-                border: Border(bottom: BorderSide(color: AppColors.border)),
+              decoration: BoxDecoration(
+                color: context.c.surface2,
+                border: Border(bottom: BorderSide(color: context.c.border)),
               ),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -65,7 +66,7 @@ class DiffRow extends StatelessWidget {
                       style: TextStyle(
                         fontFamily: AppTypography.monoData.fontFamily,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.neutral400,
+                        color: context.c.inkFaint,
                         height: 20 / 14,
                       ),
                     ),
@@ -74,9 +75,9 @@ class DiffRow extends StatelessWidget {
                       child: Text(
                         original,
                         style: AppTypography.bodySm.copyWith(
-                          color: AppColors.textTertiary,
+                          color: context.c.inkFaint,
                           decoration: unchanged ? TextDecoration.none : TextDecoration.lineThrough,
-                          decorationColor: AppColors.neutral300,
+                          decorationColor: context.c.border,
                         ),
                       ),
                     ),
@@ -86,7 +87,7 @@ class DiffRow extends StatelessWidget {
             ),
             // tailored
             DecoratedBox(
-              decoration: BoxDecoration(color: guardrailFail ? AppColors.criticalSoft : Colors.transparent),
+              decoration: BoxDecoration(color: guardrailFail ? context.c.critical.withValues(alpha: 0.12) : Colors.transparent),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
@@ -97,7 +98,7 @@ class DiffRow extends StatelessWidget {
                       style: TextStyle(
                         fontFamily: AppTypography.monoData.fontFamily,
                         fontWeight: FontWeight.w700,
-                        color: guardrailFail ? AppColors.criticalFill : AppColors.successFill,
+                        color: guardrailFail ? context.c.critical : context.c.success,
                         height: 20 / 14,
                       ),
                     ),
@@ -109,26 +110,26 @@ class DiffRow extends StatelessWidget {
                           Container(
                             padding: guardrailFail ? const EdgeInsets.symmetric(horizontal: 3, vertical: 1) : EdgeInsets.zero,
                             decoration: guardrailFail
-                                ? BoxDecoration(color: AppColors.guardrailFailHighlight, borderRadius: BorderRadius.circular(3))
+                                ? BoxDecoration(color: context.c.critical.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(3))
                                 : null,
                             child: Text(
                               tailored,
                               style: AppTypography.bodySm.copyWith(
                                 fontWeight: FontWeight.w500,
-                                color: guardrailFail ? AppColors.criticalText : AppColors.textPrimary,
+                                color: guardrailFail ? context.c.critical : context.c.ink,
                               ),
                             ),
                           ),
                           if (guardrailFail) ...[
                             const SizedBox(width: 6),
-                            const Row(
+                            Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                AppIcon(AppIconName.alertTriangle, size: 12, color: AppColors.criticalText),
+                                AppIcon(AppIconName.alertTriangle, size: 12, color: context.c.critical),
                                 SizedBox(width: 4),
                                 Text(
                                   'Guardrail fail',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.criticalText),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.c.critical),
                                 ),
                               ],
                             ),

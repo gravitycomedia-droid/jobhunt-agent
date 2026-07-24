@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
 import '../services/theme_controller.dart';
-import '../theme/app_tokens.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/page_header.dart';
 import 'resume_upload_screen.dart';
@@ -99,12 +100,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadX),
         children: [
-          Text('RESUME', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          Text('RESUME', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space2),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.border),
+              color: context.c.surface,
+              border: Border.all(color: context.c.border),
               borderRadius: AppRadius.lgRadius,
               boxShadow: AppElevation.e1,
             ),
@@ -115,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
                 child: Row(
                   children: [
-                    const AppIcon(AppIconName.upload, size: 20, color: AppColors.brand600),
+                    AppIcon(AppIconName.upload, size: 20, color: context.c.accent),
                     const SizedBox(width: AppSpacing.space3),
                     Expanded(
                       child: Column(
@@ -125,24 +126,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(height: 2),
                           Text(
                             'Upload a new PDF to replace your current profile — we\'ll re-parse it',
-                            style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary),
+                            style: AppTypography.bodySm.copyWith(color: context.c.inkFaint),
                           ),
                         ],
                       ),
                     ),
-                    const AppIcon(AppIconName.chevronRight, size: 18, color: AppColors.textTertiary),
+                    AppIcon(AppIconName.chevronRight, size: 18, color: context.c.inkFaint),
                   ],
                 ),
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.space4),
-          Text('APPEARANCE', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          Text('APPEARANCE', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space2),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.border),
+              color: context.c.surface,
+              border: Border.all(color: context.c.border),
               borderRadius: AppRadius.lgRadius,
               boxShadow: AppElevation.e1,
             ),
@@ -162,7 +163,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             Text('Dark mode', style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
                             const SizedBox(height: 2),
-                            Text('Follows your system setting until you choose here', style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary)),
+                            Text('Follows your system setting until you choose here', style: AppTypography.bodySm.copyWith(color: context.c.inkFaint)),
                           ],
                         ),
                       ),
@@ -170,7 +171,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Switch(
                         value: isDark,
                         onChanged: (v) => ThemeController.instance.set(v ? ThemeMode.dark : ThemeMode.light),
-                        activeThumbColor: AppColors.brand600,
+                        activeThumbColor: context.c.accent,
                       ),
                     ],
                   ),
@@ -179,12 +180,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: AppSpacing.space4),
-          Text('NOTIFICATIONS', style: AppTypography.label.copyWith(color: AppColors.textTertiary)),
+          Text('NOTIFICATIONS', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space2),
           Container(
             decoration: BoxDecoration(
-              color: AppColors.surface,
-              border: Border.all(color: AppColors.border),
+              color: context.c.surface,
+              border: Border.all(color: context.c.border),
               borderRadius: AppRadius.lgRadius,
               boxShadow: AppElevation.e1,
             ),
@@ -224,7 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
-      decoration: BoxDecoration(border: showDivider ? const Border(bottom: BorderSide(color: AppColors.border)) : null),
+      decoration: BoxDecoration(border: showDivider ? Border(bottom: BorderSide(color: context.c.border)) : null),
       child: Row(
         children: [
           Expanded(
@@ -233,7 +234,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Text(label, style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 2),
-                Text(desc, style: AppTypography.bodySm.copyWith(color: AppColors.textTertiary)),
+                Text(desc, style: AppTypography.bodySm.copyWith(color: context.c.inkFaint)),
               ],
             ),
           ),
@@ -241,7 +242,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Switch(
             value: value,
             onChanged: isSaving ? null : onChanged,
-            activeThumbColor: AppColors.brand600,
+            activeThumbColor: context.c.accent,
           ),
         ],
       ),
