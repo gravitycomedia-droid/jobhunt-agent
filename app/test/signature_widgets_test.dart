@@ -2,9 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jobhunt_agent/screens/debug_gallery_screen.dart';
 import 'package:jobhunt_agent/theme/app_theme.dart';
+import 'package:jobhunt_agent/widgets/activity_log_item.dart';
+import 'package:jobhunt_agent/widgets/app_banner.dart';
+import 'package:jobhunt_agent/widgets/app_loader.dart';
+import 'package:jobhunt_agent/widgets/celebration_modal.dart';
 import 'package:jobhunt_agent/widgets/fit_gauge.dart';
+import 'package:jobhunt_agent/widgets/hatched_progress.dart';
 import 'package:jobhunt_agent/widgets/hold_button.dart';
+import 'package:jobhunt_agent/widgets/score_ring.dart';
 import 'package:jobhunt_agent/widgets/source_chip.dart';
+import 'package:jobhunt_agent/widgets/status_pill.dart';
 
 /// Phase 3 acceptance tests for the signature widget library.
 ///
@@ -107,6 +114,85 @@ void main() {
       ));
       await tester.pump();
       expect(find.text('87'), findsOneWidget);
+    });
+
+    testWidgets('renders a signed delta badge', (tester) async {
+      await tester.pumpWidget(_host(
+        const FitGauge(target: 80, delta: 5, play: false),
+        theme: appLight,
+      ));
+      await tester.pump();
+      expect(find.text('+5'), findsOneWidget);
+    });
+  });
+
+  // Phase 10: the token migration made every signature widget theme-aware.
+  // These smoke both light and dark to prove `context.c` resolves in each
+  // (a missing ThemeExtension would throw a null-check) and that nothing
+  // paints out of bounds.
+  group('theme-aware widgets build in light and dark', () {
+    Future<void> pumpBoth(WidgetTester tester, Widget child) async {
+      for (final theme in [appLight, appDark]) {
+        await tester.pumpWidget(_host(child, theme: theme));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull);
+      }
+    }
+
+    testWidgets('StatusPill across all three contexts', (tester) async {
+      await pumpBoth(
+        tester,
+        const Column(children: [
+          StatusPill(context: PillContext.verdict, value: 'apply'),
+          StatusPill(context: PillContext.guardrail, value: 'fail'),
+          StatusPill(context: PillContext.stage, value: 'interview'),
+        ]),
+      );
+      expect(find.text('Apply'), findsOneWidget);
+    });
+
+    testWidgets('AppBanner tones', (tester) async {
+      await pumpBoth(
+        tester,
+        const AppBanner(tone: BannerTone.warning, title: 'Heads up', message: 'A note.'),
+      );
+      expect(find.text('Heads up'), findsOneWidget);
+    });
+
+    testWidgets('ScoreRing shows the rounded score', (tester) async {
+      await pumpBoth(tester, const ScoreRing(score: 82));
+      // The score renders as a RichText ('82' + '%' spans), so match on
+      // contained text with findRichText (default finders skip RichText).
+      expect(find.textContaining('82', findRichText: true), findsOneWidget);
+    });
+
+    testWidgets('AppLoader (indeterminate) does not crash', (tester) async {
+      await pumpBoth(tester, const AppLoader());
+      expect(find.byType(AppLoader), findsOneWidget);
+    });
+
+    testWidgets('ActivityLogItem by kind', (tester) async {
+      await pumpBoth(
+        tester,
+        const ActivityLogItem(
+          kind: ActivityKind.agent,
+          title: 'Daily pipeline ran',
+          detail: '5 new matches',
+          timestamp: '2h ago',
+          last: true,
+        ),
+      );
+      expect(find.text('Daily pipeline ran'), findsOneWidget);
+    });
+
+    testWidgets('HatchedProgress at partial fill', (tester) async {
+      await pumpBoth(tester, const HatchedProgress(value: 0.6));
+      expect(find.byType(HatchedProgress), findsOneWidget);
+    });
+
+    testWidgets('CelebrationModal renders its confetti burst', (tester) async {
+      await pumpBoth(tester, const CelebrationModal(title: 'Offer! 🎉'));
+      expect(find.text('Offer! 🎉'), findsOneWidget);
     });
   });
 }

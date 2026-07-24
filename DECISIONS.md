@@ -796,3 +796,115 @@ and falls back to the stored headline if it fabricates.
 (`test_selection_is_deterministic`); the most-recent role never drops
 (`test_most_recent_role_never_drops`); every drop is disclosed and restorable
 (`test_r2_grouped_rendering_omits_trimmed_and_honours_restore`).
+
+---
+
+> **ADR-035 and ADR-036 are reserved** for Track B's post-Phase-10 work — R4
+> two-pass generate→critique→revise (035) and R6 one-page ATS layout (036), per
+> `docs/20-frontend-rebuild-master-plan.md` §4. Phase 10's decisions take 037+ so
+> those numbers stay free for the work that already claimed them.
+
+## ADR-037: Routing is declarative (go_router), redirect logic lives in one notifier
+
+**Decision (Phase 2b).** Replace the imperative `Navigator.push`/`AuthGate`
+`setState` navigation with a single `GoRouter` (`router/app_router.dart`). All
+auth/onboarding gating is one pure function in `AppRouterNotifier`
+(`router/app_router_notifier.dart`), wired as the router's `refreshListenable`:
+it's a `ChangeNotifier`, so a sign-in, a completed-profile check, or a sign-out
+each `notifyListeners()` and go_router re-runs `redirect` — the app can't get
+stuck on a screen that no longer matches auth state.
+
+**Why.** The old AuthGate branched on session state inside `build`, which meant
+every new gated screen re-implemented the "am I allowed here" check and back-stack
+behaviour drifted per screen. One declarative table + one redirect function makes
+the allowed transitions auditable in a single place and deep-links (OAuth
+callback, FCM taps) resolve through the same path as in-app navigation.
+
+**Consequences / trade-offs.** `context.go` (replace) vs `context.push` now
+matters — `/splash → /auth` uses `go`, which is why hardware-back from Auth exits
+to launcher rather than popping to splash (open finding, deemed defensible; a
+`PopScope` in `auth_screen.dart` would change it). The debug gallery lives behind
+a `kDebugMode`-guarded route with a redirect carve-out.
+
+## ADR-038: App state is Riverpod Notifiers, introduced only where server state is shared
+
+**Decision (Phase 2c/5).** Server-derived, cross-screen state is held in Riverpod
+`Notifier`s under `services/` — `match_feed.dart`, `task_center.dart`,
+`job_filter.dart`, `career_chat.dart`, `theme_controller.dart` — composed in
+`app_container.dart`. Providers are app-scoped and **reset on sign-out** (wired
+through the router notifier) so one user's matches/tasks/chat never bleed into the
+next session. Local, single-screen state stays `StatefulWidget` — Riverpod was
+introduced deliberately from "Brick 5+", not applied uniformly.
+
+**Why.** The Kanban board, match feed, background-task toasts, and the shared
+jobs filter are read/written from more than one screen; lifting them into
+`setState` owners forced prop-drilling and duplicate fetches. A `Notifier` gives
+one owner, one cache, and a single place to invalidate. TaskCenter deliberately
+owns the global "task complete" toast; `ChatController` runs its **own** private
+poll loop so a chat reply never fires that global toast.
+
+**Consequences.** No LangChain/Redux-style ceremony; the rule is "reach for a
+Notifier only when state is genuinely shared." Widget/screen tests that pump a
+Notifier-backed screen need a `ProviderScope` ancestor (see `widget_test.dart`).
+
+## ADR-039: The wallet is cosmetic — entitlements gate, money never does
+
+**Decision (Phase 4).** Access is gated by **tier only** (`services/entitlements.py`,
+`DEFAULT_TIER`); a `free` tier returns `402` on pro-gated calls. The **wallet**
+(`services/wallet.py`, §4.12) is *cosmetic*: its balance is derived live as
+`grant − period-spend`, self-resets to the grant on the `subscription_period_end`
+rollover, and **never blocks a call**. The per-provider "used this period" bars
+split the wallet's own `spend_paise` by `/stats/costs` percentages — no second
+copy of the USD→₹ rate, no fabricated transaction ledger. Top-up/Manage explain
+the credits via a SnackBar rather than faking a checkout (there is no billing
+backend).
+
+**Why.** Conflating "did the user pay" with "is there budget left" produces the
+worst failure mode — a paying user locked out by an accounting glitch. Splitting
+them means the money view can be honest and approximate (it's informational)
+while the gate stays a hard, testable boolean. It also follows the CostStats
+precedent: don't invent a budget the backend can't substantiate.
+
+**Consequences.** The wallet is **not** a spend cap — the only real dollar ceiling
+is Apify's own $5 limit (Known Issue #2). Wiring the cosmetic wallet to an actual
+cap is a documented future item, not shipped here.
+
+## ADR-040: Career chat runs on DeepSeek, grounded and schema-validated
+
+**Decision (Phase 4).** The career-chat assistant (`services/chat.py`, §4.10)
+routes through `CHAT_PROVIDER` (DeepSeek by default, thinking disabled per
+ADR-023), grounds every reply on the user's profile + top-10 matches + recent
+applications, applies a hard anti-fabrication instruction, and returns a
+schema-validated `ChatReply`. The endpoint is `POST /chat` → `202 + task`
+(polled), pro-gated, and persists threads so history survives restart.
+
+**Why.** Chat is the highest-volume free-text surface, so it belongs on the
+cheaper provider (the reason DeepSeek was adopted at all, ADR-023). Grounding +
+schema validation keep it from drifting into invented job facts — the same
+Golden-Rule-3 discipline as every other LLM call. Async 202+task keeps a slow
+model off the request thread.
+
+**Consequences.** Chat needs `DEEPSEEK_API_KEY` + `CHAT_PROVIDER=deepseek` on
+Cloud Run and migration 024 applied — until then it returns data-blank, not an
+error. Known edge: a retry after a poll-timeout re-POSTs the user turn (server
+persists a duplicate) — an accepted failure-path trade-off. Prompt injection
+widens here and stays a documented residual (ADR-025).
+
+## ADR-041: One haptic wrapper, four named intensities, user- and OS-respecting
+
+**Decision (Phase 2d).** Every haptic goes through `HapticService.instance`
+(`services/haptic_service.dart`) — never a raw `HapticFeedback` call. It exposes
+four semantic levels (`selection`/`light`/`medium`/`heavy`) mapped to concrete
+moments (tab switch & Kanban drop → selection; hold-start & task-done → light;
+hold-complete & error → medium; celebration → heavy, fired once). A persisted
+`enabled` flag (via `CacheService`) gates all of them; the celebration/loader
+animations already honour the OS reduce-motion setting.
+
+**Why.** Scattered `HapticFeedback.*` calls make the feel inconsistent and
+impossible to mute. One wrapper gives a single on/off switch, a semantic
+vocabulary the whole app shares, and one place to tune intensity — the same
+"one owner" instinct as the theme and toast singletons.
+
+**Consequences.** Haptics are unverified on-device in this environment (no
+physical device); the mapping is asserted by the widget tests only insofar as the
+widgets build. Real haptic feel is part of the Phase 10 physical-device pass.
