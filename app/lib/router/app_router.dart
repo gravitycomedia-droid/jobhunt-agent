@@ -6,6 +6,7 @@ import '../screens/activity_log_screen.dart';
 import '../screens/add_job_screen.dart';
 import '../screens/applications_body.dart';
 import '../screens/auth_screen.dart';
+import '../screens/career_chat_screen.dart';
 import '../screens/cost_stats_screen.dart';
 import '../screens/debug_gallery_screen.dart';
 import '../screens/form_fill_screen.dart';
@@ -139,6 +140,11 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/cost',
       builder: (context, state) => const CostStatsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/chat',
+      builder: (context, state) => const CareerChatScreen(),
     ),
     GoRoute(
       parentNavigatorKey: _rootNavigatorKey,

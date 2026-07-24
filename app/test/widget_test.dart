@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:jobhunt_agent/main.dart';
 import 'package:jobhunt_agent/screens/jobs_list_body.dart';
-import 'package:jobhunt_agent/widgets/loading_skeleton.dart';
+import 'package:jobhunt_agent/widgets/app_loader.dart';
 
 void main() {
   // Brick 9: AuthGate reads Supabase.instance as soon as it's built, so
@@ -38,13 +39,19 @@ void main() {
     expect(find.text('Continue with Google'), findsOneWidget);
   });
 
-  testWidgets('Jobs list body shows loading skeletons before jobs load',
+  testWidgets('Jobs list body shows the loader before jobs load',
       (WidgetTester tester) async {
     // No `await tester.pumpAndSettle()` here on purpose: the real HTTP call
     // never resolves in a widget test (no server running), so we only assert
     // the initial loading state renders without throwing.
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: JobsListBody())));
+    // JobsListBody reads Riverpod providers (Phase 2c), so it needs a
+    // ProviderScope ancestor even in this render-only smoke test.
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: Scaffold(body: JobsListBody()))),
+    );
 
-    expect(find.byType(LoadingSkeleton), findsWidgets);
+    // Phase 5 (§Phase 5 acceptance): no skeleton survives in the tabs — a cold
+    // load shows the brand AppLoader instead.
+    expect(find.byType(AppLoader), findsOneWidget);
   });
 }

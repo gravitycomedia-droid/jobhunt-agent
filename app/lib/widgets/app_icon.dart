@@ -43,6 +43,9 @@ enum AppIconName {
   settings,
   autoAwesome,
   sliders,
+  messageCircle, // §4.10 career chat
+  send, // §4.10 chat send button
+  edit, // §4.10 new-chat (reset)
 }
 
 const Map<AppIconName, IconData> _iconMap = {
@@ -77,6 +80,9 @@ const Map<AppIconName, IconData> _iconMap = {
   AppIconName.settings: Icons.settings_outlined,
   AppIconName.autoAwesome: Icons.auto_awesome_outlined,
   AppIconName.sliders: Icons.tune, // §4.4 filter button
+  AppIconName.messageCircle: Icons.chat_bubble_outline,
+  AppIconName.send: Icons.send,
+  AppIconName.edit: Icons.edit_outlined,
 };
 
 /// Line-icon primitive — use for all in-app iconography instead of

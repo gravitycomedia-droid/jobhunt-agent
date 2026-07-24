@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import '../models/activity_item.dart';
 import '../models/application_item.dart';
 import '../models/background_task.dart';
+import '../models/chat_message.dart';
 import '../models/cost_stats.dart';
 import '../models/form_fill.dart';
 import '../models/health_status.dart';
@@ -682,6 +683,63 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (body['data'] as Map<String, dynamic>)['task_id'] as String;
+  }
+
+  /// Phase 8 (§4.10): sends one turn to the grounded career assistant. Like
+  /// [rerankShortlist]/[tailorResume] this is an ADR-011 async job — the server
+  /// answers 202 with a task id (poll [getTaskStatus]; the finished task's
+  /// `result.message` is the assistant reply) and the thread the turn landed in.
+  /// Omit [threadId] to start a new conversation; pass an owned one to continue.
+  /// Pro-gated server-side (402 on the free tier) and rate-limited.
+  Future<ChatSendResult> sendChatMessage(String message, {String? threadId}) async {
+    final uri = Uri.parse('$_baseUrl/chat');
+    final response = await http
+        .post(
+          uri,
+          headers: _authHeaders({'Content-Type': 'application/json'}),
+          body: jsonEncode({'message': message, 'thread_id': ?threadId}),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 202) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ChatSendResult.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Phase 8: the caller's conversations, most-recently-active first. The chat
+  /// screen reads only the newest thread's id to reload history on open — so a
+  /// conversation survives an app restart (§4.10 acceptance).
+  Future<List<ChatThread>> listChatThreads() async {
+    final uri = Uri.parse('$_baseUrl/chat/threads');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as List)
+        .map((t) => ChatThread.fromJson(t as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Phase 8: one thread's messages, oldest-first. 404 if it isn't the caller's.
+  Future<List<ChatMessage>> fetchChatThread(String threadId) async {
+    final uri = Uri.parse('$_baseUrl/chat/threads/$threadId');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>;
+    return ((data['messages'] as List?) ?? const [])
+        .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
+        .toList();
   }
 
   /// Phase 3: this calendar month's LLM cost/usage for the caller,

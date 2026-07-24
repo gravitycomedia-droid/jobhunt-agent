@@ -283,6 +283,12 @@ class _ProfileBodyState extends State<ProfileBody> {
             showDivider: true,
           ),
           _navRow(
+            icon: AppIconName.messageCircle,
+            label: 'Ask the agent',
+            onTap: () => context.push('/chat'),
+            showDivider: true,
+          ),
+          _navRow(
             icon: AppIconName.dollarSign,
             label: 'Agent wallet',
             onTap: () => context.push('/cost'),

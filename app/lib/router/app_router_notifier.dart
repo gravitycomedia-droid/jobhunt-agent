@@ -8,6 +8,7 @@ import '../models/resume_profile.dart';
 import '../services/api_client.dart';
 import '../services/app_container.dart';
 import '../services/cache_service.dart';
+import '../services/career_chat.dart';
 import '../services/match_feed.dart';
 import '../services/push_service.dart';
 import '../services/task_center.dart';
@@ -83,6 +84,7 @@ class AppRouterNotifier extends ChangeNotifier {
     if (data.event == AuthChangeEvent.signedOut) {
       appContainer.read(taskCenterProvider.notifier).reset();
       appContainer.read(matchFeedProvider.notifier).reset();
+      appContainer.read(chatControllerProvider.notifier).reset();
       final previousUserId = _lastUserId;
       if (previousUserId != null) {
         unawaited(CacheService.instance.clearForUser(previousUserId));
