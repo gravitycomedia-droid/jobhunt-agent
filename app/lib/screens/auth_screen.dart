@@ -143,6 +143,23 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Splash reaches /auth via context.go (a replace), so there's nothing in the
+    // navigation stack for the hardware/system back button to pop — without this
+    // the OS back gesture would exit the app to the launcher even though the
+    // screen shows a back arrow. PopScope intercepts that: when an onBack handler
+    // exists we block the default pop (canPop: false) and route back through the
+    // same callback the on-screen arrow uses, so both back affordances agree.
+    // (When onBack is null there's genuinely nowhere to go, so allow the pop.)
+    return PopScope(
+      canPop: widget.onBack == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) widget.onBack?.call();
+      },
+      child: _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: Padding(
