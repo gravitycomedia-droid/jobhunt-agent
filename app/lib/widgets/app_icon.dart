@@ -47,6 +47,7 @@ enum AppIconName {
   send, // §4.10 chat send button
   edit, // §4.10 new-chat (reset)
   trash, // §4.15 delete account
+  moreVertical, // §4.8 form-WebView overflow menu
 }
 
 const Map<AppIconName, IconData> _iconMap = {
@@ -85,6 +86,7 @@ const Map<AppIconName, IconData> _iconMap = {
   AppIconName.send: Icons.send,
   AppIconName.edit: Icons.edit_outlined,
   AppIconName.trash: Icons.delete_outline,
+  AppIconName.moreVertical: Icons.more_vert,
 };
 
 /// Line-icon primitive — use for all in-app iconography instead of

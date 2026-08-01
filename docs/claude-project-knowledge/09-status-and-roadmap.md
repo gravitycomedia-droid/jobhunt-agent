@@ -90,9 +90,18 @@ of being lost, and before Brick 10 work begins on top of it.
 7. **`docs/PROMPTS.md` embeddings section** — ✅ resolved; now correctly names
    `gemini-embedding-001` (the stale `text-embedding-004` reference was fixed in
    Phase-7 housekeeping).
-8. **iOS is entirely out of scope so far** — no Firebase iOS app, no APNs key,
-   `firebase_options.dart` throws `UnsupportedError` for every non-Android
-   platform. This project is Android-first/Android-only for now.
+8. **iOS: dev-testable via free-tier sideload, but not release-ready** (ADR-011
+   / root `DECISIONS.md` ADR-042, 2026-07-25). The app now builds and runs on a
+   personal iPhone via a free Apple ID (7-day signing, no TestFlight/App Store):
+   bundle id `com.jobhuntagent.jobhuntAgent` (camelCase — the underscore form
+   breaks free-team signing), Google OAuth redirect wired for
+   iOS (`CFBundleURLTypes` scheme `com.jobhuntagent.firstrole`), a Flutter
+   `ios/Podfile` at `platform :ios, '13.0'`. **Push remains Android-only** — no
+   Firebase iOS app, no APNs key; `firebase_options.dart` still throws
+   `UnsupportedError` off Android, and `push_service.dart` now returns early on
+   iOS with a logged skip. A real iOS release (paid Apple Developer account,
+   APNs key, TestFlight/App Store) is still future scope. *(On-device
+   verification pending — no Mac/device in the build env.)*
 
 ## Brick 10 — what's left (per CLAUDE.md's own definition)
 
@@ -110,8 +119,9 @@ consistent with the project's stated non-goals in CLAUDE.md, called out here
 only so a future conversation knows what's deliberately been deferred rather
 than forgotten:
 
-- iOS support (would require a real Apple Developer account, APNs key, and a
-  second Firebase app registration).
+- **Full** iOS support / release (dev-testing sideload already done, see Known
+  Gaps #8) — a paid Apple Developer account, APNs key, a second Firebase app
+  registration, and TestFlight/App Store distribution.
 - Riverpod adoption for state management — CLAUDE.md explicitly scopes this to
   "Brick 5+" but it was never introduced; the app still uses plain
   `StatefulWidget`/`setState` throughout. Worth revisiting once screen-to-screen

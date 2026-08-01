@@ -17,6 +17,14 @@ class Job {
   /// "unknown" in the filter facets and is excluded by any work-type filter.
   final String? workType;
 
+  /// Migration 027: the coarse discipline — 'engineering', 'sales', 'marketing',
+  /// … (see server/services/job_category.py::CATEGORIES). Before the broad
+  /// Unstop pool every row in the table was a fullstack/frontend/cloud role, so
+  /// this didn't need to exist; now ~75% of the pool is non-engineering and this
+  /// is what the Jobs tab filters on. Null = a row ingested before 027 that the
+  /// backfill couldn't place; treated as 'other'.
+  final String? category;
+
   /// Phase 5: exact server JSON, cached verbatim for round-tripping.
   final Map<String, dynamic> raw;
 
@@ -32,6 +40,7 @@ class Job {
     this.salaryMax,
     this.salaryCurrency,
     this.workType,
+    this.category,
     this.raw = const {},
   });
 
@@ -49,6 +58,7 @@ class Job {
       salaryMax: (json['salary_max'] as num?)?.toDouble(),
       salaryCurrency: json['salary_currency'] as String?,
       workType: json['work_type'] as String?,
+      category: json['category'] as String?,
     );
   }
 

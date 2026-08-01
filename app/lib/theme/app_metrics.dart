@@ -38,7 +38,9 @@ class AppSpacing {
 
   // Layout constants (portrait mobile)
   static const screenPadX = 16.0; // left/right safe gutter
-  static const bottomNavH = 56.0; // AppShell bottom bar height
+  // AppShell's bottom nav is a floating pill and owns its own height —
+  // see kNavPillHeight in widgets/app_shell.dart.
+  static const bottomNavH = 56.0; // legacy token, kept for compatibility
   static const touchMin = 44.0; // minimum hit target
   static const headerH = 52.0; // top app-bar height
 }

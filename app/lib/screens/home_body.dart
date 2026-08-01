@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../models/activity_item.dart';
 import '../models/application_item.dart';
+import '../models/job.dart';
 import '../models/match_item.dart';
 import 'dart:async' show unawaited;
 
@@ -17,28 +18,39 @@ import '../services/task_center.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import '../widgets/activity_style.dart';
+import '../widgets/agent_scene.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/background_task_dialog.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/fit_gauge.dart';
-import '../widgets/score_ring.dart';
+import '../widgets/source_chip.dart';
 import '../widgets/stale_banner.dart';
-import '../widgets/status_pill.dart';
 
-/// The Home tab's content (frontend rebuild Phases 1 & 3, prototype
-/// `ui.isHome`) — chrome comes from [MainTabScreen]/[AppShell]. A
-/// greeting with a bell shortcut to the activity log, a "new matches"
-/// banner, the top match as a hero card, a 3-stat grid, the next couple
-/// of matches, and a "Recent activity" teaser (Phase 3, backed by
-/// GET /stats/activity). Still no "Grow your match rate" section — that
-/// depends on Skill Growth data, which is Phase 4.
+/// The Home tab's content — the "Home (redesigned)" screen from the
+/// `design_handoff_jobhunt_agent` prototype. Chrome (bottom nav, chat FAB)
+/// comes from [MainTabScreen]/[AppShell].
+///
+/// Layout, top → bottom (prototype `isHome`, populated state):
+///  1. Greeting ("Good morning, {name}" + "Today's top match") + a bell
+///     button that carries an unread dot and opens the notification feed.
+///  2. The CRED-style **fit gauge** for the top match's score, a dark
+///     "Refresh now" pill (runs the agent pipeline), and a mono
+///     "LAST UPDATED …" footer.
+///  3. A **hero card** for the top match: role, company · location, a
+///     freshness badge, salary + source chips, and an accent
+///     "Tailor résumé & apply" action bar.
+///  4. "New jobs today" — the remaining matches as compact job rows.
+///  5. "Agent activity" — the recent-activity feed (GET /stats/activity).
+///
+/// The stat grid and info "new matches" banner from the pre-redesign Home
+/// are intentionally gone: the score now lives in the gauge and the cards
+/// are job-centric (salary/source/freshness), matching the handoff.
 class HomeBody extends ConsumerStatefulWidget {
   const HomeBody({super.key, this.onNavigateToTab});
 
-  /// Switches [MainTabScreen]'s active tab — Home has a few prototype
-  /// shortcuts ("New matches ready", "Also matched · See all") that jump
-  /// to the Matches tab rather than pushing a new route.
+  /// Switches [MainTabScreen]'s active tab — Home's "See all" / "Browse jobs"
+  /// shortcuts jump to the Jobs/Matches tabs rather than pushing a route.
   final ValueChanged<String>? onNavigateToTab;
 
   @override
@@ -53,7 +65,6 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
   String? _errorMessage;
   bool _hasProfile = true;
   DateTime? _staleSince; // Phase 5: non-null = painting cached data
-  DateTime? _lastUpdated; // ADR-028: for the "updated Xm ago" indicator
   List<ApplicationItem> _applications = [];
   List<ActivityItem> _activity = [];
 
@@ -64,6 +75,15 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
   int _scoreDelta = 0;
   int _unreadCount = 0;
 
+  // Bumped every time Home is re-entered, and folded into the FitGauge's key so
+  // the gauge REMOUNTS and replays its count-up reveal. Home lives in a
+  // StatefulShellRoute branch (kept alive across tab switches) and sub-screens
+  // push above the shell, so without this the gauge animates exactly once per
+  // app launch and every later visit shows a dead, already-settled number.
+  int _gaugeGen = 0;
+  GoRouter? _router;
+  bool _wasOnHome = true;
+
   // Phase 1C: Home's match count is literally the `.length` of the same
   // MatchFeed list the Matches tab renders — one source of truth, so the
   // "10 on Home, 2 on Matches" drift can't happen. The listener repaints
@@ -72,16 +92,55 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
   // build()), replacing the old MatchFeed/TaskCenter ValueNotifier listeners.
   List<MatchItem> get _matches => ref.read(matchFeedProvider).matches ?? const [];
 
-  // Phase 3A: the run-agent-now trigger moved here from the deleted branded
-  // title bar — Home's greeting row is its new permanent home.
+  // Phase 3A: the run-agent-now trigger. In the redesign it lives on the dark
+  // "Refresh now" pill under the gauge — its "Refreshing…" label mirrors this.
   TrackedTask? get _pipelineTask =>
       ref.read(trackedTaskProvider((kind: TaskKind.pipeline, id: null)));
   bool get _isRunningPipeline => _pipelineTask?.isActive ?? false;
+
+  /// True while the agent is actively producing matches (a rerank kicked off by
+  /// onboarding, or an agent run). With no matches yet, that's a *working*
+  /// state — not the "no matches yet, go browse jobs" dead end the empty state
+  /// otherwise shows.
+  bool get _isScoring =>
+      _isRunningPipeline ||
+      (ref.read(trackedTaskProvider((kind: TaskKind.rerank, id: null)))?.isActive ?? false);
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Watch the router rather than this widget's own lifecycle: switching tabs
+    // and popping a pushed sub-screen both change the location but neither
+    // rebuilds/remounts HomeBody, so route changes are the only signal that
+    // reliably fires for "the user is looking at Home again".
+    final router = GoRouter.of(context);
+    if (identical(router, _router)) return;
+    _router?.routerDelegate.removeListener(_onRouteChanged);
+    _router = router;
+    router.routerDelegate.addListener(_onRouteChanged);
+  }
+
+  @override
+  void dispose() {
+    _router?.routerDelegate.removeListener(_onRouteChanged);
+    super.dispose();
+  }
+
+  /// Replays the fit-gauge reveal on every *transition into* Home. Gated on the
+  /// edge (`!_wasOnHome`) so an in-place notification while already on Home —
+  /// e.g. a `push` that redirects straight back — doesn't restart the count-up
+  /// mid-animation.
+  void _onRouteChanged() {
+    if (!mounted) return;
+    final onHome = _router?.routerDelegate.currentConfiguration.uri.path == '/home';
+    if (onHome && !_wasOnHome) setState(() => _gaugeGen++);
+    _wasOnHome = onHome;
   }
 
   Future<void> _runPipeline() async {
@@ -135,7 +194,6 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
     if (force && !_throttle.shouldRun()) return;
     setState(() => _errorMessage = null);
     final painted = await _paintFromCache();
-    _lastUpdated = await CacheService.instance.cachedAtFor(CacheService.keyActivity);
 
     if (!force && painted && await CacheService.instance.isFresh(CacheService.keyActivity)) {
       if (mounted) setState(() => _isLoading = false);
@@ -164,7 +222,6 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
         _activity = results[2] as List<ActivityItem>;
         _staleSince = null;
         _isLoading = false;
-        _lastUpdated = DateTime.now();
       });
       await CacheService.instance.write(CacheService.keyApplications, [for (final a in _applications) a.raw]);
       await CacheService.instance.write(CacheService.keyActivity, [for (final a in _activity) a.raw]);
@@ -198,7 +255,7 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
       final feed = await _apiClient.fetchNotifications(limit: 1);
       if (mounted) setState(() => _unreadCount = feed.unreadCount);
     } catch (_) {
-      /* leave the bell badge hidden */
+      /* leave the bell dot hidden */
     }
   }
 
@@ -218,9 +275,11 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
   @override
   Widget build(BuildContext context) {
     // Phase 2c: rebuild when the shared matches list or the pipeline task state
-    // changes (replaces the old ValueNotifier listeners).
+    // changes (replaces the old ValueNotifier listeners). The rerank watch keeps
+    // the "agent is scoring" state below live too.
     ref.watch(matchFeedProvider);
     ref.watch(trackedTaskProvider((kind: TaskKind.pipeline, id: null)));
+    ref.watch(trackedTaskProvider((kind: TaskKind.rerank, id: null)));
     if (_isLoading) {
       // Phase 5 (§Phase 5 acceptance): no skeleton — cold load shows the brand
       // loader; a warm load paints the cached dashboard instantly instead.
@@ -266,263 +325,232 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
     return RefreshIndicator(
       onRefresh: () => _load(force: true),
       child: ListView(
+        // Horizontal gutter comes from AppShell (screenPadX); adding our own
+        // here double-padded Home and made it narrower than the other tabs.
         padding: EdgeInsets.zero,
         children: [
           if (_staleSince != null) ...[
             StaleBanner(cachedAt: _staleSince!, onRetry: () => _load(force: true)),
             const SizedBox(height: AppSpacing.space3),
-          ] else if (lastUpdatedLabel(_lastUpdated) != null) ...[
-            // ADR-028: keep the passive 5-minute freshness window visible.
-            Text(
-              lastUpdatedLabel(_lastUpdated)!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.c.inkFaint),
-            ),
-            const SizedBox(height: AppSpacing.space3),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('$_greeting, $_firstName', style: AppTypography.headingSm),
-                    const SizedBox(height: 2),
-                    Text(
-                      _matches.isEmpty ? 'No matches yet' : '${_matches.length} match${_matches.length == 1 ? '' : 'es'} ranked for you',
-                      style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
-                    ),
-                  ],
-                ),
-              ),
-              _runAgentButton(),
-              const SizedBox(width: AppSpacing.space2),
-              _activityBellButton(),
+          _greetingRow(),
+          const SizedBox(height: AppSpacing.space5),
+          if (_matches.isEmpty)
+            _noMatches()
+          else ...[
+            _gaugeBlock(),
+            const SizedBox(height: AppSpacing.space3),
+            _heroCard(_matches.first),
+            if (_matches.length > 1) ...[
+              const SizedBox(height: AppSpacing.space5),
+              _newJobsSection(),
             ],
-          ),
-          const SizedBox(height: AppSpacing.space4),
-          if (_matches.isNotEmpty) ...[
-            // §4.2 fit gauge — the top match's fit as the hero score, with the
-            // real day-over-day delta chip (hidden until two snapshots exist).
-            // Keyed on the score so a rerank that changes the top match remounts
-            // the gauge and re-runs its count-up (it's a one-shot animator); a
-            // later delta-chip arrival at the SAME score just rebuilds in place.
-            Center(
-              child: FitGauge(
-                key: ValueKey(_matches.first.fitScore),
-                target: _matches.first.fitScore,
-                delta: _scoreDelta,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.space3),
-            _newMatchesBanner(),
-            const SizedBox(height: AppSpacing.space3),
-            _heroMatchCard(_matches.first),
-            const SizedBox(height: AppSpacing.space4),
-          ],
-          _statGrid(),
-          if (_matches.length > 1) ...[
-            const SizedBox(height: AppSpacing.space5),
-            Row(
-              children: [
-                Text('Also matched', style: AppTypography.title),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => widget.onNavigateToTab?.call('matches'),
-                  child: Text('See all', style: AppTypography.caption.copyWith(color: context.c.accent, fontWeight: FontWeight.w600)),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.space3),
-            for (final m in _matches.skip(1).take(2)) ...[
-              _matchRow(m),
-              if (m != _matches.skip(1).take(2).last) const SizedBox(height: AppSpacing.space2),
+            if (_activity.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.space5),
+              _agentActivitySection(),
             ],
-          ],
-          if (_activity.isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.space5),
-            _recentActivitySection(),
           ],
         ],
       ),
     );
   }
 
-  Widget _runAgentButton() {
-    return GestureDetector(
-      onTap: _isRunningPipeline ? null : _runPipeline,
-      child: Container(
-        width: 42,
-        height: 42,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), shape: BoxShape.circle),
-        child: _isRunningPipeline
-            ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: context.c.accent))
-            : AppIcon(AppIconName.bot, size: 20, color: context.c.inkSoft),
-      ),
-    );
-  }
-
-  Widget _activityBellButton() {
-    return GestureDetector(
-      // §4.13: the bell badge counts unread notifications, so it opens the
-      // notification feed (the activity log stays reachable from Home's
-      // "Recent activity → View all").
-      onTap: () => context.push('/notifications'),
-      child: Container(
-        width: 42,
-        height: 42,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), shape: BoxShape.circle),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            AppIcon(AppIconName.bell, size: 20, color: context.c.inkSoft),
-            // §4.2: real unread count from GET /notifications (best-effort —
-            // 0 or a failed fetch shows no badge). 9+ caps the pill width.
-            if (_unreadCount > 0)
-              Positioned(
-                top: -6,
-                right: -6,
-                child: Container(
-                  constraints: const BoxConstraints(minWidth: 16),
-                  height: 16,
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: context.c.critical,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: context.c.surface, width: 2),
-                  ),
-                  child: Text(
-                    _unreadCount > 9 ? '9+' : '$_unreadCount',
-                    style: TextStyle(color: context.onAccent, fontSize: 9, fontWeight: FontWeight.w700, height: 1),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _newMatchesBanner() {
-    return Material(
-      color: context.c.info.withValues(alpha: 0.12),
-      borderRadius: AppRadius.mdRadius,
-      child: InkWell(
-        borderRadius: AppRadius.mdRadius,
-        onTap: () => widget.onNavigateToTab?.call('matches'),
-        child: Container(
-          decoration: BoxDecoration(borderRadius: AppRadius.mdRadius, border: Border.all(color: context.c.info.withValues(alpha: 0.30))),
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space3 + 2, vertical: AppSpacing.space3),
-          child: Row(
-            children: [
-              AppIcon(AppIconName.info, size: 18, color: context.c.info),
-              const SizedBox(width: AppSpacing.space2 + 2),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('New matches ready', style: AppTypography.bodySm.copyWith(color: context.c.info, fontWeight: FontWeight.w700)),
-                    Text(
-                      '${_matches.length} job${_matches.length == 1 ? '' : 's'} matched your profile.',
-                      style: AppTypography.label.copyWith(color: context.c.info),
-                    ),
-                  ],
-                ),
-              ),
-              AppIcon(AppIconName.chevronRight, size: 18, color: context.c.info),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _recentActivitySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text('Recent activity', style: AppTypography.title),
-            const Spacer(),
-            GestureDetector(
-              onTap: () => context.push('/activity'),
-              child: Text('View all', style: AppTypography.caption.copyWith(color: context.c.accent, fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.space3),
-        Container(
-          padding: const EdgeInsets.all(AppSpacing.space4),
-          decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), borderRadius: AppRadius.lgRadius),
-          child: Column(
-            children: [
-              for (var i = 0; i < _activity.length; i++) ...[
-                _activityRow(context, _activity[i]),
-                if (i != _activity.length - 1) const SizedBox(height: AppSpacing.space3),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _activityRow(BuildContext context, ActivityItem item) {
-    final glyph = activityGlyphFor(context, item);
+  // ── 1. Greeting + bell ────────────────────────────────────────────────
+  Widget _greetingRow() {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          width: 28,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: glyph.bg, shape: BoxShape.circle),
-          child: AppIcon(glyph.icon, size: 13, color: glyph.fg),
-        ),
-        const SizedBox(width: AppSpacing.space2 + 2),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.title, style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                '$_greeting, $_firstName',
+                style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
+              ),
               const SizedBox(height: 1),
-              Text(item.detail, style: AppTypography.label.copyWith(color: context.c.inkFaint)),
+              Text(
+                _matches.isEmpty ? 'Your dashboard' : "Today's top match",
+                style: AppTypography.headingSm.copyWith(fontSize: 20),
+              ),
             ],
           ),
         ),
+        _bellButton(),
       ],
     );
   }
 
-  Widget _heroMatchCard(MatchItem m) {
+  Widget _bellButton() {
+    return GestureDetector(
+      onTap: () => context.push('/notifications'),
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: context.c.surface,
+          border: Border.all(color: context.c.border),
+          borderRadius: AppRadius.mdRadius,
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            AppIcon(AppIconName.bell, size: 19, color: context.c.ink),
+            // §4.2: the prototype's simple unread dot (real count from GET
+            // /notifications; 0 or a failed fetch shows nothing).
+            if (_unreadCount > 0)
+              Positioned(
+                top: -3,
+                right: -3,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: context.c.critical,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: context.c.surface, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── 2. Fit gauge + refresh pill + last-updated ────────────────────────
+  Widget _gaugeBlock() {
+    return Column(
+      children: [
+        // Keyed on the score so a rerank that changes the top match remounts
+        // the gauge and re-runs its count-up (it's a one-shot animator); a
+        // later delta-chip arrival at the SAME score just rebuilds in place.
+        // `_gaugeGen` adds the same remount on every re-entry into Home, so the
+        // reveal plays again even when the score itself hasn't moved.
+        FitGauge(
+          key: ValueKey('${_matches.first.fitScore}-$_gaugeGen'),
+          target: _matches.first.fitScore,
+          delta: _scoreDelta,
+        ),
+        const SizedBox(height: AppSpacing.space2),
+        _refreshPill(),
+      ],
+    );
+  }
+
+  Widget _refreshPill() {
+    return GestureDetector(
+      onTap: _isRunningPipeline ? null : _runPipeline,
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 26),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: context.c.ink,
+          borderRadius: BorderRadius.circular(23),
+          boxShadow: const [BoxShadow(color: Color(0x33000000), offset: Offset(0, 8), blurRadius: 20)],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isRunningPipeline) ...[
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: context.c.paper),
+              ),
+              const SizedBox(width: AppSpacing.space2),
+            ],
+            Text(
+              _isRunningPipeline ? 'Refreshing…' : 'Refresh now',
+              style: AppTypography.bodySm.copyWith(color: context.c.paper, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── 3. Hero card (top match) ──────────────────────────────────────────
+  Widget _heroCard(MatchItem m) {
+    final job = m.job;
+    final locBits = [job.company, job.location].where((s) => s != null && s.isNotEmpty).cast<String>();
     return Material(
       color: context.c.surface,
-      borderRadius: AppRadius.lgRadius,
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        borderRadius: AppRadius.lgRadius,
-        onTap: () => context.push('/tailor', extra: TailorArgs(jobId: m.job.id, jobTitle: m.job.title)),
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => context.push('/match', extra: MatchArgs(match: m)),
         child: Container(
-          decoration: BoxDecoration(border: Border.all(color: context.c.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
-          padding: const EdgeInsets.all(AppSpacing.space4),
-          child: Row(
+          decoration: BoxDecoration(
+            border: Border.all(color: context.c.border),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // No ScoreRing here — the fit gauge above owns the score, so the
-              // best-match card is the detail card (§4.2), not a second gauge.
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('BEST MATCH', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
-                    const SizedBox(height: 2),
-                    Text(m.job.title, style: AppTypography.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text(m.job.company ?? '', style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
-                    const SizedBox(height: AppSpacing.space2),
-                    StatusPill(context: PillContext.verdict, value: m.verdict, size: PillSize.sm),
-                  ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          job.title,
+                          style: AppTypography.headingSm,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          locBits.join(' · '),
+                          style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.space3),
+                  _freshBadge(m),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.space3),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (job.salaryLabel != null) _salaryChip(job),
+                  _sourceChip(job.source),
+                ],
+              ),
+              const SizedBox(height: 14),
+              // "Tailor résumé & apply" action bar — the one consequential CTA
+              // on Home. Tapping it enters the tailor flow (the card tap opens
+              // match detail).
+              GestureDetector(
+                onTap: () => context.push('/tailor', extra: TailorArgs(jobId: job.id, jobTitle: job.title)),
+                child: Container(
+                  height: 46,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  decoration: BoxDecoration(
+                    color: context.c.accent,
+                    borderRadius: AppRadius.mdRadius,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Tailor résumé & apply',
+                        style: AppTypography.bodySm.copyWith(color: context.onAccent, fontWeight: FontWeight.w600),
+                      ),
+                      const Spacer(),
+                      Icon(Icons.arrow_forward_rounded, size: 18, color: context.onAccent),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -532,82 +560,263 @@ class _HomeBodyState extends ConsumerState<HomeBody> {
     );
   }
 
-  Widget _statGrid() {
-    final applied = _applications.where((a) => a.state != 'saved').length;
-    final saved = _applications.where((a) => a.state == 'saved').length;
-    final stats = [
-      ('${_matches.length}', 'Matches', context.c.accent),
-      ('$applied', 'Applied', context.c.info),
-      ('$saved', 'Saved', context.c.success),
-    ];
-    return Row(
+  // ── 4. New jobs today (remaining matches) ─────────────────────────────
+  Widget _newJobsSection() {
+    final rest = _matches.skip(1).take(4).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < stats.length; i++) ...[
-          if (i > 0) const SizedBox(width: AppSpacing.space2),
-          Expanded(child: _StatTile(value: stats[i].$1, label: stats[i].$2, color: stats[i].$3)),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text('New jobs today', style: AppTypography.title),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => widget.onNavigateToTab?.call('jobs'),
+              child: Text(
+                'See all',
+                style: AppTypography.caption.copyWith(color: context.c.accent, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.space3),
+        for (var i = 0; i < rest.length; i++) ...[
+          if (i > 0) const SizedBox(height: 9),
+          _jobRow(rest[i]),
         ],
       ],
     );
   }
 
-  Widget _matchRow(MatchItem m) {
+  Widget _jobRow(MatchItem m) {
+    final job = m.job;
+    final salary = job.salaryLabel;
+    final sub = [job.company, salary].where((s) => s != null && s.isNotEmpty).join(' · ');
     return Material(
       color: context.c.surface,
       borderRadius: AppRadius.lgRadius,
       child: InkWell(
         borderRadius: AppRadius.lgRadius,
-        onTap: () => context.push('/tailor', extra: TailorArgs(jobId: m.job.id, jobTitle: m.job.title)),
+        onTap: () => context.push('/match', extra: MatchArgs(match: m)),
         child: Container(
-          decoration: BoxDecoration(border: Border.all(color: context.c.border), borderRadius: AppRadius.lgRadius, boxShadow: AppElevation.e1),
-          padding: const EdgeInsets.all(AppSpacing.space3),
+          decoration: BoxDecoration(border: Border.all(color: context.c.border), borderRadius: AppRadius.lgRadius),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              ScoreRing(score: m.fitScore, size: 44),
+              SourceChip(source: job.source, size: 30),
               const SizedBox(width: AppSpacing.space3),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(m.job.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text(m.job.company ?? '', style: AppTypography.bodySm.copyWith(color: context.c.inkSoft)),
+                    Text(
+                      job.title,
+                      style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      sub,
+                      style: AppTypography.caption.copyWith(color: context.c.inkSoft),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
-              StatusPill(context: PillContext.verdict, value: m.verdict, size: PillSize.sm),
+              const SizedBox(width: AppSpacing.space2),
+              _freshBadge(m),
             ],
           ),
         ),
       ),
     );
   }
-}
 
-class _StatTile extends StatelessWidget {
-  const _StatTile({required this.value, required this.label, required this.color});
+  // ── 5. Agent activity ─────────────────────────────────────────────────
+  Widget _agentActivitySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text('Agent activity', style: AppTypography.title),
+            const Spacer(),
+            GestureDetector(
+              onTap: () => context.push('/activity'),
+              child: Text(
+                'View all',
+                style: AppTypography.caption.copyWith(color: context.c.accent, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.space1),
+        for (final item in _activity) _activityRow(item),
+      ],
+    );
+  }
 
-  final String value;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _activityRow(ActivityItem item) {
+    final glyph = activityGlyphFor(context, item);
     return Container(
-      decoration: BoxDecoration(color: context.c.surface, border: Border.all(color: context.c.border), borderRadius: AppRadius.mdRadius),
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.space3, horizontal: 4),
-      child: Column(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.c.border)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            value,
-            style: TextStyle(fontFamily: AppTypography.monoData.fontFamily, fontSize: 22, fontWeight: FontWeight.w700, color: color, letterSpacing: -0.4),
+          Padding(
+            padding: const EdgeInsets.only(top: 5),
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(color: glyph.fg, shape: BoxShape.circle),
+            ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(width: AppSpacing.space3),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title, style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w500)),
+                const SizedBox(height: 1),
+                Text(item.detail, style: AppTypography.caption.copyWith(color: context.c.inkSoft)),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.space2),
           Text(
-            label.toUpperCase(),
-            style: AppTypography.label.copyWith(color: context.c.inkFaint),
-            textAlign: TextAlign.center,
+            _relativeTime(item.timestamp),
+            style: AppTypography.monoData.copyWith(fontSize: 11, color: context.c.inkFaint),
           ),
         ],
       ),
     );
+  }
+
+  // ── Shared small pieces ───────────────────────────────────────────────
+
+  /// A fresh match (ranked/posted recently) gets an accent "NEW" badge;
+  /// otherwise the posting's relative date in the neutral chip.
+  Widget _freshBadge(MatchItem m) {
+    if (m.isNew) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: context.c.accentSoft, borderRadius: AppRadius.smRadius),
+        child: Text(
+          'NEW',
+          style: AppTypography.label.copyWith(color: context.c.accent, letterSpacing: 0.6),
+        ),
+      );
+    }
+    final label = m.job.postedAtLabel;
+    if (label == null) return const SizedBox.shrink();
+    return Text(
+      label,
+      style: AppTypography.monoData.copyWith(fontSize: 11, color: context.c.inkFaint),
+    );
+  }
+
+  Widget _salaryChip(Job job) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.c.surface2,
+        border: Border.all(color: context.c.border),
+        borderRadius: AppRadius.smRadius,
+      ),
+      child: Text(
+        job.salaryLabel!,
+        style: AppTypography.monoData.copyWith(fontSize: 12, color: context.c.ink, fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+
+  Widget _sourceChip(String source) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 4, 10, 4),
+      decoration: BoxDecoration(
+        color: context.c.surface2,
+        border: Border.all(color: context.c.border),
+        borderRadius: AppRadius.smRadius,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SourceChip(source: source, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            _sourceLabel(source),
+            style: AppTypography.caption.copyWith(color: context.c.inkSoft, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── 0. No-matches empty state (prototype homeEmpty) ───────────────────
+  Widget _noMatches() {
+    // Scoring in flight → the agent scene, not the dead-end empty state. This
+    // is what a first-run user sees if they land here before the rerank that
+    // MatchingLoadingScreen started has finished.
+    if (_isScoring) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 24),
+        child: Column(
+          children: [
+            const AgentScene(kind: AgentSceneKind.matching, size: 200),
+            const SizedBox(height: AppSpacing.space4),
+            Text('Scoring your matches…', style: AppTypography.title, textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            Text(
+              'The agent is reading job descriptions and ranking your fit. '
+              'They appear here as soon as it finishes.',
+              style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 40),
+      child: Column(
+        children: [
+          EmptyState(
+            icon: AppIconName.target,
+            title: 'No matches yet',
+            message: 'Your agent is still learning what you want. Browse jobs and '
+                'bookmark a few — it will rank your fit.',
+          ),
+          const SizedBox(height: AppSpacing.space4),
+          ElevatedButton(
+            onPressed: () => widget.onNavigateToTab?.call('jobs'),
+            child: const Text('Browse jobs'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _sourceLabel(String source) {
+    final key = source.trim();
+    if (key.isEmpty) return 'Source';
+    // Title-case the raw source token (e.g. "google_form" → "Google Form").
+    return key
+        .split(RegExp(r'[_\s]+'))
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
+
+  String _relativeTime(DateTime t) {
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 1) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    return '${diff.inDays}d';
   }
 }

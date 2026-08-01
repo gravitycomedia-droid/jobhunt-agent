@@ -114,6 +114,17 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
   late final TextEditingController _name;
   late final TextEditingController _headline;
   late final TextEditingController _skills;
+
+  // Migration 026 — the résumé's contact block. Pre-filled from whatever the
+  // parser could read off the uploaded file, so this is a confirm-and-correct
+  // step during onboarding rather than blank data entry. Also editable later
+  // from Settings → Contact details.
+  late final TextEditingController _email;
+  late final TextEditingController _phone;
+  late final TextEditingController _location;
+  late final TextEditingController _linkedin;
+  late final TextEditingController _github;
+  late final TextEditingController _website;
   late List<_ExperienceControllers> _experience;
   late List<_ProjectControllers> _projects;
   late List<_EducationControllers> _education;
@@ -128,6 +139,12 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
     _name = TextEditingController(text: p.name);
     _headline = TextEditingController(text: p.headline ?? '');
     _skills = TextEditingController(text: p.skills.join(', '));
+    _email = TextEditingController(text: p.email ?? '');
+    _phone = TextEditingController(text: p.phone ?? '');
+    _location = TextEditingController(text: p.location ?? '');
+    _linkedin = TextEditingController(text: p.linkedinUrl ?? '');
+    _github = TextEditingController(text: p.githubUrl ?? '');
+    _website = TextEditingController(text: p.websiteUrl ?? '');
     _experience = p.experience.map((e) => _ExperienceControllers.fromItem(e)).toList();
     _projects = p.projects.map((pr) => _ProjectControllers.fromItem(pr)).toList();
     _education = p.education.map((ed) => _EducationControllers.fromItem(ed)).toList();
@@ -138,6 +155,9 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
     _name.dispose();
     _headline.dispose();
     _skills.dispose();
+    for (final c in [_email, _phone, _location, _linkedin, _github, _website]) {
+      c.dispose();
+    }
     for (final e in _experience) {
       e.dispose();
     }
@@ -164,6 +184,15 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
       experience: _experience.map((e) => e.toItem()).toList(),
       projects: _projects.map((p) => p.toItem()).toList(),
       education: _education.map((ed) => ed.toItem()).toList(),
+      // Always non-null (possibly '') so this screen is authoritative for the
+      // contact block: an emptied field clears the stored value rather than
+      // reading as "leave it alone" — see ResumeProfile.contactJson.
+      email: _email.text.trim(),
+      phone: _phone.text.trim(),
+      location: _location.text.trim(),
+      linkedinUrl: _linkedin.text.trim(),
+      githubUrl: _github.text.trim(),
+      websiteUrl: _website.text.trim(),
     );
 
     try {
@@ -197,6 +226,36 @@ class _ProfileReviewScreenState extends State<ProfileReviewScreen> {
           AppFormField(label: 'Headline', controller: _headline),
           const SizedBox(height: AppSpacing.space3),
           AppFormField(label: 'Skills', hint: 'Comma-separated', controller: _skills, multiline: true, rows: 2),
+          const SizedBox(height: AppSpacing.space6),
+          // Migration 026 — printed at the top of every résumé the agent
+          // builds. Blank fields are simply left off the PDF.
+          _sectionLabel('Contact'),
+          AppFormField(label: 'Email', controller: _email, keyboardType: TextInputType.emailAddress),
+          const SizedBox(height: AppSpacing.space3),
+          AppFormField(label: 'Phone', controller: _phone, keyboardType: TextInputType.phone),
+          const SizedBox(height: AppSpacing.space3),
+          AppFormField(label: 'Location', hint: 'City, country', controller: _location),
+          const SizedBox(height: AppSpacing.space3),
+          AppFormField(
+            label: 'LinkedIn',
+            hint: 'linkedin.com/in/your-handle',
+            controller: _linkedin,
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: AppSpacing.space3),
+          AppFormField(
+            label: 'GitHub',
+            hint: 'github.com/your-handle',
+            controller: _github,
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: AppSpacing.space3),
+          AppFormField(
+            label: 'Personal website',
+            hint: 'Optional',
+            controller: _website,
+            keyboardType: TextInputType.url,
+          ),
           const SizedBox(height: AppSpacing.space6),
           _sectionLabel('Experience'),
           ..._experience.asMap().entries.map((entry) => _experienceCard(entry.key, entry.value)),

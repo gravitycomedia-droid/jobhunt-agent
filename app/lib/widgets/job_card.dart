@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/haptic_service.dart';
+
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import 'app_icon.dart';
+import 'outer_shadow.dart';
 
 /// Base job card — logo, title, company, location, source chip, plus
 /// optional salary/posted date. Used directly for Jobs List and
@@ -79,72 +82,85 @@ class JobCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasMetaRow = location != null || postedAt != null || salary != null || source != null;
 
-    return Material(
-      color: context.c.surface,
+    // Transparent card: the page's `paper` reads straight through, and the card
+    // is separated from it by a hairline border plus a drop shadow instead of
+    // by a fill. The shadow has to come from [OuterShadow] — a plain
+    // `boxShadow` here would paint *through* the transparent card and grey the
+    // interior out (which is what used to make these read as flat grey blocks).
+    return OuterShadow(
       borderRadius: AppRadius.lgRadius,
-      child: InkWell(
-        onTap: onPress,
+      shadows: AppElevation.e2,
+      child: Material(
+        color: Colors.transparent,
         borderRadius: AppRadius.lgRadius,
-        child: Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            border: Border.all(color: context.c.border),
-            borderRadius: AppRadius.lgRadius,
-            boxShadow: AppElevation.e1,
-          ),
-          padding: const EdgeInsets.all(AppSpacing.space4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _Logo(company: company, logoUrl: logoUrl),
-                  const SizedBox(width: AppSpacing.space3),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: AppTypography.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          company,
-                          style: AppTypography.bodySm.copyWith(
-                            color: context.c.inkSoft,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  trailing ?? (onBookmark != null ? _BookmarkButton(bookmarked: bookmarked, onTap: onBookmark!) : const SizedBox.shrink()),
-                ],
-              ),
-              if (hasMetaRow) ...[
-                const SizedBox(height: AppSpacing.space3),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+        child: InkWell(
+          onTap: onPress == null
+              ? null
+              : () {
+                  HapticService.instance.selection();
+                  onPress!();
+                },
+          borderRadius: AppRadius.lgRadius,
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              border: Border.all(color: context.c.border),
+              borderRadius: AppRadius.lgRadius,
+            ),
+            padding: const EdgeInsets.all(AppSpacing.space4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (location != null) _Meta(icon: AppIconName.mapPin, text: location!),
-                    if (postedAt != null) _Meta(icon: AppIconName.clock, text: postedAt!),
-                    if (salary != null) _Meta(text: salary!, mono: true),
-                    if (source != null) _SourceChip(source: source!, url: sourceUrl),
+                    _Logo(company: company, logoUrl: logoUrl),
+                    const SizedBox(width: AppSpacing.space3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: AppTypography.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 1),
+                          Text(
+                            company,
+                            style: AppTypography.bodySm.copyWith(
+                              color: context.c.inkSoft,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    trailing ?? (onBookmark != null ? _BookmarkButton(bookmarked: bookmarked, onTap: onBookmark!) : const SizedBox.shrink()),
                   ],
                 ),
+                if (hasMetaRow) ...[
+                  const SizedBox(height: AppSpacing.space3),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (location != null) _Meta(icon: AppIconName.mapPin, text: location!),
+                      if (postedAt != null) _Meta(icon: AppIconName.clock, text: postedAt!),
+                      if (salary != null) _Meta(text: salary!, mono: true),
+                      if (source != null) _SourceChip(source: source!, url: sourceUrl),
+                    ],
+                  ),
+                ],
+                if (children != null && children!.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.space3),
+                  ...children!,
+                ],
               ],
-              if (children != null && children!.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.space3),
-                ...children!,
-              ],
-            ],
+            ),
           ),
         ),
       ),
@@ -232,24 +248,33 @@ class _SourceChip extends StatelessWidget {
     final enabled = url != null && url!.isNotEmpty;
     final fg = enabled ? context.c.info : context.c.inkFaint;
 
-    final chip = DecoratedBox(
-      decoration: BoxDecoration(
-        color: enabled ? context.c.info.withValues(alpha: 0.12) : context.c.surface2,
-        border: Border.all(color: enabled ? context.c.info.withValues(alpha: 0.30) : context.c.border),
-        borderRadius: AppRadius.pillRadius,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AppIcon(AppIconName.externalLink, size: 11, color: fg),
-            const SizedBox(width: 4),
-            Text(
-              source,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
-            ),
-          ],
+    // Transparent fill: the chip takes its colour from the card it sits on
+    // (jobs list + matches list share this widget), separated from it by a
+    // hairline border plus a soft drop shadow rather than by a tinted block.
+    // [OuterShadow] keeps that shadow outside the pill — a plain `boxShadow`
+    // would tint the see-through interior grey.
+    final chip = OuterShadow(
+      borderRadius: AppRadius.pillRadius,
+      shadows: AppElevation.e1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          border: Border.all(color: enabled ? context.c.info.withValues(alpha: 0.30) : context.c.border),
+          borderRadius: AppRadius.pillRadius,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(AppIconName.externalLink, size: 11, color: fg),
+              const SizedBox(width: 4),
+              Text(
+                source,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -274,11 +299,7 @@ class _BookmarkButton extends StatelessWidget {
       onPressed: onTap,
       padding: const EdgeInsets.all(4),
       constraints: const BoxConstraints(),
-      icon: AppIcon(
-        AppIconName.bookmark,
-        size: 20,
-        color: bookmarked ? context.c.accent : context.c.inkFaint,
-      ),
+      icon: AppIcon(AppIconName.bookmark, size: 20, color: bookmarked ? context.c.accent : context.c.inkFaint),
     );
   }
 }

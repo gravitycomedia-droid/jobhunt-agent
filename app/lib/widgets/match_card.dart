@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/haptic_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import 'app_icon.dart';
@@ -147,7 +148,10 @@ class _MatchCardState extends State<MatchCard> {
                     if (widget.verdict != null) StatusPill(context: PillContext.verdict, value: widget.verdict!),
                     const Spacer(),
                     TextButton(
-                      onPressed: () => setState(() => _open = !_open),
+                      onPressed: () {
+                        HapticService.instance.selection();
+                        setState(() => _open = !_open);
+                      },
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.all(2),
                         minimumSize: Size.zero,
@@ -184,7 +188,15 @@ class _MatchCardState extends State<MatchCard> {
                   const SizedBox(height: AppSpacing.space3),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(onPressed: widget.onTailor, child: Text(widget.tailorLabel)),
+                    child: ElevatedButton(
+                      onPressed: widget.onTailor == null
+                          ? null
+                          : () {
+                              HapticService.instance.light();
+                              widget.onTailor!();
+                            },
+                      child: Text(widget.tailorLabel),
+                    ),
                   ),
                 ],
               ],

@@ -8,6 +8,7 @@ import '../screens/add_job_screen.dart';
 import '../screens/applications_body.dart';
 import '../screens/auth_screen.dart';
 import '../screens/career_chat_screen.dart';
+import '../screens/contact_details_screen.dart';
 import '../screens/debug_gallery_screen.dart';
 import '../screens/delete_account_screen.dart';
 import '../screens/form_fill_screen.dart';
@@ -25,9 +26,9 @@ import '../screens/resume_preview_screen.dart';
 import '../screens/resume_upload_screen.dart';
 import '../screens/skill_growth_screen.dart';
 import '../screens/splash_screen.dart';
+import '../screens/startup_loading_screen.dart';
 import '../screens/wallet_screen.dart';
 import '../services/haptic_service.dart';
-import '../widgets/app_loader.dart';
 import '../widgets/app_shell.dart';
 import 'app_router_notifier.dart';
 import 'route_args.dart';
@@ -81,8 +82,7 @@ final GoRouter appRouter = GoRouter(
   // Any stray/unknown location (including an OAuth callback that leaks through
   // to go_router instead of being consumed by supabase_flutter) resolves via
   // the redirect above rather than showing a 404.
-  errorBuilder: (context, state) =>
-      const Scaffold(body: Center(child: AppLoader())),
+  errorBuilder: (context, state) => const StartupLoadingScreen(),
   routes: [
     GoRoute(path: '/splash', builder: (context, state) => SplashScreen(
           onGetStarted: () => context.go('/signup'),
@@ -96,8 +96,11 @@ final GoRouter appRouter = GoRouter(
           onBack: () => context.go('/splash'),
         )),
     GoRoute(
+      // Signed in, routing decision pending. A *visible* wait with an escape
+      // hatch — the old bare loader on `paper` was indistinguishable from a
+      // blank white screen when the decision stalled (ADR-051).
       path: '/loading',
-      builder: (context, state) => const Scaffold(body: Center(child: AppLoader())),
+      builder: (context, state) => const StartupLoadingScreen(),
     ),
     GoRoute(
       path: '/onboarding',
@@ -156,6 +159,12 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const AboutScreen(),
     ),
     GoRoute(
+      // Migration 026 — the résumé PDF's contact header.
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/contact-details',
+      builder: (context, state) => const ContactDetailsScreen(),
+    ),
+    GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/delete-account',
       builder: (context, state) => const DeleteAccountScreen(),
@@ -195,6 +204,9 @@ final GoRouter appRouter = GoRouter(
           formTitle: args.formTitle,
           filledCount: args.filledCount,
           fileUploadLabels: args.fileUploadLabels,
+          jobId: args.jobId,
+          jobTitle: args.jobTitle,
+          signInUrl: args.signInUrl,
         );
       },
     ),
@@ -251,6 +263,7 @@ class _TabShell extends StatelessWidget {
     return AppShell(
       active: _tabKeys[shell.currentIndex],
       showHeader: false,
+      onChatTap: () => context.push('/chat'),
       onNavigate: (key) {
         final index = _tabKeys.indexOf(key);
         if (index >= 0) {

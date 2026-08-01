@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/resume_profile.dart';
 import '../models/tailored_resume.dart';
 import '../services/api_client.dart';
+import '../services/haptic_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
@@ -81,10 +82,12 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
   Future<void> _submit() async {
     final resume = _resume;
     if (resume == null) return;
+    HapticService.instance.light();
     setState(() => _isSubmitting = true);
     try {
       await _apiClient.saveToTracker(widget.jobId, resumeVersionId: resume.id);
       if (!mounted) return;
+      HapticService.instance.medium();
       setState(() {
         _isSubmitting = false;
         _submitted = true;
@@ -103,6 +106,11 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
   Future<void> _createPdf() async {
     final resume = _resume;
     if (resume == null) return;
+    // Capture the share-popover source rect BEFORE any await — reading the
+    // render box after an async gap risks a disposed/resized element.
+    final box = context.findRenderObject() as RenderBox?;
+    final origin = box != null && box.hasSize ? box.localToGlobal(Offset.zero) & box.size : null;
+    HapticService.instance.light();
     setState(() => _isDownloadingPdf = true);
     try {
       final bytes = await _apiClient.downloadResumePdf(resume.id);
@@ -111,9 +119,13 @@ class _ResumePreviewScreenState extends State<ResumePreviewScreen> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/tailored-resume.pdf');
       await file.writeAsBytes(bytes, flush: true);
+      // iOS/iPad require a non-zero source rect for the share popover (`origin`,
+      // captured pre-await) — without it share_plus throws
+      // "sharePositionOrigin: argument must be set".
       await Share.shareXFiles(
         [XFile(file.path, mimeType: 'application/pdf')],
         subject: 'Resume — ${widget.jobTitle}',
+        sharePositionOrigin: origin,
       );
     } catch (e) {
       if (!mounted) return;

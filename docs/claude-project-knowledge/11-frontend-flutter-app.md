@@ -48,7 +48,7 @@ back-nav skips it) → `ResumePreviewScreen` ("Submit application").
 | `resume_upload_screen.dart` | PDF upload (`file_picker`) → `POST /resume/parse`. |
 | `profile_review_screen.dart` | Editable review of the parsed profile; saves via `PATCH /resume/profile`. |
 | `target_roles_screen.dart` | Onboarding: target roles (chip input) + min salary. |
-| `matching_loading_screen.dart` | Transitional screen; fires refresh/rerank in background, then hands off to `MainTabScreen`. |
+| `matching_loading_screen.dart` | First-run gate: refresh pool → **awaits** the rerank → refreshes the match feed → hands off, playing `AgentScene` with a 3-step progress strip (ADR-048). Escape hatch at 40s, auto hand-off at 6min. |
 | `onboarding_flow.dart` | Orchestrates Welcome → Upload → Review → TargetRoles → Matching. |
 | `main_tab_screen.dart` | Signed-in shell: 5-tab bottom nav via `AppShell` + `IndexedStack`. |
 | `home_body.dart` | Greeting, activity bell, new-matches banner, hero top match, stat grid, recent activity teaser. |
@@ -63,8 +63,9 @@ back-nav skips it) → `ResumePreviewScreen` ("Submit application").
 | `resume_preview_screen.dart` | Compiled preview; "Submit application" saves to tracker. |
 | `profile_body.dart` | Account info, links to sub-screens, sign-out. |
 | `cost_stats_screen.dart` | Monthly LLM cost/usage breakdown. |
-| `activity_log_screen.dart` | Full agent activity feed. |
-| `skill_growth_screen.dart` | Skills-to-learn from real match gaps. |
+| `activity_log_screen.dart` | Full agent activity feed; cache-first with an "Updated …" line + pull-to-refresh (ADR-049). |
+| `skill_growth_screen.dart` | Skills-to-learn from real match gaps; cached for 12h because the endpoint is a ~50s LLM call (ADR-049). |
+| `career_chat_screen.dart` | Grounded career chat; cached history, "Recent chats" under the greeting and in a pull-to-refresh sheet (ADR-050). |
 | `settings_screen.dart` | Two notification toggles (alerts, follow-up nudge) — deliberately no "auto-apply" toggle. |
 
 Two older screens, `home_screen.dart` and `jobs_list_screen.dart`, were
@@ -116,7 +117,9 @@ A real, consistent token-driven system — not ad-hoc per-screen styling:
   tokens; code comments frame it as "the equivalent of FlutterFlow's Theme
   Settings panel" for the builder's benefit.
 - **`lib/widgets/`** (16 files) — the matching component library:
-  `app_shell.dart` (screen frame + bottom nav), `app_icon.dart`, `app_banner.dart`,
+  `app_shell.dart` (screen frame + the **floating pill** bottom nav, ADR-047),
+  `agent_scene.dart` (the animated "agent at work" scene — mascot, inbound
+  tokens, shuffling job cards), `app_icon.dart`, `app_banner.dart`,
   `app_form_field.dart`, `job_card.dart`, `match_card.dart`,
   `application_card.dart`, `kanban_column.dart`, `status_pill.dart`,
   `score_ring.dart`, `similarity_bar.dart`, `diff_row.dart`, `empty_state.dart`,
@@ -140,3 +143,30 @@ package, no state-management package, no code-gen package.**
 `SupabaseConfig.redirectUrl`. Release build signs with a **real upload keystore**
 via `android/key.properties` (ADR-030); R8 on; `build.gradle.kts` hard-fails if
 `key.properties` is missing (no debug-cert fallback).
+
+## Platform (iOS) — dev-testable via free-tier sideload
+
+Added 2026-07-25 (ADR-011 / root `DECISIONS.md` ADR-042) so the app runs on a
+personal iPhone via a free Apple ID (7-day signing, no TestFlight/App Store).
+- **Bundle id**: `com.jobhuntagent.jobhuntAgent` (camelCase; the Flutter
+  default) across Debug/Release/Profile in `Runner.xcodeproj`. It is
+  deliberately NOT `jobhunt_agent` — the underscore breaks free-team auto
+  signing (Apple rejects the auto-derived App ID *name*), and the iOS bundle id
+  need not match Android's applicationId. See ADR-042.
+- **Google OAuth is now dual-platform**: iOS registers the custom-scheme
+  redirect via `CFBundleURLTypes` in `ios/Runner/Info.plist`, the direct mirror
+  of Android's intent-filter. The scheme is **`com.jobhuntagent.firstrole`**
+  (matches `SupabaseConfig.redirectUrl`), deliberately *not* the bundle id — a
+  URI scheme can't contain an underscore. No custom `AppDelegate`/`SceneDelegate`
+  open-URL override is needed: `supabase_flutter` handles the deep link through
+  `app_links`, which supports the scene-based `FlutterSceneDelegate` in use.
+- **Push is Android-only, now an explicit early return** (not a caught
+  exception): `push_service.dart` guards on `TargetPlatform.iOS` and logs
+  `"iOS push not yet configured — skipping FCM init"` before ever calling
+  `Firebase.initializeApp()`. No Firebase iOS app / APNs key exists.
+- **`ios/Podfile`** (newly created) pins `platform :ios, '13.0'` — the highest
+  minimum among `firebase_core`/`firebase_messaging`/`supabase_flutter`.
+- `file_picker` resume upload needs no iOS `Info.plist` keys (PDF via
+  `UIDocumentPickerViewController`, no photo/camera permission).
+- **Not release-ready**: no paid Apple account, so 7-day expiry, no TestFlight,
+  no App Store. On-device verification pending (no Mac/device in the build env).

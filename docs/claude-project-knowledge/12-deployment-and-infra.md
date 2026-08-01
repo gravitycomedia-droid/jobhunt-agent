@@ -49,9 +49,13 @@ re-rank/tailor calls). The Render history below survives only inside ADR-010/014
 - **Only Cloud Messaging is configured** — no Firebase Auth, Firestore,
   Analytics, or Crashlytics in this project. Firebase's sole job here is
   Android push notifications.
-- **Android-only**: `lib/firebase_options.dart` (FlutterFire-CLI-generated)
-  only populates the `android` case; iOS/macOS/windows/linux/web all `throw
-  UnsupportedError`. No APNs key or iOS Firebase app registered (ADR-007).
+- **Android-only, unchanged by the 2026-07-25 iOS sideload work**:
+  `lib/firebase_options.dart` (FlutterFire-CLI-generated) still only populates
+  the `android` case; iOS/macOS/windows/linux/web all `throw UnsupportedError`.
+  **No APNs key or iOS Firebase app is provisioned** (ADR-007). On iOS,
+  `push_service.dart` now returns early with a logged skip rather than letting
+  that `UnsupportedError` be caught (ADR-011 / root `DECISIONS.md` ADR-042) —
+  push there stays a deliberate no-op until a paid Apple account is added.
 - Config files: `app/firebase.json` (FlutterFire config, maps `android.default`
   → `android/app/google-services.json`), `android/app/google-services.json`
   (+ a stray, structurally-identical duplicate `google-services-2.json` — worth
@@ -100,7 +104,15 @@ search scope; `PIPELINE_SECRET` gates the cron endpoint.
   **hard-fails** the release build if `key.properties` is missing — no silent
   fallback to the debug cert. The keystore lives outside the repo and is
   unbacked-up. Play closed testing is set up (`docs/PLAY_CONSOLE.md`).
-- iOS: no build/signing/distribution setup at all — out of scope for now.
+- iOS: **runs on-device via free-tier release sideload** (ADR-011 / root
+  `DECISIONS.md` ADR-042). Bundle id `com.jobhuntagent.jobhuntAgent` (camelCase;
+  NOT `jobhunt_agent` — the underscore breaks free-team signing; it need not
+  match Android). Google OAuth redirect wired via `CFBundleURLTypes` (scheme
+  `com.jobhuntagent.firstrole`), and a Flutter `ios/Podfile` at
+  `platform :ios, '13.0'`. Free Apple ID only → **7-day signing, no TestFlight,
+  no App Store, no Firebase iOS project / APNs key** (push is a no-op on iOS).
+  A real iOS release path (paid Developer account, APNs, TestFlight) is still
+  unbuilt. On-device verification pending (no Mac/device in this env).
 
 ## CI/CD
 

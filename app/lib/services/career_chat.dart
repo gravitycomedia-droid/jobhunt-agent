@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import '../models/background_task.dart';
 import '../models/chat_message.dart';
 import 'api_client.dart';
+import 'cache_service.dart';
 
 /// Observable state for one career-chat conversation (§4.10).
 ///
@@ -18,7 +19,10 @@ class ChatState {
   const ChatState({
     this.messages = const [],
     this.threadId,
+    this.threads = const [],
+    this.threadsUpdatedAt,
     this.initialLoading = false,
+    this.refreshing = false,
     this.sending = false,
     this.sendError,
     this.greetingName = 'there',
@@ -26,17 +30,38 @@ class ChatState {
 
   final List<ChatMessage> messages;
   final String? threadId;
+
+  /// Every conversation this profile has, newest-active first — the "Recent
+  /// chats" list. The open one is [threadId].
+  final List<ChatThread> threads;
+
+  /// When [threads] was last read from the server (or from cache) — drives the
+  /// "Updated 5m ago" line in the recent-chats sheet.
+  final DateTime? threadsUpdatedAt;
+
   final bool initialLoading;
+
+  /// A background/pull-to-refresh reload of the history is in flight while the
+  /// current conversation stays painted.
+  final bool refreshing;
+
   final bool sending;
   final String? sendError;
   final String greetingName;
 
   bool get isEmpty => messages.isEmpty;
 
+  /// Recent chats *other than* the one on screen.
+  List<ChatThread> get otherThreads => threads.where((t) => t.id != threadId).toList();
+
   ChatState copyWith({
     List<ChatMessage>? messages,
     String? threadId,
+    bool clearThreadId = false,
+    List<ChatThread>? threads,
+    DateTime? threadsUpdatedAt,
     bool? initialLoading,
+    bool? refreshing,
     bool? sending,
     String? sendError,
     bool clearError = false,
@@ -44,8 +69,11 @@ class ChatState {
   }) =>
       ChatState(
         messages: messages ?? this.messages,
-        threadId: threadId ?? this.threadId,
+        threadId: clearThreadId ? null : (threadId ?? this.threadId),
+        threads: threads ?? this.threads,
+        threadsUpdatedAt: threadsUpdatedAt ?? this.threadsUpdatedAt,
         initialLoading: initialLoading ?? this.initialLoading,
+        refreshing: refreshing ?? this.refreshing,
         sending: sending ?? this.sending,
         sendError: clearError ? null : (sendError ?? this.sendError),
         greetingName: greetingName ?? this.greetingName,
@@ -73,6 +101,11 @@ class ChatController extends Notifier<ChatState> {
   bool _loadedOnce = false;
   String? _lastSentText;
 
+  /// True between tapping "new chat" and the first send: the greeting is the
+  /// intended state, so a later refresh must NOT silently reopen the newest
+  /// thread underneath the user.
+  bool _startingNewChat = false;
+
   // Poll cadence mirrors TaskCenter: fast, then back off, then give up.
   static const _fastInterval = Duration(seconds: 5);
   static const _slowInterval = Duration(seconds: 10);
@@ -82,33 +115,132 @@ class ChatController extends Notifier<ChatState> {
   @override
   ChatState build() => const ChatState();
 
-  /// On-open: resolve the greeting name and reload the most recent thread's
-  /// history so a conversation survives an app restart (§4.10 acceptance).
-  /// Best-effort — a failed history fetch just starts a fresh, usable chat.
-  Future<void> load() async {
-    if (_loadedOnce) return;
+  /// On-open: resolve the greeting name, paint the last conversation straight
+  /// from cache (no spinner, no refetch), then revalidate.
+  ///
+  /// ADR-028: a passive open inside [CacheService.freshFor] skips the network
+  /// entirely — re-entering the chat re-shows what's already there rather than
+  /// re-downloading it. [force] (pull-to-refresh) always refetches.
+  Future<void> load({bool force = false}) async {
+    if (_loadedOnce && !force) return;
     _loadedOnce = true;
     final generation = _generation;
-    state = state.copyWith(initialLoading: true, greetingName: _resolveName());
+    state = state.copyWith(greetingName: _resolveName());
+
+    final painted = await _paintFromCache();
+    if (generation != _generation) return;
+    if (!force && painted && await CacheService.instance.isFresh(CacheService.keyChatThreads)) {
+      return;
+    }
+
+    state = state.copyWith(initialLoading: !painted, refreshing: painted);
     try {
       final threads = await _api.listChatThreads();
       if (generation != _generation) return;
       if (threads.isEmpty) {
-        state = state.copyWith(initialLoading: false);
+        state = state.copyWith(
+          threads: const [],
+          threadsUpdatedAt: DateTime.now(),
+          initialLoading: false,
+          refreshing: false,
+        );
+        await CacheService.instance.write(CacheService.keyChatThreads, const []);
         return;
       }
-      final messages = await _api.fetchChatThread(threads.first.id);
+      if (_startingNewChat && state.threadId == null) {
+        // The user asked for a blank chat — refresh the list, leave the
+        // greeting alone.
+        state = state.copyWith(
+          threads: threads,
+          threadsUpdatedAt: DateTime.now(),
+          initialLoading: false,
+          refreshing: false,
+        );
+        await CacheService.instance.write(CacheService.keyChatThreads, [for (final t in threads) t.raw]);
+        return;
+      }
+      // Keep the conversation the user is actually looking at; only default to
+      // the newest thread when none is open yet.
+      final openId = state.threadId ?? threads.first.id;
+      final messages = await _api.fetchChatThread(openId);
       if (generation != _generation) return;
       state = state.copyWith(
         messages: messages,
-        threadId: threads.first.id,
+        threadId: openId,
+        threads: threads,
+        threadsUpdatedAt: DateTime.now(),
         initialLoading: false,
+        refreshing: false,
       );
+      await _cache(openId, threads, messages);
     } catch (_) {
-      // History unavailable (offline, not-yet-migrated backend) — the greeting
-      // state is still fully usable; a send just starts a new thread.
-      if (generation == _generation) state = state.copyWith(initialLoading: false);
+      // History unavailable (offline, not-yet-migrated backend, 402 pro gate) —
+      // whatever is painted stays, and a send still starts a new thread.
+      if (generation == _generation) {
+        state = state.copyWith(initialLoading: false, refreshing: false);
+      }
     }
+  }
+
+  /// Pull-to-refresh on the recent-chats sheet.
+  Future<void> refresh() => load(force: true);
+
+  /// Switches the open conversation to [threadId] (from the recent-chats list).
+  /// Cached messages paint first when it's the thread we last cached.
+  Future<void> openThread(String threadId) async {
+    if (threadId == state.threadId) return;
+    _generation++; // abandon any in-flight reply from the previous thread
+    final generation = _generation;
+    _lastSentText = null;
+    _startingNewChat = false;
+    state = state.copyWith(
+      threadId: threadId,
+      messages: const [],
+      initialLoading: true,
+      sending: false,
+      clearError: true,
+    );
+    try {
+      final messages = await _api.fetchChatThread(threadId);
+      if (generation != _generation) return;
+      state = state.copyWith(messages: messages, initialLoading: false);
+      await _cache(threadId, state.threads, messages);
+    } catch (e) {
+      if (generation != _generation) return;
+      state = state.copyWith(initialLoading: false, sendError: _clean(e));
+    }
+  }
+
+  /// Paints the cached thread list + last open conversation. Returns true if
+  /// anything was painted.
+  Future<bool> _paintFromCache() async {
+    if (state.messages.isNotEmpty || state.threads.isNotEmpty) return true;
+    final threadsEntry = await CacheService.instance.read<List<ChatThread>>(
+      CacheService.keyChatThreads,
+      (json) => (json as List)
+          .map((t) => ChatThread.fromJson((t as Map).cast<String, dynamic>()))
+          .toList(),
+    );
+    if (threadsEntry == null) return false;
+    final messagesEntry = await CacheService.instance.read<_CachedConversation>(
+      CacheService.keyChatMessages,
+      (json) => _CachedConversation.fromJson((json as Map).cast<String, dynamic>()),
+    );
+    state = state.copyWith(
+      threads: threadsEntry.data,
+      threadsUpdatedAt: threadsEntry.cachedAt,
+      messages: messagesEntry?.data.messages ?? const [],
+      threadId: messagesEntry?.data.threadId,
+    );
+    return true;
+  }
+
+  Future<void> _cache(String threadId, List<ChatThread> threads, List<ChatMessage> messages) async {
+    await CacheService.instance.write(CacheService.keyChatThreads, [for (final t in threads) t.raw]);
+    await CacheService.instance.write(
+      CacheService.keyChatMessages,
+      {'thread_id': threadId, 'messages': [for (final m in messages) m.toJson()]},
+    );
   }
 
   /// Sends [raw] as a new user turn: optimistically append the bubble, then
@@ -118,6 +250,7 @@ class ChatController extends Notifier<ChatState> {
     final text = raw.trim();
     if (text.isEmpty || state.sending) return;
     _lastSentText = text;
+    _startingNewChat = false;
     state = state.copyWith(
       messages: [...state.messages, ChatMessage(role: 'user', content: text)],
       sending: true,
@@ -146,6 +279,12 @@ class ChatController extends Notifier<ChatState> {
       final reply = await _pollForReply(result.taskId, generation);
       if (generation != _generation) return;
       state = state.copyWith(messages: [...state.messages, reply], sending: false);
+      // Keep the cached conversation in step with what's on screen, and pick up
+      // a brand-new thread so it appears under "Recent chats" right away.
+      await _cache(result.threadId, state.threads, state.messages);
+      if (!state.threads.any((t) => t.id == result.threadId)) {
+        unawaited(_refreshThreads());
+      }
     } catch (e) {
       if (generation == _generation) {
         state = state.copyWith(sending: false, sendError: _clean(e));
@@ -182,12 +321,30 @@ class ChatController extends Notifier<ChatState> {
     }
   }
 
+  /// Re-reads just the thread list (after a send created a new one). Quiet by
+  /// design — a failure only means "Recent chats" lags by one entry until the
+  /// next open.
+  Future<void> _refreshThreads() async {
+    try {
+      final threads = await _api.listChatThreads();
+      state = state.copyWith(threads: threads, threadsUpdatedAt: DateTime.now());
+      await CacheService.instance.write(CacheService.keyChatThreads, [for (final t in threads) t.raw]);
+    } catch (_) {}
+  }
+
   /// New-chat button (§4.10 reset): abandon the current thread and return to the
   /// greeting. A pending reply's generation is now stale, so it's discarded.
+  /// The thread LIST survives — the previous conversation is still reachable
+  /// under "Recent chats".
   void newChat() {
     _generation++;
     _lastSentText = null;
-    state = ChatState(greetingName: state.greetingName);
+    _startingNewChat = true;
+    state = ChatState(
+      greetingName: state.greetingName,
+      threads: state.threads,
+      threadsUpdatedAt: state.threadsUpdatedAt,
+    );
   }
 
   /// Sign-out hygiene — the next account must never see this conversation.
@@ -195,6 +352,7 @@ class ChatController extends Notifier<ChatState> {
     _generation++;
     _loadedOnce = false;
     _lastSentText = null;
+    _startingNewChat = false;
     state = const ChatState();
   }
 
@@ -213,3 +371,19 @@ class ChatController extends Notifier<ChatState> {
 /// Thrown to unwind the poll loop when the conversation was reset mid-flight;
 /// swallowed by the generation guard in [_dispatch], never surfaced.
 class _Abandoned implements Exception {}
+
+/// The one conversation kept on disk (which thread, and its turns) so reopening
+/// the chat paints instantly instead of spinning on a network round-trip.
+class _CachedConversation {
+  const _CachedConversation({required this.threadId, required this.messages});
+
+  final String threadId;
+  final List<ChatMessage> messages;
+
+  factory _CachedConversation.fromJson(Map<String, dynamic> json) => _CachedConversation(
+        threadId: json['thread_id'] as String,
+        messages: ((json['messages'] as List?) ?? const [])
+            .map((m) => ChatMessage.fromJson((m as Map).cast<String, dynamic>()))
+            .toList(),
+      );
+}

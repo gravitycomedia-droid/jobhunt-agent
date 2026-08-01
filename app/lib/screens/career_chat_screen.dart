@@ -6,12 +6,14 @@ import 'package:google_fonts/google_fonts.dart';
 import '../models/chat_message.dart';
 import '../services/career_chat.dart';
 import '../services/haptic_service.dart';
+import '../services/refresh_throttle.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import '../widgets/agent_mascot.dart';
 import '../widgets/agent_orb.dart';
 import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
+import '../widgets/empty_state.dart';
 
 /// §4.10 Career chat — the grounded career assistant. Header (back / "Career
 /// agent" / new-chat) · mascot greeting when empty · user/agent bubbles · a
@@ -109,6 +111,35 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
     );
   }
 
+  void _openThread(String threadId) {
+    HapticService.instance.selection();
+    ref.read(chatControllerProvider.notifier).openThread(threadId);
+  }
+
+  /// The "Recent chats" bottom sheet: every past conversation, newest first,
+  /// with pull-to-refresh and the last-updated line (§ADR-028 pattern).
+  void _showRecentChats() {
+    HapticService.instance.selection();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.c.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+      ),
+      builder: (_) => _RecentChatsSheet(
+        onOpen: (id) {
+          Navigator.of(context).pop();
+          _openThread(id);
+        },
+        onNewChat: () {
+          Navigator.of(context).pop();
+          _newChat();
+        },
+      ),
+    );
+  }
+
   Widget _header() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -120,7 +151,13 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
             'Career agent',
             style: AppTypography.title.copyWith(fontSize: 15),
           ),
-          _iconButton(AppIconName.edit, _newChat),
+          Row(
+            children: [
+              _iconButton(AppIconName.clock, _showRecentChats),
+              const SizedBox(width: 8),
+              _iconButton(AppIconName.edit, _newChat),
+            ],
+          ),
         ],
       ),
     );
@@ -149,7 +186,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
       return const Center(child: AppLoader());
     }
     if (state.isEmpty) {
-      return _greeting(state.greetingName);
+      return _greeting(state);
     }
     return ListView(
       controller: _scroll,
@@ -165,8 +202,11 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
     );
   }
 
-  /// Empty state: mascot + "Hey {name}, how can I help your career?".
-  Widget _greeting(String name) {
+  /// Empty state: mascot + "Hey {name}, how can I help your career?" — and,
+  /// once there's history, the last few conversations so getting back into one
+  /// is a tap rather than a re-explanation.
+  Widget _greeting(ChatState state) {
+    final recent = state.otherThreads.take(4).toList();
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 24, 18, 12),
       child: Column(
@@ -177,7 +217,7 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
             child: AgentMascot(size: 56),
           ),
           Text(
-            'Hey $name,\nhow can I help your career?',
+            'Hey ${state.greetingName},\nhow can I help your career?',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 27,
               height: 1.2,
@@ -194,6 +234,31 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
               color: context.c.inkSoft,
             ),
           ),
+          if (recent.isNotEmpty) ...[
+            const SizedBox(height: 26),
+            Row(
+              children: [
+                Text('Recent chats', style: AppTypography.title.copyWith(fontSize: 14)),
+                const Spacer(),
+                if (state.threads.length > recent.length)
+                  GestureDetector(
+                    onTap: _showRecentChats,
+                    child: Text(
+                      'See all',
+                      style: AppTypography.caption.copyWith(
+                        color: context.c.accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (final thread in recent) ...[
+              ChatThreadRow(thread: thread, onTap: () => _openThread(thread.id)),
+              const SizedBox(height: 8),
+            ],
+          ],
         ],
       ),
     );
@@ -403,6 +468,175 @@ class _CareerChatScreenState extends ConsumerState<CareerChatScreen> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: AppIcon(AppIconName.send, size: 18, color: context.onAccent),
+      ),
+    );
+  }
+}
+
+/// One past conversation: the thread's title (seeded server-side from the first
+/// message) and when it was last active. Shared by the greeting's short list and
+/// the full recent-chats sheet.
+class ChatThreadRow extends StatelessWidget {
+  const ChatThreadRow({super.key, required this.thread, required this.onTap, this.isOpen = false});
+
+  final ChatThread thread;
+  final VoidCallback onTap;
+
+  /// The conversation currently on screen — marked, and still tappable.
+  final bool isOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Material(
+      color: c.surface,
+      borderRadius: AppRadius.mdRadius,
+      child: InkWell(
+        borderRadius: AppRadius.mdRadius,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            border: Border.all(color: isOpen ? c.accent : c.border),
+            borderRadius: AppRadius.mdRadius,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: c.accentSoft, borderRadius: AppRadius.smRadius),
+                child: AppIcon(AppIconName.messageCircle, size: 16, color: c.accent),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      thread.displayTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.bodySm.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    if (thread.updatedAt != null)
+                      Text(
+                        _relative(thread.updatedAt!),
+                        style: AppTypography.caption.copyWith(fontSize: 11.5, color: c.inkFaint),
+                      ),
+                  ],
+                ),
+              ),
+              if (isOpen)
+                Text(
+                  'OPEN',
+                  style: AppTypography.label.copyWith(color: c.accent, letterSpacing: 0.6),
+                )
+              else
+                AppIcon(AppIconName.chevronRight, size: 16, color: c.inkFaint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _relative(DateTime t) {
+    final diff = DateTime.now().difference(t);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[t.month - 1]} ${t.day}';
+  }
+}
+
+/// The full conversation history, in a bottom sheet: cached list painted
+/// instantly, pull-to-refresh, and the "Updated …" line so the passive
+/// freshness window is visible rather than looking stuck.
+class _RecentChatsSheet extends ConsumerWidget {
+  const _RecentChatsSheet({required this.onOpen, required this.onNewChat});
+
+  final ValueChanged<String> onOpen;
+  final VoidCallback onNewChat;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(chatControllerProvider);
+    final c = context.c;
+    final label = lastUpdatedLabel(state.threadsUpdatedAt);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => Padding(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(color: c.border, borderRadius: AppRadius.pillRadius),
+              ),
+            ),
+            Row(
+              children: [
+                Text('Recent chats', style: AppTypography.headingSm),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: onNewChat,
+                  icon: AppIcon(AppIconName.edit, size: 15, color: c.accent),
+                  label: const Text('New chat'),
+                ),
+              ],
+            ),
+            if (label != null || state.refreshing)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  state.refreshing ? 'Refreshing…' : '$label · pull to refresh',
+                  style: AppTypography.caption.copyWith(color: c.inkFaint),
+                ),
+              ),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () => ref.read(chatControllerProvider.notifier).refresh(),
+                child: state.threads.isEmpty
+                    ? ListView(
+                        controller: scrollController,
+                        children: [
+                          const SizedBox(height: AppSpacing.space8),
+                          EmptyState(
+                            icon: AppIconName.messageCircle,
+                            title: 'No chats yet',
+                            message: 'Ask the agent something and the conversation shows up here.',
+                          ),
+                        ],
+                      )
+                    : ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.only(top: 4, bottom: AppSpacing.space6),
+                        itemCount: state.threads.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) {
+                          final thread = state.threads[i];
+                          return ChatThreadRow(
+                            thread: thread,
+                            isOpen: thread.id == state.threadId,
+                            onTap: () => onOpen(thread.id),
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

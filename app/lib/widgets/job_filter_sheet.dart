@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -116,6 +117,12 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Category leads the sheet (ADR-003 v3): it's now the axis
+                    // that decides most of what the user sees, since the pool
+                    // spans every discipline rather than just their target role.
+                    _sectionLabel('Category'),
+                    _categoryChips(filter, notifier),
+                    const SizedBox(height: AppSpacing.space6),
                     _sectionLabel('Source'),
                     _sourceRow(sources, sourceCounts, filter, notifier),
                     const SizedBox(height: AppSpacing.space6),
@@ -283,6 +290,49 @@ class _JobFilterSheetState extends ConsumerState<_JobFilterSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  // ── Category chips ──────────────────────────────────────────────────────────
+  /// The one filter that REFETCHES rather than narrowing in memory — the server
+  /// applies it before pagination (see JobFilter.categories). So this section
+  /// warns the user that it costs a load, and offers an explicit "All" rather
+  /// than relying on them clearing every chip (an empty set means "everything"
+  /// on the wire, which would be the opposite of what clearing looks like).
+  Widget _categoryChips(JobFilter filter, JobFilterNotifier notifier) {
+    final showingAll = filter.categories.length == kJobCategories.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: AppSpacing.space2,
+          runSpacing: AppSpacing.space2,
+          children: [
+            for (final category in kJobCategories)
+              _LocationChip(
+                label: kJobCategoryLabels[category] ?? category,
+                icon: AppIconName.briefcase,
+                selected: filter.categories.contains(category),
+                onTap: () => notifier.toggleCategory(category),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.space2),
+        Row(
+          children: [
+            TextButton(
+              onPressed: showingAll ? null : () => notifier.selectAllCategories(),
+              child: const Text('Select all'),
+            ),
+            TextButton(
+              onPressed: setEquals(filter.categories, kDefaultJobCategories)
+                  ? null
+                  : () => notifier.setCategories(kDefaultJobCategories),
+              child: const Text('Reset to tech'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

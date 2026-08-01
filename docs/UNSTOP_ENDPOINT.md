@@ -13,13 +13,32 @@ what need updating.
 GET https://unstop.com/api/public/opportunity/search-result
 ```
 
+**Re-probed 2026-07-26 (ADR-003 v3).** Contract unchanged; two findings added —
+the valid `opportunity` values, and current catalogue sizes.
+
 ## Minimum required query params
 
 ```
 ?opportunity=internships&page=1&per_page=100&oppstatus=open
 ```
 
-- `opportunity=internships` — fixed value for this source.
+- `opportunity` — **not** fixed. Probed live 2026-07-26:
+
+  | value | total (open) | what it is |
+  |---|---|---|
+  | `internships` | 836 | internships — the original source |
+  | `jobs` | 1,186 | non-internship postings, mostly experienced |
+  | `competitions` | 285 | contests, **not** hiring listings — excluded |
+  | `hiring-challenges` | 22 | contests — excluded |
+  | `freshers` | 0 | **not a real type** |
+  | `entry-level` | 0 | **not a real type** |
+
+  The last two matter: they look plausible and return a valid, empty paginator
+  rather than an error, so a typo'd type is indistinguishable from a dead source
+  in the Phase F health log. `_unstop_opportunity_types()` drops unknown values
+  with a warning for exactly this reason. Unstop's "fresher jobs" listing is a
+  filter *inside* `jobs`, not a separate catalogue — which is why the
+  fresher/entry-level cut lives in `services/job_filter.py`, not in this query.
 - `page` — 1-indexed.
 - `per_page` — tested up to 100 without issue; use `UNSTOP_MAX_RESULTS`
   divided across pages, not a single giant page.
@@ -79,11 +98,31 @@ does **not** need `salary.py`'s free-text parser — that's Naukri's job
 `currency = "INR" if raw == "fa-rupee" else infer_currency(...)` plus the
 `pay_in`-based ×12 monthly annualization — see `_unstop_row_to_job()`.
 
+## Volume + politeness (updated 2026-07-26, ADR-003 v3)
+
+At `per_page=100` the entire open catalogue is **~21 requests** (9 pages of
+internships + 12 of jobs). A full cold crawl was measured end-to-end at **77s**,
+including a deliberate 0.3s pause between pages.
+
+Steady state is much cheaper: results come back newest-first, so
+`_crawl_unstop()` stops after two consecutive pages entirely older than
+`MAX_JOB_AGE_DAYS` — typically **~3 requests/day**. Freshness distribution when
+this was measured:
+
+| | open | ≤10 days | ≤1 day |
+|---|---|---|---|
+| internships | 836 | 626 | 78 |
+| jobs | 1,186 | 817 | 53 |
+
+So the daily *new* supply is ~131 postings across both catalogues.
+
 ## Not yet verified
 
-- Rate-limiting behavior at sustained volume — only a handful of requests during
-  recon, not a full 800-page crawl. Mitigated in code: we only ever pull
-  `UNSTOP_MAX_RESULTS` (default 20), i.e. one small page per cron day, so this
-  stays a light caller (ADR-003's "no high-volume polling").
+- Rate-limiting behavior at sustained volume. The 2026-07-26 full crawl (21
+  requests, spaced) drew no 429s or challenges, but that's one cold run, not
+  weeks of them. The freshness early-stop is what keeps this bounded in normal
+  operation; if Unstop ever does start throttling, the symptom will be an
+  `HTTPError` per page, which already logs and degrades to a partial result
+  rather than raising.
 - Whether `oppstatus=open` has siblings (e.g. `closed`) worth excluding
   explicitly — assumed default is fine for cron use.

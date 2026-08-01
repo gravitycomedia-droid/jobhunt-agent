@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 
 import '../firebase_options.dart';
 import 'api_client.dart';
@@ -15,10 +16,21 @@ class PushService {
   static final ApiClient _apiClient = ApiClient();
 
   static Future<void> initAndRegister() async {
-    // Android-only for now (see DECISIONS.md ADR-007) — no APNs key/iOS
-    // app registered in Firebase yet, and web push needs its own VAPID
-    // key setup we haven't done either.
+    // Android-only for now (see DECISIONS.md ADR-007 / ADR-042) — no APNs
+    // key/iOS app registered in Firebase yet, and web push needs its own
+    // VAPID key setup we haven't done either.
     if (kIsWeb) return;
+
+    // iOS: explicit, logged no-op. Firebase has no iOS app configured and
+    // firebase_options.dart throws UnsupportedError for non-Android platforms,
+    // so we must not call Firebase.initializeApp() here at all. Returning
+    // early (rather than letting the throw fall into the catch below) keeps
+    // this an intentional skip that's greppable when iOS push is finally
+    // built on a paid Apple account — it won't hide an unrelated failure.
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      debugPrint('PushService: iOS push not yet configured — skipping FCM init');
+      return;
+    }
 
     try {
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);

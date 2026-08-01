@@ -1,0 +1,23 @@
+{
+  "name": "firstrole-linkedin-intro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "20s LinkedIn intro video for FirstRole, built with Remotion.",
+  "scripts": {
+    "start": "remotion studio",
+    "build": "remotion render FirstRoleLinkedInIntro out/firstrole-intro.mp4",
+    "still": "remotion still FirstRoleLinkedInIntro out/firstrole-intro.png"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.500",
+    "@remotion/google-fonts": "4.0.500",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "4.0.500"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/react": "^18.3.3",
+    "@types/node": "^20.14.10"
+  }
+}

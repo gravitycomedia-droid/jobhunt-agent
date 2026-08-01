@@ -79,7 +79,10 @@ dev_dependencies:
 # so bundling them again would just pad the APK.
 flutter_launcher_icons:
   android: "ic_launcher"
-  ios: false
+  # iOS now generates its AppIcon set from the SAME source art as Android, so
+  # both stores show the FirstRole staircase mark (was `false` → stale default).
+  ios: true
+  remove_alpha_ios: true
   image_path: "assets/icon/icon.png"
   adaptive_icon_background: "assets/icon/icon_background.png"
   adaptive_icon_foreground: "assets/icon/icon_foreground.png"

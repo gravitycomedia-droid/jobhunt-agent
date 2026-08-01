@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +11,7 @@ import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/job_filter.dart';
 import '../services/refresh_throttle.dart';
+import '../services/task_center.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import '../widgets/app_icon.dart';
@@ -19,7 +21,6 @@ import '../widgets/job_card.dart';
 import '../widgets/job_filter_sheet.dart';
 import '../widgets/page_header.dart';
 import '../widgets/stale_banner.dart';
-import '../widgets/task_toast.dart';
 import 'shortlist_screen.dart';
 
 /// The Jobs tab's content (frontend rebuild Phase 1, prototype `ui.isJobs`)
@@ -80,7 +81,14 @@ class _JobsListBodyState extends ConsumerState<JobsListBody> {
   /// pointless.
   Future<void> _loadJobs({bool force = false}) async {
     setState(() => _errorMessage = null);
-    final painted = await _paintFromCache();
+    final categories = ref.read(jobFilterProvider).categories;
+    // The disk cache holds ONE list under a single key, so it can only ever be
+    // trusted for one category selection. Serving it for another would paint
+    // engineering roles at someone who just asked for Sales. Only the default
+    // selection is cache-eligible; anything else always fetches.
+    final cacheable = setEquals(categories, kDefaultJobCategories);
+
+    final painted = cacheable && await _paintFromCache();
     _lastUpdated = await CacheService.instance.cachedAtFor(CacheService.keyJobs);
 
     if (!force && painted && await CacheService.instance.isFresh(CacheService.keyJobs)) {
@@ -93,7 +101,15 @@ class _JobsListBodyState extends ConsumerState<JobsListBody> {
       // fetchAllJobs (not fetchJobs(limit: 50)): the Jobs tab shows the entire
       // pool, whatever the target role. The old 50-cap silently hid everything
       // past the newest 50 postings.
-      final results = await Future.wait([_apiClient.fetchAllJobs(), _apiClient.fetchApplications()]);
+      //
+      // `categories` narrows SERVER-side (ADR-003 v3). Without it the broad pool
+      // would push 1,400+ postings down a mobile connection to show the ~200 in
+      // the user's disciplines — and silently lose the tail past fetchAllJobs's
+      // page ceiling.
+      final results = await Future.wait([
+        _apiClient.fetchAllJobs(categories: categories),
+        _apiClient.fetchApplications(),
+      ]);
       if (!mounted) return;
       setState(() {
         _jobs = results[0] as List<Job>;
@@ -102,7 +118,9 @@ class _JobsListBodyState extends ConsumerState<JobsListBody> {
         _isLoading = false;
         _lastUpdated = DateTime.now();
       });
-      await CacheService.instance.write(CacheService.keyJobs, [for (final j in _jobs) j.raw]);
+      if (cacheable) {
+        await CacheService.instance.write(CacheService.keyJobs, [for (final j in _jobs) j.raw]);
+      }
       await CacheService.instance.write(CacheService.keyApplications, [for (final a in _applications) a.raw]);
     } catch (e) {
       if (!mounted) return;
@@ -114,23 +132,33 @@ class _JobsListBodyState extends ConsumerState<JobsListBody> {
   }
 
   Future<void> _refresh() async {
-    // Pull-to-refresh keeps its own indicator; the toast confirms the
-    // outcome even if the user has tabbed away by the time it finishes
-    // (Phase 2 — refreshes can take up to a minute). ADR-028: debounced so a
-    // rapid triple-pull fires the (rate-limited) server refresh once.
+    // Pull-to-refresh keeps its own indicator; TaskCenter's own completion
+    // toast (success or failure, with Retry) confirms the outcome even if
+    // the user has tabbed away by the time the background task finishes
+    // (Phase 2 / ADR-011 — refreshes can take well over a minute across four
+    // sources). ADR-028: debounced so a rapid triple-pull fires the
+    // (rate-limited) server refresh once.
     if (!_throttle.shouldRun()) return;
     setState(() => _isRefreshing = true);
-    try {
-      final result = await _apiClient.refreshJobs();
-      showTaskToast(
-        success: true,
-        message: 'Jobs refreshed — ${result['inserted'] ?? 0} new of ${result['fetched'] ?? 0} fetched',
-      );
-    } catch (e) {
-      showTaskToast(success: false, message: 'Job refresh failed — $e', onRetry: _refresh);
-    }
+    await ref.read(taskCenterProvider.notifier).start(TaskKind.jobsRefresh, _apiClient.refreshJobs);
+    await _awaitJobsRefresh();
     if (mounted) setState(() => _isRefreshing = false);
     await _loadJobs(force: true);
+  }
+
+  /// Polls TaskCenter until the jobs-refresh task settles. Bounded locally —
+  /// not TaskCenter's 10-minute give-up — so pull-to-refresh's spinner can't
+  /// hang indefinitely; the task keeps running and TaskCenter keeps
+  /// following it (and will still toast on completion) either way.
+  Future<void> _awaitJobsRefresh() async {
+    final tasks = ref.read(taskCenterProvider.notifier);
+    final startedAt = DateTime.now();
+    while (mounted) {
+      final task = tasks.taskFor(TaskKind.jobsRefresh);
+      if (task == null || !task.isActive) return;
+      if (DateTime.now().difference(startedAt) > const Duration(minutes: 2)) return;
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+    }
   }
 
   bool _isTracked(String jobId) => _applications.any((a) => a.jobId == jobId);
@@ -153,9 +181,17 @@ class _JobsListBodyState extends ConsumerState<JobsListBody> {
 
   @override
   Widget build(BuildContext context) {
+    // ADR-003 v3: category is the one axis the SERVER applies, so a change to it
+    // has to refetch — the rest of the filter still narrows in memory. `ref.listen`
+    // (not a watch + compare) because this is a side effect, and running a fetch
+    // inside build() would refire on every rebuild.
+    ref.listen(jobFilterProvider.select((f) => f.categories), (previous, next) {
+      if (previous != null && !setEquals(previous, next)) unawaited(_loadJobs(force: true));
+    });
+
     // Phase 6 (§4.4): the one shared filter narrows the in-memory pool — the
     // list, the sheet's "Show N", and the header dot all read this same state,
-    // so they can't disagree. Toggling never fetches.
+    // so they can't disagree. Toggling never fetches (except category, above).
     final filter = ref.watch(jobFilterProvider);
     final filteredJobs = _jobs.where(filter.matches).toList();
 

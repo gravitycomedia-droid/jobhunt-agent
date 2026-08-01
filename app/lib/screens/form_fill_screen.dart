@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/form_fill.dart';
 import '../router/route_args.dart';
 import '../services/api_client.dart';
+import '../services/haptic_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import '../widgets/app_banner.dart';
@@ -16,13 +17,22 @@ import '../widgets/page_header.dart';
 
 /// Phase 6: "Fill an application form".
 ///
-/// Paste a public form URL → the server parses it (deterministically for
-/// Google Forms) → the agent maps your profile onto the questions (nulls
-/// where it honestly doesn't know) → you review and edit every answer →
-/// "Open prefilled form" launches the form in YOUR browser with answers
-/// pre-typed. You sign into Google there (their account picker — we never
-/// touch credentials), attach any files manually, and tap Google's own
-/// Submit. Nothing is ever submitted by the app or server.
+/// Paste a public form URL → tap once → the server parses it (deterministically
+/// for Google Forms), the agent maps your profile onto the questions (nulls
+/// where it honestly doesn't know), and the app drops you **straight into the
+/// in-app WebView** with the answers already pre-typed (Google's own
+/// `usp=pp_url` prefill — no DOM injection). One tap from URL to a filled form;
+/// the reviewable answer sheet stays on this screen underneath, reachable from
+/// the WebView's ⋮ menu ("Review & edit answers") for anything you want to
+/// change, and re-opening after an edit rebuilds the prefill URL.
+///
+/// It also *learns*: PATCH /forms/fills/{id} persists your final, edited
+/// answers, and the next form reuses them for recurring questions (phone,
+/// notice period, sponsorship) instead of guessing again.
+///
+/// You sign into Google in the WebView (their account picker — we never touch
+/// credentials), attach any files manually, and tap Google's own Submit.
+/// Nothing is ever submitted by the app or server.
 class FormFillScreen extends StatefulWidget {
   const FormFillScreen({super.key});
 
@@ -74,6 +84,13 @@ class _FormFillScreenState extends State<FormFillScreen> {
         _isParsing = false;
       });
       await _fill(parsed);
+      // One tap, all the way through: the point of this screen is a *filled
+      // form*, not a filled form-review sheet. Only Google Forms can be
+      // prefilled, so an LLM-extracted page (or a fill that produced nothing)
+      // stops here and shows the copy-paste answer list instead.
+      if (mounted && _answers.isNotEmpty && !parsed.form.isLlmExtracted) {
+        await _openPrefilled();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -155,6 +172,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
   Future<void> _openPrefilled() async {
     final url = _editedPrefillUrl;
     if (url == null) return;
+    HapticService.instance.light();
     final fillId = _fillId;
     if (fillId != null) {
       unawaited(_apiClient.updateFormFillAnswers(fillId, _editedAnswers).catchError((_) {}));
@@ -169,6 +187,10 @@ class _FormFillScreenState extends State<FormFillScreen> {
         formTitle: _parsed?.form.title ?? 'Application form',
         filledCount: filled,
         fileUploadLabels: _fileUploadQuestions.map((q) => q.text).toList(),
+        // Carries the JD the parse detected (if any) so the WebView's ⋮ menu
+        // can offer "tailor my résumé for this JD" without re-parsing.
+        jobId: _parsed?.jobId,
+        jobTitle: _parsed?.jobTitle,
       ),
     );
   }
@@ -177,6 +199,33 @@ class _FormFillScreenState extends State<FormFillScreen> {
     final url = _urlController.text.trim();
     if (url.isEmpty) return;
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  /// ADR-053: the sign-in-gated form's primary action. Opens the in-app
+  /// WebView on the plain URL, waits for the user to sign into their own
+  /// Google account and the real page to load, then autofills it the same
+  /// way the public-form path does — see FormWebViewScreen's class doc.
+  /// Awaits the typed pop result so this screen's own answer sheet ends up
+  /// with the same state the public-form path would have given it directly
+  /// (keeps "Review & edit answers" from the WebView's ⋮ menu meaningful).
+  Future<void> _openSignInFlow() async {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return;
+    final handoff = await context.push<FormAutofillHandoff>(
+      '/form-webview',
+      extra: FormWebViewArgs(signInUrl: url, formTitle: 'Application form'),
+    );
+    if (handoff == null || !mounted) return;
+    setState(() {
+      _parsed = handoff.parsed;
+      _answers = handoff.answers;
+      _prefillUrl = handoff.prefillUrl;
+      _fillId = handoff.fillId;
+      _authRequired = false;
+      for (final a in _answers) {
+        _answerControllers[a.entryId] = TextEditingController(text: a.answerText);
+      }
+    });
   }
 
   @override
@@ -203,7 +252,7 @@ class _FormFillScreenState extends State<FormFillScreen> {
                     ? 'Reading the form…'
                     : _isFilling
                         ? 'Filling from your profile…'
-                        : 'Parse & fill from my profile'),
+                        : 'Autofill & open the form'),
               ),
             ),
             if (_authRequired) ...[
@@ -211,9 +260,19 @@ class _FormFillScreenState extends State<FormFillScreen> {
               AppBanner(
                 tone: BannerTone.warning,
                 title: 'This form requires sign-in to view',
-                message: 'Open it in your browser, sign in with your Google account, and fill it there.',
-                actionLabel: 'Open in browser',
-                onAction: _openPlain,
+                // ADR-053: sign in right here — the app reads the form once
+                // you land on it and fills what it can from your profile,
+                // same as an ungated form.
+                message: 'Sign in with your Google account in-app and we\'ll autofill it for you.',
+                actionLabel: 'Sign in & autofill',
+                onAction: _openSignInFlow,
+              ),
+              const SizedBox(height: AppSpacing.space2),
+              Center(
+                child: TextButton(
+                  onPressed: _openPlain,
+                  child: const Text('Or open in your browser instead'),
+                ),
               ),
             ],
             if (_errorMessage != null) ...[
@@ -276,7 +335,9 @@ class _FormFillScreenState extends State<FormFillScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _openPrefilled,
                     icon: AppIcon(AppIconName.externalLink, size: 18, color: context.onAccent),
-                    label: const Text('Open prefilled form'),
+                    // The form already opened once on parse; this re-opens it
+                    // with whatever the user changed in the rows above.
+                    label: const Text('Reopen form with my edits'),
                   ),
                 ),
               const SizedBox(height: AppSpacing.space2),

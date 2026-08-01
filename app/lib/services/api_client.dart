@@ -192,6 +192,30 @@ class ApiClient {
     return _patchProfile('/resume/profile/target-locations', {'target_locations': locations});
   }
 
+  /// Migration 026: the contact block that heads every compiled résumé PDF.
+  /// Goes through the ordinary PATCH /resume/profile (these are résumé content,
+  /// not onboarding state), sending only the six contact keys so the rest of
+  /// the profile is untouched. Pass `''` to clear a field — a blank renders as
+  /// absent in the PDF, whereas a `null` would be indistinguishable from
+  /// "don't change this".
+  Future<ResumeProfile> updateContactDetails({
+    required String email,
+    required String phone,
+    required String location,
+    required String linkedinUrl,
+    required String githubUrl,
+    required String websiteUrl,
+  }) async {
+    return _patchProfile('/resume/profile', {
+      'email': email.trim(),
+      'phone': phone.trim(),
+      'location': location.trim(),
+      'linkedin_url': linkedinUrl.trim(),
+      'github_url': githubUrl.trim(),
+      'website_url': websiteUrl.trim(),
+    });
+  }
+
   /// Shared PATCH-and-parse for the onboarding detail endpoints — all return
   /// the updated profile row in the `{data, error}` envelope.
   Future<ResumeProfile> _patchProfile(String path, Map<String, dynamic> payload) async {
@@ -254,26 +278,38 @@ class ApiClient {
 
   /// Triggers a fetch+dedup+insert cycle on the server across four sources
   /// (Adzuna, JSearch, Greenhouse, Lever — job source expansion, ADR-018).
-  /// JSearch alone routinely takes ~60s to respond; a longer `.timeout()`
-  /// than the other calls reflects that, rather than a bug.
-  /// Returns the server's `{fetched, inserted}` counts so the completion
-  /// toast (Phase 2) can say what actually happened.
-  Future<Map<String, dynamic>> refreshJobs() async {
+  /// ADR-011-shaped, same as [tailorResume]/[rerankShortlist]: JSearch alone
+  /// routinely takes ~60s, which used to hold the connection open long
+  /// enough for Android's network stack to abort it (`ClientException:
+  /// Software caused connection abort`). The server now answers 202 with a
+  /// task id immediately — poll [getTaskStatus] for the `{fetched,
+  /// inserted}` result.
+  Future<String> refreshJobs() async {
     final uri = Uri.parse('$_baseUrl/jobs/refresh');
     final response = await http
         .post(uri, headers: _authHeaders())
-        .timeout(const Duration(seconds: 120));
+        .timeout(const Duration(seconds: 60));
 
-    if (response.statusCode != 200) {
+    if (response.statusCode != 202) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as Map<String, dynamic>?) ?? const {};
+    return (body['data'] as Map<String, dynamic>)['task_id'] as String;
   }
 
-  Future<List<Job>> fetchJobs({int limit = 20, int offset = 0}) async {
-    final uri = Uri.parse('$_baseUrl/jobs?limit=$limit&offset=$offset');
+  /// [categories] filters SERVER-side (migration 027). Unlike the work-type,
+  /// source and location filters — which narrow an already-loaded list in memory
+  /// — category has to be applied before pagination: with the broad pool ~75% of
+  /// rows are non-engineering, so filtering client-side would page through
+  /// thousands of sales postings to find the engineering ones. Empty = all.
+  Future<List<Job>> fetchJobs({int limit = 20, int offset = 0, Set<String> categories = const {}}) async {
+    final query = {
+      'limit': '$limit',
+      'offset': '$offset',
+      if (categories.isNotEmpty) 'category': categories.join(','),
+    };
+    final uri = Uri.parse('$_baseUrl/jobs').replace(queryParameters: query);
     final response = await http.get(uri, headers: _authHeaders());
 
     if (response.statusCode != 200) {
@@ -286,20 +322,23 @@ class ApiClient {
         .toList();
   }
 
-  /// Every job in the pool, not just the first page.
+  /// Every job in the pool matching [categories], not just the first page.
   ///
-  /// The Jobs tab shows the whole pool — the server already returns it
-  /// unfiltered, but `GET /jobs` caps `limit` at 100, so one call could only
-  /// ever show the newest 100. This walks the pages until one comes back short.
+  /// The Jobs tab shows the whole pool — but `GET /jobs` caps `limit` at 100, so
+  /// one call could only ever show the newest 100. This walks the pages until
+  /// one comes back short.
   ///
-  /// `maxPages` is a safety stop, not a feature: the ingestion relevance gate
-  /// keeps the pool to fresher/intern roles in two cities, so it should sit in
-  /// the tens. If it ever grew past 1,000 the loop stops rather than paging
-  /// forever on a mobile connection.
-  Future<List<Job>> fetchAllJobs({int pageSize = 100, int maxPages = 10}) async {
+  /// `maxPages` used to be a safety stop that never fired: the ingestion
+  /// relevance gate kept the pool to fresher/intern roles in two cities, so it
+  /// sat in the tens. ADR-003 v3 changed that — the broad pool runs to 1,400+
+  /// rows, past this 1,000 ceiling, and the cap would SILENTLY TRUNCATE rather
+  /// than stop something runaway. That's why [categories] exists and why the
+  /// Jobs tab always passes one: the server-side narrowing is what keeps this
+  /// walk short, not the page cap.
+  Future<List<Job>> fetchAllJobs({int pageSize = 100, int maxPages = 10, Set<String> categories = const {}}) async {
     final all = <Job>[];
     for (var page = 0; page < maxPages; page++) {
-      final batch = await fetchJobs(limit: pageSize, offset: page * pageSize);
+      final batch = await fetchJobs(limit: pageSize, offset: page * pageSize, categories: categories);
       all.addAll(batch);
       // A short page means we've reached the end.
       if (batch.length < pageSize) break;
@@ -901,6 +940,29 @@ class ApiClient {
           uri,
           headers: _authHeaders({'Content-Type': 'application/json'}),
           body: jsonEncode({'url': url}),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ParsedForm.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// ADR-053: the sign-in-gated counterpart to [parseForm]. The server can't
+  /// fetch a sign-in-gated form itself (no Google session), so the client
+  /// fetches the page from inside an authenticated in-app WebView (the user
+  /// signs in with their own account; we never see the credentials) and
+  /// hands the resulting HTML here for the exact same deterministic parse.
+  Future<ParsedForm> parseFormFromHtml(String html, String formUrl) async {
+    final uri = Uri.parse('$_baseUrl/forms/parse-html');
+    final response = await http
+        .post(
+          uri,
+          headers: _authHeaders({'Content-Type': 'application/json'}),
+          body: jsonEncode({'html': html, 'form_url': formUrl}),
         )
         .timeout(const Duration(seconds: 60));
 

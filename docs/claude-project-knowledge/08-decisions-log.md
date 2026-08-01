@@ -150,6 +150,33 @@ Render URL. Verified only via curl against the live server (`/health` → 200,
 `/jobs` → 401 correctly) — the on-device login/upload/matching flow has never
 been verified (no Android SDK/emulator available).
 
+**ADR-011 (2026-07-25) — Free-tier iOS sideload for dev testing; push/APNs
+deferred.** *(Full entry: root `DECISIONS.md` ADR-042.)* Needed to run and test
+on a personal iPhone 16 Pro without a paid Apple Developer Program — free
+Apple ID sideload (7-day signing, no TestFlight/App Store). Client/config-only,
+no backend touched. Decisions: iOS bundle id kept as
+`com.jobhuntagent.jobhuntAgent` (camelCase) — the `jobhunt_agent` form breaks
+free-team auto signing because Apple rejects the underscore in the auto-derived
+App ID *name*; the iOS bundle id need not match Android's applicationId; wired
+the Google OAuth redirect for iOS via `CFBundleURLTypes` in
+`Info.plist` using scheme **`com.jobhuntagent.firstrole`** — the same scheme
+Android registers and `SupabaseConfig.redirectUrl` emits, deliberately not the
+underscore-bearing bundle id (GoTrue can't parse that, see ADR-008 lineage); no
+custom `AppDelegate`/`SceneDelegate` open-URL override needed (`supabase_flutter`
+handles the deep link via `app_links`, which supports the scene-based
+`FlutterSceneDelegate` this project uses); push is now an explicit logged
+early-return on iOS in `push_service.dart` (guard on `TargetPlatform.iOS` before
+`Firebase.initializeApp()`) instead of relying on a caught `UnsupportedError`;
+added a Flutter `ios/Podfile` (none existed) pinned to `platform :ios, '13.0'`.
+Rejected: paying for the Developer Program now (premature); Sign in with Apple
+(paid-only, redundant with email/password + Google). Consequences: builds expire
+every 7 days (re-run to renew — free-tier limit, not a bug); iOS push stays
+unbuilt until a paid account provisions a Firebase iOS app + APNs key; TestFlight
+to the beta group stays blocked on that same decision. Manual check: Supabase →
+Authentication → URL Configuration must list
+`com.jobhuntagent.firstrole://login-callback/` (already required for Android —
+same scheme). On-device verification pending (no Mac/Xcode/device in this env).
+
 ## Cross-cutting pattern worth noting
 
 Several ADRs (007, 008, 009, 010) end with the same caveat: **verified via

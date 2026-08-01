@@ -10,7 +10,7 @@ import 'api_client.dart';
 /// task per kind at a time (or per kind+[TrackedTask.id] — see [TaskCenter]'s
 /// class doc) — starting a rerank while one is already running just keeps
 /// following the existing one.
-enum TaskKind { rerank, pipeline, tailor }
+enum TaskKind { rerank, pipeline, tailor, jobsRefresh }
 
 /// Client-side lifecycle of one background task. `queued` covers the gap
 /// between tapping the button and the server answering 202 with a task id.
@@ -123,6 +123,7 @@ class TaskCenter extends Notifier<Map<String, TrackedTask?>> {
         TaskKind.rerank => 'Re-rank',
         TaskKind.pipeline => 'Agent run',
         TaskKind.tailor => 'Resume tailoring',
+        TaskKind.jobsRefresh => 'Job refresh',
       };
 
   String _doneMessage(TrackedTask task) {
@@ -134,6 +135,7 @@ class TaskCenter extends Notifier<Map<String, TrackedTask?>> {
       TaskKind.pipeline =>
         'Agent run complete — ${r['jobs_inserted'] ?? 0} jobs added, ${r['matches_reranked'] ?? 0} scored, ${r['followups_drafted'] ?? 0} follow-up(s)',
       TaskKind.tailor => 'Resume tailored — review the diff',
+      TaskKind.jobsRefresh => 'Jobs refreshed — ${r['inserted'] ?? 0} new of ${r['fetched'] ?? 0} fetched',
     };
   }
 

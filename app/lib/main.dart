@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
@@ -40,10 +42,37 @@ void _warmUpServer() {
 
 /// The app's root widget. FlutterFlow builds this for you behind the scenes
 /// (the "App Settings" theme + the page you set as your start page); here
-/// it's one small StatelessWidget — stateless because this widget itself
-/// never changes after being built, unlike HomeScreen below it.
-class JobHuntAgentApp extends StatelessWidget {
+/// it's one small widget that owns the theme binding and the app-lifecycle
+/// hook.
+///
+/// Stateful only because of that hook: when iOS/Android hand the app back
+/// after it has been idle (or suspended) for a long time, the session may have
+/// been refreshed — or the very first routing check may have failed on a dead
+/// radio — and nothing was re-running it. [AppLifecycleListener] gives us a
+/// single, official resume signal to revalidate on.
+class JobHuntAgentApp extends StatefulWidget {
   const JobHuntAgentApp({super.key});
+
+  @override
+  State<JobHuntAgentApp> createState() => _JobHuntAgentAppState();
+}
+
+class _JobHuntAgentAppState extends State<JobHuntAgentApp> {
+  late final AppLifecycleListener _lifecycle = AppLifecycleListener(
+    onResume: () => unawaited(appRouterNotifier.refreshOnResume()),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle; // touch the lazy field so the listener is registered
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

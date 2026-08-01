@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../services/api_client.dart';
+import '../services/haptic_service.dart';
 import '../services/theme_controller.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
@@ -38,6 +40,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool _followupNudge = widget.initialFollowupNudge;
   bool _isSavingAlerts = false;
   bool _isSavingFollowupNudge = false;
+  // Local mirror of the persisted haptics preference; there was no UI for it
+  // before, so the on/off switch in HapticService could never be toggled.
+  bool _haptics = HapticService.instance.enabled;
+
+  void _setHaptics(bool value) {
+    setState(() => _haptics = value);
+    HapticService.instance.setEnabled(value);
+    // Fire once so enabling it gives immediate tactile confirmation.
+    if (value) HapticService.instance.selection();
+  }
 
   Future<void> _setAlerts(bool value) async {
     final previous = _alerts;
@@ -74,6 +86,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _updateResume() async {
+    HapticService.instance.selection();
     final navigator = Navigator.of(context);
     await navigator.push(
       MaterialPageRoute(
@@ -137,6 +150,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          const SizedBox(height: AppSpacing.space2),
+          // Migration 026 — the contact header on every compiled résumé PDF.
+          Container(
+            decoration: BoxDecoration(
+              color: context.c.surface,
+              border: Border.all(color: context.c.border),
+              borderRadius: AppRadius.lgRadius,
+              boxShadow: AppElevation.e1,
+            ),
+            child: InkWell(
+              onTap: () => context.push('/contact-details'),
+              borderRadius: AppRadius.lgRadius,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
+                child: Row(
+                  children: [
+                    AppIcon(AppIconName.user, size: 20, color: context.c.accent),
+                    const SizedBox(width: AppSpacing.space3),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Contact details',
+                              style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Phone, email, LinkedIn, GitHub and website — printed at the top of your résumé',
+                            style: AppTypography.bodySm.copyWith(color: context.c.inkFaint),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AppIcon(AppIconName.chevronRight, size: 18, color: context.c.inkFaint),
+                  ],
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: AppSpacing.space4),
           Text('APPEARANCE', style: AppTypography.label.copyWith(color: context.c.inkFaint)),
           const SizedBox(height: AppSpacing.space2),
@@ -153,28 +204,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 final isDark = mode == ThemeMode.dark ||
                     (mode == ThemeMode.system &&
                         MediaQuery.platformBrightnessOf(context) == Brightness.dark);
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space4, vertical: AppSpacing.space3),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Dark mode', style: AppTypography.title.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 2),
-                            Text('Follows your system setting until you choose here', style: AppTypography.bodySm.copyWith(color: context.c.inkFaint)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.space2),
-                      Switch(
-                        value: isDark,
-                        onChanged: (v) => ThemeController.instance.set(v ? ThemeMode.dark : ThemeMode.light),
-                        activeThumbColor: context.c.accent,
-                      ),
-                    ],
-                  ),
+                return Column(
+                  children: [
+                    _switchRow(
+                      label: 'Dark mode',
+                      desc: 'Follows your system setting until you choose here',
+                      value: isDark,
+                      onChanged: (v) {
+                        HapticService.instance.selection();
+                        ThemeController.instance.set(v ? ThemeMode.dark : ThemeMode.light);
+                      },
+                      showDivider: true,
+                    ),
+                    _switchRow(
+                      label: 'Haptic feedback',
+                      desc: 'Subtle taps on buttons and actions',
+                      value: _haptics,
+                      onChanged: _setHaptics,
+                      showDivider: false,
+                    ),
+                  ],
                 );
               },
             ),
@@ -215,12 +264,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // Notification rows disable their switch while a PATCH is in flight; the
+  // shared row (below) handles the common layout. A subtle tick fires on every
+  // toggle for tactile confirmation.
   Widget _toggleRow({
     required String label,
     required String desc,
     required bool value,
     required bool isSaving,
     required ValueChanged<bool> onChanged,
+    required bool showDivider,
+  }) {
+    return _switchRow(
+      label: label,
+      desc: desc,
+      value: value,
+      showDivider: showDivider,
+      onChanged: isSaving
+          ? null
+          : (v) {
+              HapticService.instance.selection();
+              onChanged(v);
+            },
+    );
+  }
+
+  Widget _switchRow({
+    required String label,
+    required String desc,
+    required bool value,
+    required ValueChanged<bool>? onChanged,
     required bool showDivider,
   }) {
     return Container(
@@ -241,7 +314,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(width: AppSpacing.space2),
           Switch(
             value: value,
-            onChanged: isSaving ? null : onChanged,
+            onChanged: onChanged,
             activeThumbColor: context.c.accent,
           ),
         ],

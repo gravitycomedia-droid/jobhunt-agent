@@ -22,18 +22,44 @@ class ChatMessage {
       content: json['content'] as String,
     );
   }
+
+  /// Only the three fields the screen renders — enough to re-hydrate a cached
+  /// conversation, and deliberately not the whole server row.
+  Map<String, dynamic> toJson() => {'id': id, 'role': role, 'content': content};
 }
 
-/// One conversation. `GET /chat/threads` returns these newest-active first;
-/// the screen only needs the most recent thread's id to reload history on open.
+/// One conversation. `GET /chat/threads` returns these newest-active first —
+/// the most recent is reloaded as the open conversation, and the rest are the
+/// "Recent chats" list.
 class ChatThread {
   final String id;
   final String? title;
 
-  const ChatThread({required this.id, this.title});
+  /// Last activity in the thread (`chat_threads.updated_at`). Null on an older
+  /// server that doesn't send it — the UI just omits the timestamp then.
+  final DateTime? updatedAt;
+
+  /// Exact server JSON, kept verbatim so the list round-trips through
+  /// [CacheService] and the sheet paints instantly on open.
+  final Map<String, dynamic> raw;
+
+  const ChatThread({required this.id, this.title, this.updatedAt, this.raw = const {}});
+
+  /// What the recent-chats row shows. Threads are titled from the first message
+  /// server-side, so this is the user's own words in almost every case.
+  String get displayTitle {
+    final t = title?.trim();
+    return (t == null || t.isEmpty) ? 'Untitled chat' : t;
+  }
 
   factory ChatThread.fromJson(Map<String, dynamic> json) {
-    return ChatThread(id: json['id'] as String, title: json['title'] as String?);
+    final updated = json['updated_at'] ?? json['created_at'];
+    return ChatThread(
+      raw: json,
+      id: json['id'] as String,
+      title: json['title'] as String?,
+      updatedAt: updated is String ? DateTime.tryParse(updated)?.toLocal() : null,
+    );
   }
 }
 

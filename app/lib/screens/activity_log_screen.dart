@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/activity_item.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
+import '../services/refresh_throttle.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import '../widgets/activity_style.dart';
@@ -25,10 +26,13 @@ class ActivityLogScreen extends StatefulWidget {
 
 class _ActivityLogScreenState extends State<ActivityLogScreen> {
   final ApiClient _apiClient = ApiClient();
+  final RefreshThrottle _throttle = RefreshThrottle();
 
   bool _isLoading = true;
+  bool _isRefreshing = false;
   String? _errorMessage;
   List<ActivityItem> _activity = [];
+  DateTime? _lastUpdated;
 
   @override
   void initState() {
@@ -36,9 +40,14 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  /// Phase 5 + ADR-028: paint the cached feed instantly, and on a PASSIVE load
+  /// (opening the screen) skip the network while that cache is under
+  /// [CacheService.freshFor]. [force] — pull-to-refresh, Retry — always
+  /// refetches, debounced against a burst of pulls.
+  Future<void> _load({bool force = false}) async {
+    if (force && !_throttle.shouldRun()) return;
     setState(() => _errorMessage = null);
-    // Phase 5: paint the cached feed instantly, revalidate underneath.
+
     var painted = _activity.isNotEmpty;
     if (!painted) {
       final entry = await CacheService.instance.read<List<ActivityItem>>(
@@ -49,17 +58,31 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
         painted = true;
         setState(() {
           _activity = entry.data;
+          _lastUpdated = entry.cachedAt;
           _isLoading = false;
         });
       }
     }
-    if (!painted && mounted) setState(() => _isLoading = true);
+
+    if (!force && painted && await CacheService.instance.isFresh(CacheService.keyActivity)) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = !painted;
+        _isRefreshing = painted;
+      });
+    }
     try {
       final activity = await _apiClient.fetchActivity();
       if (!mounted) return;
       setState(() {
         _activity = activity;
+        _lastUpdated = DateTime.now();
         _isLoading = false;
+        _isRefreshing = false;
       });
       await CacheService.instance.write(CacheService.keyActivity, [for (final a in activity) a.raw]);
     } catch (e) {
@@ -67,6 +90,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
       setState(() {
         _errorMessage = painted ? null : e.toString();
         _isLoading = false;
+        _isRefreshing = false;
       });
     }
   }
@@ -75,7 +99,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const PageHeader(title: 'Agent activity', showBack: true),
-      body: RefreshIndicator(onRefresh: _load, child: _body()),
+      body: RefreshIndicator(onRefresh: () => _load(force: true), child: _body()),
     );
   }
 
@@ -94,7 +118,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
             title: 'Could not load activity',
             message: _errorMessage,
             actionLabel: 'Retry',
-            onAction: _load,
+            onAction: () => _load(force: true),
           ),
         ],
       );
@@ -112,6 +136,40 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
       );
     }
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _updatedRow(),
+        Expanded(child: _timeline()),
+      ],
+    );
+  }
+
+  /// "Updated 3m ago · pull to refresh" — ADR-028 asks the passive freshness
+  /// window to be visible rather than looking like a screen that never updates.
+  Widget _updatedRow() {
+    final label = lastUpdatedLabel(_lastUpdated);
+    if (label == null && !_isRefreshing) return const SizedBox.shrink();
+    final style = AppTypography.caption.copyWith(color: context.c.inkFaint);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadX, AppSpacing.space3, AppSpacing.screenPadX, 0),
+      child: _isRefreshing
+          ? Row(
+              children: [
+                SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 1.6, color: context.c.inkFaint),
+                ),
+                const SizedBox(width: 8),
+                Text('Refreshing…', style: style),
+              ],
+            )
+          : Text('$label · pull to refresh', style: style),
+    );
+  }
+
+  Widget _timeline() {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadX, AppSpacing.space2, AppSpacing.screenPadX, AppSpacing.space6),
       itemCount: _activity.length,

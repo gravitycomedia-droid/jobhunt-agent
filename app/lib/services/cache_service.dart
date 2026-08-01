@@ -37,13 +37,33 @@ class CacheService {
   static const keyApplications = 'applications';
   static const keyCostStats = 'cost_stats';
   static const keyActivity = 'activity';
-  static const allKeys = [keyProfile, keyMatches, keyJobs, keyApplications, keyCostStats, keyActivity];
+  static const keySkillGrowth = 'skill_growth';
+  static const keyChatThreads = 'chat_threads';
+  static const keyChatMessages = 'chat_messages';
+  static const allKeys = [
+    keyProfile,
+    keyMatches,
+    keyJobs,
+    keyApplications,
+    keyCostStats,
+    keyActivity,
+    keySkillGrowth,
+    keyChatThreads,
+    keyChatMessages,
+  ];
 
   /// Phase 14 (ADR-028): passive refresh triggers (tab switch, app resume,
   /// the matching loading screen's background kick-off) treat cache younger
   /// than this as fresh enough to skip the network call entirely. Explicit
   /// pull-to-refresh ignores this and always refetches — see [RefreshThrottle].
   static const freshFor = Duration(minutes: 5);
+
+  /// The skill-growth payload is one ~50s Gemini call whose input only changes
+  /// when the agent re-ranks, so the 5-minute window is far too aggressive for
+  /// it — re-opening the screen would burn a minute and an LLM call for the
+  /// same answer. Passive loads treat it as fresh for half a day; pull-to-
+  /// refresh still forces a real regeneration.
+  static const skillGrowthFreshFor = Duration(hours: 12);
 
   /// Phase 2: the app-wide theme mode is a **device-level** preference, so it
   /// is stored un-namespaced (survives sign-out, applies before any user is

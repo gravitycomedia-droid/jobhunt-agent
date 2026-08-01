@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jobhunt_agent/screens/debug_gallery_screen.dart';
 import 'package:jobhunt_agent/theme/app_theme.dart';
 import 'package:jobhunt_agent/widgets/activity_log_item.dart';
+import 'package:jobhunt_agent/widgets/agent_scene.dart';
 import 'package:jobhunt_agent/widgets/app_banner.dart';
+import 'package:jobhunt_agent/widgets/app_shell.dart';
 import 'package:jobhunt_agent/widgets/app_loader.dart';
 import 'package:jobhunt_agent/widgets/celebration_modal.dart';
 import 'package:jobhunt_agent/widgets/fit_gauge.dart';
@@ -193,6 +195,67 @@ void main() {
     testWidgets('CelebrationModal renders its confetti burst', (tester) async {
       await pumpBoth(tester, const CelebrationModal(title: 'Offer! 🎉'));
       expect(find.text('Offer! 🎉'), findsOneWidget);
+    });
+
+    testWidgets('AgentScene runs both kinds without crashing', (tester) async {
+      for (final kind in AgentSceneKind.values) {
+        await pumpBoth(tester, AgentScene(kind: kind, size: 200));
+        // Cross the loop boundary so the token fade-out and wrap-around are
+        // exercised, not just the first frames.
+        await tester.pump(const Duration(milliseconds: 3300));
+        expect(tester.takeException(), isNull);
+      }
+    });
+  });
+
+  group('AppShell floating nav', () {
+    testWidgets('leaves the content exactly the pill\'s footprint, no more', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: appLight,
+        home: AppShell(
+          onChatTap: () {},
+          onNavigate: (_) {},
+          child: const SizedBox.expand(child: Text('content')),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(tester.takeException(), isNull);
+      // The gutter under the content is the nav cluster's own footprint —
+      // regression guard for the dead band the docked bar used to leave.
+      expect(kFloatingNavClearance, kNavPillTopGap + kNavPillHeight + kNavPillBottomGap);
+
+      final contentBottom = tester.getRect(find.text('content')).bottom;
+      final navTop = tester.getRect(find.byType(InkWell).first).top;
+      // Content stops at (or just above) the pill — never a screen-height gap.
+      expect(navTop - contentBottom, lessThan(kNavPillHeight));
+    });
+
+    testWidgets('the chat FAB is tappable where it is painted', (tester) async {
+      // Regression guard: the FAB floats ABOVE the pill. Parented under a
+      // pill-sized Stack it painted (Clip.none) but sat outside that box, and
+      // Flutter does not hit-test outside a parent's bounds — so it looked fine
+      // and did nothing. It must be a sibling of the pill in the full-screen
+      // Stack.
+      var chatTaps = 0;
+      var navTaps = 0;
+      await tester.pumpWidget(MaterialApp(
+        theme: appLight,
+        home: AppShell(
+          onChatTap: () => chatTaps++,
+          onNavigate: (_) => navTaps++,
+          child: const SizedBox.expand(),
+        ),
+      ));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tap(find.bySemanticsLabel('Ask the career agent'));
+      await tester.pump();
+      expect(chatTaps, 1);
+
+      await tester.tap(find.text('Matches'));
+      await tester.pump();
+      expect(navTaps, 1);
     });
   });
 }

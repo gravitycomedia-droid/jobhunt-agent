@@ -133,6 +133,18 @@ class ResumeProfile {
   /// Preferred cities (also read by the jobs filter/match paths).
   List<String> targetLocations;
 
+  /// Migration 026 — the contact block printed at the top of a compiled résumé
+  /// PDF. Pre-filled by the résumé parser when they're printed on the uploaded
+  /// file, then editable from Settings → Contact details. Unlike the fields
+  /// above these DO ride in [toJson] (PATCH /resume/profile owns them), because
+  /// they're résumé content rather than onboarding state.
+  String? email;
+  String? phone;
+  String? location;
+  String? linkedinUrl;
+  String? githubUrl;
+  String? websiteUrl;
+
   /// Phase 5: exact server JSON, cached verbatim for round-tripping (the
   /// hand-written [toJson] below is the PATCH body — a subset, not a
   /// faithful copy, so it can't be used for caching).
@@ -160,6 +172,12 @@ class ResumeProfile {
     this.experienceYears,
     this.noticePeriodDays,
     this.targetLocations = const [],
+    this.email,
+    this.phone,
+    this.location,
+    this.linkedinUrl,
+    this.githubUrl,
+    this.websiteUrl,
     this.raw = const {},
   });
 
@@ -195,6 +213,12 @@ class ResumeProfile {
       experienceYears: (json['experience_years'] as num?)?.toDouble(),
       noticePeriodDays: (json['notice_period_days'] as num?)?.toInt(),
       targetLocations: (json['target_locations'] as List? ?? []).map((l) => l as String).toList(),
+      email: json['email'] as String?,
+      phone: json['phone'] as String?,
+      location: json['location'] as String?,
+      linkedinUrl: json['linkedin_url'] as String?,
+      githubUrl: json['github_url'] as String?,
+      websiteUrl: json['website_url'] as String?,
     );
   }
 
@@ -225,5 +249,22 @@ class ResumeProfile {
         'experience': experience.map((e) => e.toJson()).toList(),
         'projects': projects.map((p) => p.toJson()).toList(),
         'education': education.map((ed) => ed.toJson()).toList(),
+        ...contactJson(),
+      };
+
+  /// The migration-026 contact fields, **omitting the ones that are null**.
+  ///
+  /// The omission matters: the server's PATCH uses `exclude_unset`, but a JSON
+  /// `null` counts as set, so spreading nulls here would let the résumé-review
+  /// screen — which never shows these fields — silently wipe a LinkedIn the
+  /// user typed in Settings. To actually clear one, send `''` (the PDF treats
+  /// blank as absent), which is what the Settings editor does.
+  Map<String, dynamic> contactJson() => {
+        if (email != null) 'email': email,
+        if (phone != null) 'phone': phone,
+        if (location != null) 'location': location,
+        if (linkedinUrl != null) 'linkedin_url': linkedinUrl,
+        if (githubUrl != null) 'github_url': githubUrl,
+        if (websiteUrl != null) 'website_url': websiteUrl,
       };
 }

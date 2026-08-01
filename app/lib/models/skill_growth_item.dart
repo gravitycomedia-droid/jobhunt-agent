@@ -33,22 +33,39 @@ class SkillGrowthItem {
   final String skill;
   final String reason;
   final String frequencyLabel;
+
+  /// How many of the caller's ranked matches list this gap — the raw count
+  /// behind [frequencyLabel], counted in Python from real match rows (never
+  /// an LLM-produced number). The screen weights XP by it, so closing a gap
+  /// that blocks six matches is worth more than one that blocks one.
+  final int frequency;
+
   final List<SkillCourse> courses;
   final List<SkillProject> projects;
+
+  /// Exact server JSON, kept verbatim so the payload round-trips through
+  /// [CacheService] (this endpoint is a slow LLM call — it gets cached, not
+  /// re-fetched on every visit).
+  final Map<String, dynamic> raw;
 
   SkillGrowthItem({
     required this.skill,
     required this.reason,
     required this.frequencyLabel,
+    required this.frequency,
     required this.courses,
     required this.projects,
+    this.raw = const {},
   });
 
   factory SkillGrowthItem.fromJson(Map<String, dynamic> json) {
     return SkillGrowthItem(
+      raw: json,
       skill: json['skill'] as String,
       reason: json['reason'] as String,
       frequencyLabel: json['frequency_label'] as String,
+      // Older servers (pre-frequency) fall back to 1 rather than crashing.
+      frequency: (json['frequency'] as num?)?.toInt() ?? 1,
       courses: (json['courses'] as List).map((c) => SkillCourse.fromJson(c as Map<String, dynamic>)).toList(),
       projects: (json['projects'] as List).map((p) => SkillProject.fromJson(p as Map<String, dynamic>)).toList(),
     );

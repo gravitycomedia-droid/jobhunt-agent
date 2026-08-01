@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/haptic_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import 'app_icon.dart';
@@ -48,7 +49,10 @@ class PageHeader extends StatelessWidget implements PreferredSizeWidget {
           HeaderActionButton(
             icon: AppIconName.chevronLeft,
             tooltip: 'Back',
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              HapticService.instance.selection();
+              Navigator.of(context).pop();
+            },
           ),
           const SizedBox(width: AppSpacing.space3),
         ],
@@ -125,7 +129,12 @@ class HeaderActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final button = IconButton(
       tooltip: tooltip,
-      onPressed: busy ? null : onPressed,
+      onPressed: busy || onPressed == null
+          ? null
+          : () {
+              HapticService.instance.selection();
+              onPressed!();
+            },
       icon: busy
           ? SizedBox(
               width: 16,

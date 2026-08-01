@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
@@ -40,6 +41,13 @@ class _FitGaugeState extends State<FitGauge> with SingleTickerProviderStateMixin
       AnimationController(vsync: this, duration: const Duration(milliseconds: 1420));
   double _val = 0;
 
+  // Haptic "tick" state — a light selectionClick fires as the number climbs so
+  // the reveal *feels* like a mechanical counter. Gated by both a value step
+  // (≥3) and a time floor (≥32ms) so the fast easeOut start doesn't blur into a
+  // buzz, and the ticks naturally slow as the number eases toward the target.
+  int _lastHapticVal = 0;
+  Duration _lastHapticAt = Duration.zero;
+
   @override
   void initState() {
     super.initState();
@@ -62,9 +70,13 @@ class _FitGaugeState extends State<FitGauge> with SingleTickerProviderStateMixin
     }
   }
 
-  void _start() => _ac
-    ..reset()
-    ..forward();
+  void _start() {
+    _lastHapticVal = 0;
+    _lastHapticAt = Duration.zero;
+    _ac
+      ..reset()
+      ..forward();
+  }
 
   void _tick() {
     final ms = _ac.value * 1420;
@@ -80,7 +92,20 @@ class _FitGaugeState extends State<FitGauge> with SingleTickerProviderStateMixin
       final e = k < .5 ? 2 * k * k : 1 - math.pow(-2 * k + 2, 2).toDouble() / 2;
       v = over + (widget.target - over) * e;
     }
+    _maybeHaptic(v, Duration(milliseconds: ms.round()));
     setState(() => _val = v);
+  }
+
+  /// Fire a light "tick" when the displayed integer has moved ≥3 AND ≥32ms has
+  /// passed since the last one — dense enough to read as a mechanical counter,
+  /// sparse enough not to smear into a single buzz.
+  void _maybeHaptic(double v, Duration at) {
+    final r = v.round();
+    if ((r - _lastHapticVal).abs() >= 3 && (at - _lastHapticAt).inMilliseconds >= 32) {
+      HapticFeedback.selectionClick();
+      _lastHapticVal = r;
+      _lastHapticAt = at;
+    }
   }
 
   @override
