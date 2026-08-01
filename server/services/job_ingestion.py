@@ -796,6 +796,53 @@ async def refresh_india_boards() -> dict:
     return summary
 
 
+def backfill_tech_categories(limit: int = 500) -> dict:
+    """Catch-up for rows ingested before migration 028 added `tech_category`.
+
+    Safe to call repeatedly — only touches engineering/data rows where
+    tech_category is still null. Same posture as backfill_job_embeddings().
+
+    Why this is needed at all: 028's backfill runs in SQL, so it can only do
+    coarse title-only regex and deliberately leaves anything ambiguous NULL
+    (a wrong specialism label is worse than an absent one). That left 112 real
+    engineering rows unreachable by every specialism filter. This pass runs the
+    ACTUAL classifier — title + skills + description, keyword first, batched LLM
+    for the residue — which measured 96% resolution on live listings.
+
+    Scoped to engineering/data because tech_category is meaningless elsewhere:
+    asking "which engineering specialism is this sales role?" is a category
+    error, and NULL is the correct answer for those rows.
+    """
+    rows = (
+        supabase.table("jobs")
+        .select("id,title,category,description")
+        .in_("category", ["engineering", "data"])
+        .is_("tech_category", "null")
+        .limit(limit)
+        .execute()
+        .data
+    )
+    if not rows:
+        return {"backfilled": 0}
+
+    results = classify_tech_categories_batch(
+        [{"title": r.get("title"), "category": r.get("category"), "description": r.get("description")} for r in rows],
+        use_llm=settings.enable_tech_category_llm,
+    )
+
+    backfilled = 0
+    for row, tech_category in zip(rows, results):
+        if not tech_category:
+            # The classifier declined to place it. Leave NULL rather than
+            # inventing a specialism — same reasoning as the SQL backfill.
+            continue
+        supabase.table("jobs").update({"tech_category": tech_category}).eq("id", row["id"]).execute()
+        backfilled += 1
+
+    logger.info("Backfilled tech_category for %d of %d candidate rows", backfilled, len(rows))
+    return {"backfilled": backfilled, "candidates": len(rows)}
+
+
 def backfill_job_embeddings() -> dict:
     """One-off catch-up for jobs ingested before Brick 4 added embedding.
     Safe to call repeatedly — only touches rows where embedding is null.

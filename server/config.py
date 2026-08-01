@@ -230,10 +230,19 @@ class Settings(BaseSettings):
         "software-development,software-testing,cloud-computing,cyber-security,"
         "network-engineering,blockchain-development,data-science,machine-learning"
     )
-    # 50 cards/page. 1 page × 12 slugs × 2 stems is already ~1,200 cards/day
-    # before dedup, so the default stays at 1 — raise it only if the freshness
-    # gate is visibly starving, not by reflex.
-    internshala_pages_per_slug: int = 1
+    # 50 cards/page, across 12 slugs × 2 stems.
+    #
+    # Raised 1 → 2 on 2026-08-01 after measuring, having initially assumed page 2
+    # would be mostly stale listings the freshness gate discards. It isn't: the
+    # marginal page yielded +238 relevant postings for +435 fetched (55%
+    # survival, versus 48% on page 1), taking Internshala from 432 to 670
+    # relevant/day. The cost is 12 extra HTTP requests and ~6s of politeness
+    # delay — nothing.
+    #
+    # Don't raise it further without measuring again. Survival per page will fall
+    # off eventually; the point at which it does is an empirical question, not a
+    # thing to guess at, which is exactly the mistake the 1 → 2 change corrected.
+    internshala_pages_per_slug: int = 2
     # The fresher-jobs catalogue (full-time entry roles) alongside internships.
     # Free, so unlike the Apify path there's no per-result reason to skip it.
     internshala_include_fresher_jobs: bool = True
