@@ -170,6 +170,230 @@ mocked responses behind it, and makes zero live calls to Internshala or Unstop
 until this amendment is accepted AND the flag is flipped. Unstop additionally
 waits on a one-time manual endpoint-recon step (Plan 15 Phase B).
 
+### Amendment v3 (2026-07-26) — the broad Unstop pool
+
+> **Status: ACCEPTED (2026-07-26).** Raises Unstop from ~20 rows/day to ~87/day
+> steady state (~791 on the first run) by crawling its whole catalogue instead
+> of three role keywords, adding its `jobs` catalogue alongside `internships`,
+> and dropping the ROLE and LOCATION halves of the ingestion gate for that one
+> source. Everything the v2 amendment constrained — no login, cron-only,
+> invite-only user base, no redistribution — is unchanged.
+
+**Context.** v2 approved Unstop and it worked, but landed ~20 postings a day.
+Live measurement on 2026-07-26 found the cause was not the fetch cap everyone
+assumed. Three separate narrowings compounded:
+
+| narrowing | effect |
+|---|---|
+| `searchTerm` set per `target_roles` entry | never saw the catalogue, only 3 keywords |
+| `opportunity=internships` hardcoded | 1,186 open `jobs` postings invisible |
+| the role gate in `job_filter.py` | discarded ~92% of what did come back |
+| `UNSTOP_MAX_RESULTS=20` | the one everybody looked at; least significant |
+
+**The decision.** Three changes, each measured rather than estimated:
+
+**1. Crawl the catalogue, not keywords.** `UNSTOP_SEARCH_TERMS` defaults empty →
+one unfiltered pass. Counter-intuitively this is *fewer* requests than the
+keyword loop it replaces. `UNSTOP_OPPORTUNITY_TYPES=internships,jobs` adds the
+second catalogue. (`freshers`/`entry-level` were probed and are **not**
+opportunity types — they return `total=0`; Unstop treats them as filters inside
+`jobs`, so the fresher cut stays the ingestion gate's job.)
+
+**2. Volume is bounded by FRESHNESS, not by a cap.** Results are newest-first, so
+the crawler stops after two consecutive pages older than `MAX_JOB_AGE_DAYS`.
+Cold start is ~21 requests; steady state is ~3. `UNSTOP_MAX_RESULTS` is now a
+runaway guard, not a target. This is what keeps "no high-volume polling" true
+while pulling 40x the rows — we are a *lighter* caller per row than before.
+
+**3. The relevance gate is now per-source** (`INGESTION_GATE_OVERRIDES`,
+default `unstop:entry`). Measured over the full open catalogue:
+
+| gates applied | day-one backfill | new per day |
+|---|---|---|
+| all three (v2 behaviour) | 441 | 55 |
+| entry only (**chosen**) | 791 | 87 |
+| location only | 711 | 76 |
+| none | 1,443 | 131 |
+
+**Why entry-level stays on and the other two come off.** Role and location are
+*preferences* — they vary per user and change as someone's search evolves, and
+the app can express them as filters the user can widen at any time. Entry-level
+is a *property of this product*: a resume-tailoring agent for a fresher has
+nothing useful to say about a Director of Sales posting, so storing one costs an
+embedding and buys nothing. The asymmetry that decides it: a posting we filtered
+in the app is one tap from being visible again, while a posting we never ingested
+is gone until it's re-crawled. So preferences filter late, product boundaries
+filter early.
+
+**What this costs.** ~75% of the pool is now non-engineering (sales 23%,
+marketing 16%, operations 9%). Three consequences, all handled:
+- **The app needed a category axis** — `jobs.category` (migration 027), a
+  keyword classifier (`services/job_category.py`, golden rule 2: no LLM call on
+  a per-row hot path), and a filter chip row defaulting to the tech categories.
+  This one is applied server-side, unlike every other filter, because the client
+  would otherwise page through 1,400 rows to display ~200.
+- **Two latent bugs became real** at this volume and are fixed here: the dedup
+  lookback was a blind "most recent 500 rows" (fine at 30/day, under three days
+  of history at 130/day — it broke the *fuzzy* near-match check; exact dupes were
+  always safe via `on_conflict`), and the batch upsert now chunks at 200 rows
+  rather than sending 800 embeddings in one request body.
+- **Match quality and LLM cost are unaffected**, which is why this is safe.
+  Verified in `services/matching.py`: stage 1 is cosine similarity against the
+  user's resume, so marketing postings sink; `_prescreen()` drops off-discipline
+  jobs before Gemini sees them. Rerank stays pinned at ~20 jobs/user/day
+  regardless of pool size. The added cost is embeddings and storage only.
+
+**What did NOT change:** no login, no credentials, cron-path only, invite-only
+access, no redistribution, and `ENABLE_INDIA_SOURCES` remains the master kill
+switch. The v2 scale ceiling and the "scraping volume is a separate dial from
+user count" principle both still hold — this *is* that dial being turned
+deliberately, with numbers, which is exactly what v2 said such a change required.
+
+### Amendment v4 (2026-07-27) — Internshala goes free, Instahyre added
+
+> **Status: PROPOSED — awaiting sign-off.** Code lands behind the existing
+> `ENABLE_INDIA_SOURCES` gate (still default `false`), so nothing fetches live
+> until the flag is flipped. Same posture as v2.
+
+**Context.** Two findings from hands-on recon on 2026-07-27, both verified
+before any code was written:
+
+1. **Internshala needs no Apify actor.** Its category listing pages are plain
+   server-rendered HTML — a bare GET returns all 50 cards per page with title,
+   company, location, stipend, duration, skill tags and a relative posted-time
+   badge already in the markup. The `blackfalcondata~internshala-scraper` actor
+   was billing $0.0015/result for HTML anyone can fetch.
+2. **Instahyre has a genuinely public JSON API.** `GET /api/v1/job_search` with
+   `job_categories=1` ("Software Engineering") returns structured listings with
+   no auth, cookies or session of any kind — confirmed without ever logging in.
+
+**Decision.**
+
+- Internshala moves from the paid Apify rotation to a free `httpx` +
+  BeautifulSoup fetch, and from a tue/fri cadence capped at 10 results to
+  **daily** across ~12 technical category slugs. Cadence was rationing money;
+  there is no longer money to ration. The Apify actor and its three config knobs
+  are deleted rather than deprecated.
+- Instahyre is added as a second free direct-fetch source.
+- Both route through a new `refresh_india_boards()` — **cron-only**, gated on
+  `ENABLE_INDIA_SOURCES`, deliberately NOT in `refresh_job_pool()`. The source
+  plan asked for the latter; that would have been a rules violation, because
+  `refresh_job_pool()` is what the app's "Run agent now" button calls, and this
+  ADR permits these boards only on a daily cron. **Free of COST is not free of
+  CADENCE** — they are separate constraints, and only the first one changed.
+
+**Two new schema columns (migration 028), and why they are new columns:**
+
+- `tech_category` — the technical *specialism* (frontend/backend/ai_ml/…). It
+  sits **alongside** `category` (migration 027), which records the *function*
+  (engineering/sales/hr/…). Overloading 027's column with specialisms — which the
+  source plan proposed — would have destroyed the ability to label and browse
+  non-engineering roles at all, which is the entire reason 027 exists. NULL is
+  the correct, meaningful value for a non-technical posting; there is no
+  `non_it` member, because `category` already says it.
+- `is_active` — soft-delete for presence-based retirement. Neither source
+  exposes a usable expiry date, so a posting that stops appearing in the daily
+  fetch is retired. **Never a hard `DELETE`**: `jobs` rows are referenced by
+  `applications`, `matches` and `tailored_resumes`, and deleting one would
+  destroy a user's own tracked history because a company took a listing down.
+  Discovery reads (`GET /jobs`, facets, `match_jobs_by_similarity`) exclude
+  retired rows; reads that hydrate a job the user already interacted with
+  deliberately do not. That asymmetry is the whole point of the flag.
+
+**Classification is deterministic first.** Pass 1 is keyword/skill-tag matching
+in Python; only rows it cannot place go to a **single batched** DeepSeek call.
+Measured against 210 real listings pulled live from both sources on 2026-07-27,
+Pass 1 resolved **96%** (177/184 technical rows) — the 7 that fell through were
+IoT, Robotics, Unreal Engine and Kofax, i.e. genuine `other_it`. So the LLM cost
+is one small call per ingestion run, and `ENABLE_TECH_CATEGORY_LLM=false` turns
+even that off in exchange for those rows defaulting to `other_it`.
+
+This is a narrower use of an LLM than ADR-003 v3's `job_category.py` explicitly
+argued against, and the difference matters: that module rejects an LLM for the
+*function* call because it runs on every row and the vocabulary is title-visible.
+Specialism is harder — "Software Engineer" with only a skill list is not
+decidable by keyword, and it's the commonest title in the pool. Golden rule 2
+still holds: code decides everything code can decide, and here that's 96%.
+
+**Two claims in the source plan were wrong and are corrected here**, both caught
+by live recon rather than in production:
+
+- *"Listings are sorted newest-first, so stop early at the first stale card."*
+  They are not. The top ~32 cards are a promoted/featured block in mixed order —
+  a "3 weeks ago" card sat at position 1 with "Just now" at position 2. The
+  proposed early-stop would have returned near-zero jobs. Every card on a fetched
+  page is parsed, and freshness is left to the existing shared `is_fresh()` gate.
+- *"Instahyre `job_type=2` is mixed with Sales/HR/Marketing interns."* With
+  `job_categories=1` applied it is not — all 8 internships returned were
+  technical. The classifier still runs on every row as a safety net, but the
+  source-side filter is better than the plan credited.
+
+**Known limitation, accepted:** Instahyre's full-time catalogue (~7,900 rows)
+skews heavily senior — page one was Staff/Principal/Senior almost throughout — so
+the entry-level gate will discard most of it, much like Greenhouse/Lever. Its
+internship catalogue was only 8 rows. Realistic yield from Instahyre is therefore
+low; it is added for coverage, not volume, and the ingestion health log tracks
+*fetched* (not inserted) so an all-duplicate day doesn't read as a dead source.
+
+**What did NOT change:** no login, no credentials, cron-path only, invite-only
+access, no redistribution, per-request delays, and `ENABLE_INDIA_SOURCES` remains
+the master kill switch for all three India boards.
+
+#### First production run, 2026-07-27 — two bugs the unit tests could not catch
+
+Deployed as revision `00027-jnt` and triggered manually. Internshala worked
+(876 cards parsed, 32 inserted, all classified). **Instahyre inserted zero rows
+while reporting 300 fetched**, and the reason generalizes:
+
+1. **A shared cap starved the only useful catalogue.** `fetch_instahyre()`
+   crawled `job_type` 0 then 2 against one row cap. Full-time is ~7,900 rows and
+   *120/120 sampled were rejected by the entry-level gate* (Staff/Principal/
+   Senior throughout); internships are ~8 rows and mostly survive. Full-time ate
+   the entire 300-row budget, so internships were never requested. Fixed by
+   crawling internships first — the order in `INSTAHYRE_JOB_TYPES` is
+   load-bearing, not cosmetic.
+
+   The wider lesson: **`by_source` counts FETCHED, so a source can look perfectly
+   healthy at 300/day while contributing nothing.** Tracking fetched is still
+   right for detecting a dead source (golden rule 6), but it cannot detect a
+   source whose every row is filtered out. Only checking the table found this.
+
+2. **Pagination could loop forever.** The crawl exits on `len(jobs) < cap`, but
+   rows are deduped by id *before* being counted — so an endpoint that keeps
+   returning `meta.next` with content already seen never grows the list and spins
+   indefinitely. This would have hung the daily cron, not merely slowed it. Found
+   because a regression test written for bug 1 modelled exactly that shape and
+   hung the suite. Fixed with `INSTAHYRE_MAX_PAGES`, a bound independent of the
+   row cap. Both bugs now have regression tests.
+
+Deployed as `00028-2r6`. Post-fix live state: Internshala 36 active rows
+(specialisms: full_stack 12, frontend 12, devops_cloud 4, mobile 3, qa_testing 2,
+backend 2, ai_ml 1), Instahyre 1 active row (devops_cloud).
+
+#### Open: the gate is discarding most of what these sources return
+
+`INGESTION_GATE_OVERRIDES` names only `unstop`, so Internshala and Instahyre get
+all three strict gates. Measured live 2026-07-27:
+
+| source | all three gates | entry-only |
+|---|---|---|
+| Internshala | 68 | **237** |
+| Instahyre | 1 | **8** |
+
+The 159 Internshala postings the role gate discards are ai_ml 61, data_science
+24, mobile 20, backend 19, cybersecurity 18, qa_testing 17 — i.e. precisely the
+specialisms `tech_category` was added to let users browse. The role gate admits
+only fullstack/frontend/cloud, so the pool can never contain the variety the
+chips imply.
+
+This is the same trade v3 already made for Unstop, and the same reasoning applies
+(*a posting we never stored can't be un-filtered later*; role and location are
+reversible per-user in the app, an ingestion gate is not). The change would be
+`INGESTION_GATE_OVERRIDES=unstop:entry,internshala:entry,instahyre:entry`.
+**Deliberately left unset pending a decision** — it widens what enters the pool,
+which is the kind of change v2 said should be made with numbers rather than by
+reflex. The numbers are above.
+
 ---
 
 ## ADR-004: Anti-fabrication guardrail with deterministic post-check
@@ -908,3 +1132,500 @@ vocabulary the whole app shares, and one place to tune intensity — the same
 **Consequences.** Haptics are unverified on-device in this environment (no
 physical device); the mapping is asserted by the widget tests only insofar as the
 widgets build. Real haptic feel is part of the Phase 10 physical-device pass.
+
+## ADR-042: Free-tier iOS sideload for dev testing; push/APNs deferred
+
+**Date:** 2026-07-25 · **Status:** accepted
+
+**Context.** The app has shipped Android-only (ADR-007). We needed to run and
+test it on a personal iPhone 16 Pro without paying for the Apple Developer
+Program — i.e. a free-Apple-ID sideload (7-day signing, no TestFlight, no App
+Store). The two blockers were (1) Google OAuth had no iOS redirect wired — only
+Android's `AndroidManifest.xml` intent-filter registered the custom scheme —
+and (2) Firebase/push has no iOS app or APNs key, so `firebase_options.dart`
+throws `UnsupportedError` off Android.
+
+**Decision.** Client/config-only pass, no backend touched:
+- iOS bundle id kept as **`com.jobhuntagent.jobhuntAgent`** (camelCase, the
+  Flutter default). It was briefly changed to `com.jobhuntagent.jobhunt_agent`
+  to mirror Android's `applicationId`, but that **broke free-team automatic
+  signing**: Xcode auto-derives the App ID *name* from the bundle id
+  (`XC com jobhuntagent jobhunt_agent`), and Apple's App ID name allows only
+  letters/digits/spaces — the underscore is rejected ("The attribute 'name' is
+  invalid"), so no provisioning profile is issued. Same underscore rule that
+  already forced the OAuth scheme to be `firstrole` (ADR-008), now hit again at
+  the App-ID layer. The iOS bundle id does **not** need to match Android's — they
+  are independent identities; only Apple needs it unique.
+- Registered the OAuth custom-scheme redirect for iOS via `CFBundleURLTypes` in
+  `Info.plist`, using scheme **`com.jobhuntagent.firstrole`** — the same scheme
+  Android registers and the same one `SupabaseConfig.redirectUrl` emits. This is
+  deliberately NOT the bundle id: GoTrue (Go) can't parse an underscore-bearing
+  scheme (see ADR-008 lineage / the Dart + manifest comments). No custom
+  `AppDelegate`/`SceneDelegate` open-URL override is needed — `supabase_flutter`
+  handles the deep link through the standard plugin registration (`app_links`),
+  which supports the scene-based `FlutterSceneDelegate` this project uses.
+- Push is an explicit, logged early-return on iOS in `push_service.dart`
+  (guard on `TargetPlatform.iOS` before `Firebase.initializeApp()`), replacing
+  reliance on the try/catch swallowing the `UnsupportedError` — same no-op
+  outcome, greppable intent.
+- Added a Flutter `ios/Podfile` (none existed) pinned to `platform :ios, '13.0'`
+  — the highest minimum among firebase_core/firebase_messaging/supabase_flutter.
+
+**Alternatives considered.** Paying for the Developer Program now — premature
+before the app is otherwise iOS-ready, and TestFlight isn't needed just to
+test on one's own device. Sign in with Apple — also paid-team-only, and
+redundant given email/password + Google OAuth already cover sign-in. Matching
+the bundle id into the URL scheme — rejected for the documented underscore/
+GoTrue reason.
+
+**Consequences.** Sideloaded builds expire every 7 days (re-run from Xcode /
+`flutter run` to renew — a free-tier limit, not a bug). iOS push stays
+unbuilt until a paid account provisions a Firebase iOS app + APNs key; the
+in-app notifications Settings toggle is left as-is. TestFlight distribution to
+the beta group remains blocked on that same paid-account decision. Manual check
+the code can't verify: Supabase → Authentication → URL Configuration must list
+`com.jobhuntagent.firstrole://login-callback/` as a redirect URL (it already
+must for Android — same scheme, so no change if it was added generically).
+On-device verification (launch, email + Google sign-in, resume upload, tab nav,
+graceful push skip) is pending — this environment has no Mac/Xcode/device.
+
+**On-device bring-up (2026-07-25, first successful iOS launch).** The Phase A
+code was correct; getting it *running* surfaced a chain of environment gotchas
+worth recording, because every one of them presents as a blank **white screen**
+and none is a code bug:
+1. **Full Xcode + iOS platform required.** Only Command Line Tools were
+   installed; a device build needs Xcode.app plus the on-demand iOS platform
+   (`xcodebuild -downloadPlatform iOS`).
+2. **Flutter *debug* builds can't run standalone on iOS.** Debug uses a JIT Dart
+   VM, and iOS only permits JIT under a debugger — tapping a debug build's icon
+   (or a slow LLDB attach when the device's dyld shared cache isn't extracted)
+   yields a white screen. **Use `flutter run --release`** (AOT) for on-device
+   testing; it launches from the icon at full speed. Set Xcode's Run scheme to
+   Release too.
+3. **The real culprit: a corrupted app *install* on the device.** The very first
+   launch was the broken debug build; every subsequent `flutter run` *updated*
+   that same container rather than replacing it, so the white screen persisted
+   across a minimal-`main`, zero-plugin, `flutter clean` build. **Deleting the
+   app from the phone and reinstalling fresh** fixed it. Bisection proved it was
+   not the code, plugins, Flutter version, or device (a stock `flutter create`
+   app and a plugin-loaded ref app both rendered fine on the same phone).
+4. A device **reboot** un-mounts the developer disk image; it re-mounts only once
+   the phone is **unlocked**, else `flutter run` fails with "developer disk image
+   could not be mounted."
+
+**Result:** the real app launches and runs on the iPhone 16 Pro via free-team
+release sideload. Remaining human checks: Google OAuth round-trip, resume
+upload, and the Supabase redirect-URL dashboard entry above.
+
+## ADR-043: The career chat is grounded in the WHOLE résumé, and advice is separated from facts
+
+**Date:** 2026-07-26 · **Status:** accepted
+
+**Problem.** The assistant could not answer "what is my name?", "which is the
+best project I've built?", or "what should I build next?" — it replied that it
+didn't have the information. That was not a model failure but a *context*
+failure compounded by a prompt failure:
+
+1. `build_context_block` only carried headline, target roles and skills. Name,
+   experience, projects and education were never in the prompt, so a
+   correctly-behaving model told the truth: it had no such data.
+2. The system prompt banned answering anything "not in the CONTEXT" without
+   distinguishing **facts** from **advice**, so even "suggest a project" read as
+   forbidden.
+
+**Decision.** The context now carries the full résumé — name, experience *with
+its bullets*, projects with descriptions, education — plus the onboarding facts
+(branch, grad year, CGPA, employer, notice period, preferred cities), each
+omitted entirely when unset so a blank field never reads as an empty claim.
+Slices are capped (`_MAX_EXPERIENCE`/`_MAX_PROJECTS`/…) so a long résumé can't
+blow up the prompt. The prompt now states plainly that the CONTEXT *is* the user
+being spoken to, and splits the two rules: **facts** must come from the context
+(fabrication ban unchanged and still explicit), while **advice** — what to learn,
+what to build, how to phrase a bullet — is allowed when reasoned from what's
+actually there, and may never be presented as something already done.
+
+**Why not send the raw résumé text?** `raw_resume_text` is on the profile row,
+but it's unstructured, unbounded and includes whatever the parser skipped. The
+structured fields are already the app's source of truth everywhere else.
+
+**Consequences.** Chat prompts are larger (bounded, but larger) and cost more per
+turn. The anti-fabrication acceptance moves from "refuses anything not in
+context" to "refuses invented *facts* while still giving grounded advice" —
+pinned by `test_prompt_allows_advice_while_still_banning_invented_facts` and the
+whole-résumé grounding tests in `tests/test_chat.py`.
+
+## ADR-044: The bottom nav is a docked, edge-to-edge bar — not a floating pill
+
+**Date:** 2026-07-26 · **Status:** accepted · **Supersedes:** design_handoff §7
+
+**Decision.** `AppShell`'s nav is now full-bleed on both platforms: no side
+margin, no bottom gap, no corner radius. It sits flush against the screen edges
+with a hairline top border, and absorbs the home-indicator / gesture inset as
+padding *inside* itself so the background reaches the physical edge while the
+icons still clear the indicator. iOS keeps the liquid-glass treatment (blur +
+translucency, now `ClipRect` rather than `ClipRRect`); Android stays opaque.
+
+**Why.** The floating pill spent ~32px of horizontal gutter and ~20px of bottom
+gap on chrome on every screen, which reads as wasted padding on the phones this
+ships to. The chat FAB keeps its inset and still floats above the bar's right
+end, so the one genuinely floating affordance is unchanged.
+
+**Consequences.** `kFloatingNavClearance` drops 104 → 96 (the bar no longer
+carries outer padding, and the device inset is added at the call site). The name
+is now slightly wrong — kept to avoid churning every tab body that imports it.
+
+**REVERSED by ADR-047 (2026-07-26, same day).** The docked bar was rejected on
+device: the reclaimed gutter did not read as more content, and the FAB's
+reserved band left a strip of dead paper between the last row and the bar.
+
+## ADR-045: Skill growth scores *gap coverage*, not a made-up "skill score"
+
+**Date:** 2026-07-26 · **Status:** accepted
+
+**Decision.** The Skill Growth screen adopts the prototype's dashboard shape —
+score ring, level, XP, Skills/Courses/Projects tabs, tick-to-complete cards —
+but **not** its numbers. The prototype opens at a hardcoded "560 / 1000 skill
+score"; shipping that would be a fabricated reading (Golden Rule 4's spirit).
+
+What ships is *gap coverage*. Every recommendation is worth XP proportional to
+`SkillGrowthItem.frequency` — how many of the user's ranked matches actually list
+that gap, counted in Python from real match rows (`services/skill_growth.py`).
+The score is earned XP over total XP on the table, so "410 of 780" is a literal,
+checkable statement. Levels are five bands over that fraction, and the band
+labels describe the *coverage* ("Closing gaps"), never the person ("In-demand") —
+the agent has no basis for the latter. Per-tab weights (skill ×10, course ×6,
+project ×8 per blocking match) encode effort, not evidence.
+
+**Where the ticks live.** Device-local (`SkillProgressStore`, SharedPreferences,
+namespaced by user id like `CacheService`) — not a profile column. This is a
+personal checklist over the agent's suggestions: no scoring, matching or résumé
+output reads it, and item ids are content-derived so a re-rank that replaces a
+recommendation orphans its tick instead of attaching it to the wrong row.
+
+**Consequences.** Progress doesn't sync across devices — acceptable for a
+checklist, and revisitable as a migration if it ever needs to. The total moves
+when the agent re-ranks (new gaps = new XP on the table), which is correct but
+means the denominator isn't stable over time.
+
+## ADR-046: The résumé PDF leads with a contact block; form-fill lands in the browser
+
+**Date:** 2026-07-26 · **Status:** accepted · **Migration:** 026
+
+**Contact block.** Compiled résumés carried only the candidate's name, so a
+recruiter opening one had no way to reach them — the single most important thing
+on the page. Migration 026 adds `email`, `phone`, `location`, `linkedin_url`,
+`github_url`, `website_url` to `profiles`, and `resume_pdf.py` renders a centered
+name over a contact line of real clickable links, with a hairline rule under each
+section heading.
+
+Populated two ways, no new onboarding step: the résumé parser extracts whatever
+is printed on the uploaded file (same "extract, never infer" discipline as `usn`
+— it may not invent a handle from a name), and the user confirms/corrects it on
+the existing review step, or later from Settings → Contact details.
+
+Two rules worth pinning, both tested: URLs are **scheme-gated** to
+http/https/mailto/tel before becoming a clickable annotation (these are
+hand-typed, so `javascript:` is untrusted input and degrades to inert text), and
+clearing a field sends `''` rather than `null`, because the server's PATCH treats
+a JSON null as "set to null" — `ResumeProfile.contactJson` omits nulls so the
+résumé-review screen can't silently wipe a link it never displayed.
+
+**Form fill.** "Parse & fill" now runs parse → fill → **straight into the in-app
+WebView**, instead of stopping at an answer-review sheet. The sheet still exists
+underneath and is reachable from the WebView's new ⋮ menu, which also carries the
+JD ("tailor my résumé for this JD" when the parse captured one, else "add a job
+description") and the résumé PDF the user has to attach by hand. The
+learn-from-edits path (PATCH `/forms/fills/{id}` → answer-history reuse) is
+unchanged. Non-Google forms still stop at the sheet — they have no prefill URL.
+
+## ADR-047: The bottom nav floats again — and reserves only its own footprint
+
+**Date:** 2026-07-26 · **Status:** accepted · **Reverses:** ADR-044
+
+**Decision.** `AppShell`'s nav goes back to the design handoff's floating pill:
+a `surface` capsule, 26px radius, hairline border, soft drop shadow, inset 12px
+from the sides, 6px under the content and 14px above the home-indicator inset.
+iOS keeps liquid glass (`ClipRRect` + `BackdropFilter`); Android stays opaque.
+The active destination rides up 3px in a 38px `accentSoft` puck.
+
+The second half matters more than the capsule: **the content's bottom gutter is
+now exactly the pill's footprint** (`kNavPillTopGap + kNavPillHeight +
+kNavPillBottomGap` = 88, plus the device inset) and nothing else. The chat FAB
+is `Positioned` *above* the pill and floats over the content, exactly as the
+prototype does (`top:-58px`), instead of being stacked in a Column that forced
+the scroll view to end 40px early.
+
+**The FAB must be a sibling of the pill in the shell's full-screen `Stack`, not
+nested inside a pill-sized one.** First cut nested it: `Clip.none` let it paint
+above the pill, but Flutter does not hit-test outside a parent's bounds, so the
+button rendered perfectly and was completely dead to touch. Caught on device.
+Regression test: `signature_widgets_test.dart` taps the FAB by semantics label
+and asserts the callback fires.
+
+**Why.** On device the docked bar didn't buy the space it promised, and the FAB's
+reserved band showed up as a strip of dead paper between the last list row and
+the bar — content looked clipped rather than scrolled. Reserving room for a
+*floating* element was the actual bug; the bar shape was incidental.
+
+**Consequences.** `kFloatingNavClearance` is now derived from the three pill
+constants rather than hand-tuned (96 → 88 + inset), and the pill owns its height
+(`kNavPillHeight`) instead of `AppSpacing.bottomNavH`, which is left in place as
+a legacy token. Regression guard: a widget test asserts the gap between the
+content's bottom and the pill's top stays under one pill height.
+
+## ADR-048: First-run matching WAITS for the rerank instead of guessing 1.6s
+
+**Date:** 2026-07-26 · **Status:** accepted · **Amends:** ADR-011 (client side)
+
+**Decision.** `MatchingLoadingScreen` runs the real sequence — refresh pool →
+rerank (awaited through `TaskCenter`) → `MatchFeed.refresh()` → hand off — and
+plays the new `AgentScene` (design handoff `_scene('matching')`: the mascot
+pulling tokens in, job cards shuffling, sparks) with a three-segment progress
+strip that advances on actual step completion. After 40s a "Continue to home"
+button appears; at 6 minutes it hands off automatically. A failure shows the
+error plus a "Go to home" escape.
+
+**Why (the real bug).** The old screen fired refresh + rerank
+fire-and-forget and handed off after a fixed 1.6s. `_kickOff` then called
+`ref.read(taskCenterProvider.notifier)` *after* awaiting `refreshJobs()` — by
+which time this `ConsumerState` had been disposed and its `ref` was unusable, so
+**the rerank was frequently never started at all**. First-run users landed on
+Home's "No matches yet" empty state and only got matches after pressing
+"Re-match" on the Matches tab by hand. Notifier handles are now captured in
+`initState` before any await, so the flow can't be decapitated by disposal.
+
+**Consequences.** Onboarding's last step is now as long as scoring actually
+takes (minutes on a cold 20-job batch) rather than a fixed 1.6s — which is the
+honest thing to show, and the escape hatch keeps it non-blocking. Belt and
+braces: Home's empty state renders the same scene + "Scoring your matches…"
+whenever a rerank or pipeline task is active, so arriving early never looks like
+a dead end.
+
+## ADR-049: Agent activity, skill growth and career chat are cache-first too
+
+**Date:** 2026-07-26 · **Status:** accepted · **Extends:** ADR-028
+
+**Decision.** The three remaining always-refetch screens adopt the tab bodies'
+pattern: paint the cached payload instantly, skip the network on a *passive*
+open while the cache is fresh, force a real refetch on pull-to-refresh, and show
+an "Updated 5m ago · pull to refresh" line so the window is visible. Skill growth
+gets its own, much longer freshness window (`CacheService.skillGrowthFreshFor`,
+12h) because that endpoint is a single ~50s Gemini call whose input only changes
+when the agent re-ranks. Career chat caches the thread list plus the open
+conversation, so reopening the chat paints instantly instead of spinning.
+
+**Why.** Re-entering any of these three re-ran the full fetch — on skill growth
+that meant a minute of loader and a fresh LLM bill for an answer that hadn't
+changed.
+
+**Consequences.** Three new cache keys (`skill_growth`, `chat_threads`,
+`chat_messages`), all user-namespaced and cleared on sign-out like the rest.
+`SkillGrowthItem` and `ChatThread` now keep their raw server JSON so the payload
+round-trips.
+
+## ADR-050: Chat history is a first-class list, not just "the last thread"
+
+**Date:** 2026-07-26 · **Status:** accepted · **Extends:** ADR-040
+
+**Decision.** `GET /chat/threads` already returned every conversation; the client
+used only `threads.first`. The controller now keeps the whole list, and the
+screen surfaces it two ways: a "Recent chats" section under the greeting (up to
+four) and a full bottom sheet behind the header's clock button, with
+pull-to-refresh and the last-updated line. Tapping a row loads that thread;
+"New chat" keeps the list intact instead of hiding the previous conversation.
+
+**Why.** A conversation you can't get back to is a conversation you re-explain
+from scratch — and the data to avoid that was already on the wire.
+
+**Consequences.** No server change (`updated_at` and `title` were already in the
+rows). `ChatState` gains `threads`/`threadsUpdatedAt`; a `_startingNewChat` flag
+stops a background refresh from reopening the newest thread underneath a user
+who deliberately started a blank one.
+
+## ADR-051: Nothing on the path to first paint may wait on the network without a visible, escapable state
+
+**Date:** 2026-07-26 · **Status:** accepted
+
+**Symptom.** Leave the app for a long time, come back, and iOS shows a white
+blank screen. Android "looked fine" — which was the clue.
+
+**Decision.** Four changes, all on the cold-start / resume path:
+
+1. **The iOS launch screen is brand-filled** (`#5647E0`), matching
+   `android/.../launch_background.xml`. It was `red=1 green=1 blue=1` — pure
+   white — so *any* delay before Flutter's first frame is, on iOS, literally a
+   white blank screen. Android's was already branded, which is why the same
+   delay never looked broken there.
+2. **The routing profile call is bounded** (`_routingCallBudget`, 12s).
+   `GET /resume/profile` was the one call in `ApiClient` with no timeout at all,
+   and it gates `/loading` → `/home`. Cloud Run scale-to-zero plus a just-woken
+   radio is exactly the "after a long idle" case, and the app sat there for as
+   long as the socket did.
+3. **Session recovery no longer wipes the routing answer.** `supabase_flutter`
+   restores the session *after* `Supabase.initialize` returns, so the first
+   check could run with no user — no cache namespace, no auth header — and the
+   `signedIn` event that followed cleared `_profile`/`_profileChecked` and sent
+   the app back to `/loading`. Now a same-user event keeps the answer, and
+   `initialSession`/`tokenRefreshed` re-check only when nothing was resolved.
+4. **`/loading` is a real screen** (`StartupLoadingScreen`): brand mark,
+   "Getting things ready…", and after 8s an honest "still working" plus
+   **Try again** / **Sign in again**. It was a bare `AppLoader` on `paper`
+   (#FAFAF9) — to a user, a white screen. `errorBuilder` uses it too.
+
+Plus `AppLifecycleListener.onResume` → `AppRouterNotifier.refreshOnResume()`,
+which fills in a decision that was made without the network. It deliberately
+never clears state first: **a resume must not be able to demote a working app
+to a loading screen.**
+
+**Why this shape.** The bug was not one hang, it was that a hang was invisible
+and unrecoverable. Timeouts alone would still leave a blank screen for 12s;
+a nicer spinner alone would still hang forever. Bound the wait, make it
+visible, and give it an exit.
+
+**Verified.** Android emulator with wifi *and* data disabled: cold start lands
+on Home from cache in ~15s (screenshot in the session), where the old build's
+untimed call would hold `/loading`. `startup_loading_test.dart` pins both the
+first-frame copy and the 8-second escape hatch.
+
+**Consequences.** `ResumeProfile` routing may be answered from cache alone;
+`_confirmedByNetwork` tracks that so the next resume re-confirms it. The iOS
+`LaunchScreen.storyboard` change needs a real iOS build to be seen — it is not
+exercised by the Android emulator verification above.
+
+## ADR-052: `/jobs/refresh` finishes migrating to ADR-011's 202+poll pattern; direct-401 forms now hit the sign-in fallback too
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Symptom.** Two more `ClientException: Software caused connection abort`
+reports, on `POST /jobs/refresh` this time (`/tailor/{job_id}` was already
+fixed). Separately, autofilling a specific Google Form threw a raw
+`Client error '401 Unauthorized'` instead of the "open it in your browser"
+fallback ADR-013 built for sign-in-gated forms.
+
+**Root cause, part 1.** ADR-011 (migration 009) moved `/matches/rerank`,
+`/pipeline/run-mine`, and `/tailor/{job_id}` off the request/response cycle
+for exactly this reason, but `/jobs/refresh` was missed — it still `await`ed
+the full four-source fetch/dedup/embed pipeline inline. Fanning out to
+Adzuna/JSearch/Greenhouse/Lever routinely runs past a minute, long enough
+for Android's network stack to drop the idle socket before Cloud Run (300s
+default timeout) would ever time it out itself.
+
+**Root cause, part 2.** `fetch_form_html` (`services/form_parser.py`) only
+recognized a sign-in-gated form via a redirect to `accounts.google.com` —
+checked after the fetch loop finished. Some forms answer with a direct
+401/403 instead of a redirect; `raise_for_status()` fires first and the
+generic `except httpx.HTTPError` handler let the raw message straight
+through to the UI, bypassing `FormAuthRequiredError` entirely.
+
+**Decision.**
+1. `POST /jobs/refresh` now returns `202 {task_id}` immediately and runs
+   `refresh_job_pool()` via the same `create_task`/`run_task` helper as
+   `/tailor` — no new machinery, just the missing call site. Requires
+   `get_current_profile` (was `get_current_user_id`) since
+   `background_tasks.profile_id` is `not null`; safe because every route
+   that reaches this screen is already gated behind onboarding
+   (`app_router.dart` redirects to `/onboarding` without a profile).
+2. Client: `ApiClient.refreshJobs()` returns the task id instead of the
+   result map; both call sites (`JobsListBody._refresh` — pull-to-refresh,
+   and `MatchingLoadingScreen._run`'s sourcing step) now start it through
+   `TaskCenter` (new `TaskKind.jobsRefresh`) and poll instead of holding one
+   `await` on the HTTP call. `MatchingLoadingScreen`'s wait is capped at 90s
+   and still swallows failure — sourcing was always best-effort there,
+   scoring works against the existing pool either way.
+3. `fetch_form_html` catches `httpx.HTTPStatusError` ahead of the generic
+   `httpx.HTTPError` handler and maps a 401/403 response to
+   `FormAuthRequiredError`, same as the redirect case — one reality
+   ("you need to sign in"), now detected two ways instead of one.
+
+**Why not also bound `/jobs/refresh` differently (e.g. shrink it, cache
+harder).** The fix other long endpoints already used was sitting right
+there; inventing a second pattern for one endpoint would just be more
+surface to keep consistent later.
+
+## ADR-053: Sign-in-gated forms now autofill in-app too — via a WebView read, never DOM injection
+
+**Date:** 2026-08-01 · **Status:** accepted
+
+**Context.** ADR-046/§4.8 already gave public Google Forms a real "read the
+fields, autofill live" experience: `/forms/parse` deterministically parses
+Google's own `FB_PUBLIC_LOAD_DATA_` JSON, the profile gets mapped onto the
+answers, and the app opens an in-app `WebViewScreen` already pre-filled via
+Google's own `usp=pp_url` prefill mechanism — the user reviews, attaches
+their résumé, and taps Submit themselves. `form_webview_screen.dart` has a
+deliberate, documented hard rule behind that: **no DOM injection** — fields
+are only ever populated via the published prefill URL, never by writing
+values into the rendered page, because Google Forms' DOM is a minified React
+app with no stable selectors and breaks on every reskin.
+
+That whole pipeline requires the SERVER to fetch the form, which fails
+outright for a sign-in-gated form (no Google session server-side) — the app
+fell back to dumping the raw URL into the EXTERNAL browser with zero fields
+read and zero autofill, a materially worse experience than the public path.
+
+**Decision.** Close the gap one hop later, reusing the existing pipeline and
+the existing hard rule intact:
+
+1. `FormFillScreen`'s `form_auth_required` banner now leads with **"Sign in
+   & autofill"**, which opens the SAME in-app `FormWebViewScreen` — just
+   pointed at the plain form URL (`FormWebViewArgs.signInUrl`) instead of an
+   already-built prefill URL. "Open in your browser instead" stays as a
+   secondary escape hatch, same posture as the WebView's own overflow-menu
+   fallback.
+2. The user signs into their own Google account inside that WebView —
+   Google's native UI, we never see the credentials, identical guarantee to
+   the browser fallback it replaces.
+3. Once the WebView lands somewhere that isn't `accounts.google.com`/
+   `ServiceLogin` (`FormWebViewScreen._maybeAutofillAfterSignIn`), it does a
+   **one-time READ** of that page — `document.documentElement.outerHTML` via
+   `runJavaScriptReturningResult`. This is the one JS call the screen ever
+   runs, and it only ever reads; nothing is written into the page, filled, or
+   submitted. New `POST /forms/parse-html` (`ParseFormHtmlRequest`) takes that
+   HTML and runs the EXACT SAME `_parse_schema_from_html` helper `/forms/parse`
+   uses (extracted from `/parse` in this same change — zero new parsing
+   logic, so the two paths cannot silently drift apart).
+4. The resulting schema goes through the existing `/forms/fill` unmodified,
+   and the WebView navigates ITSELF to the resulting prefill URL — the same
+   `usp=pp_url` mechanism, arriving at the identical "already filled, review
+   and submit" state the public-form path reaches directly. Still no DOM
+   injection anywhere in the fill step.
+5. A `FormAutofillHandoff` (parsed form + answers + prefill URL + fill id) is
+   carried back to `FormFillScreen` via a typed `context.push` result when
+   the user taps "Review & edit answers" — the underlying answer sheet ends
+   up in the same state the public-form path gives it directly, instead of
+   staying empty for a form that needed sign-in.
+
+**Why not scrape the DOM and inject values directly ("truly live" autofill
+with no page reload).** That was the first shape considered and rejected —
+it reverses the documented no-DOM-injection rule for exactly the reason that
+rule exists: Google's rendered markup has no stable hooks, and simulating a
+checkbox/dropdown click reliably across their reskins is genuinely fragile.
+Reading the page once to recover the SAME embedded JSON the public path
+already trusts is stable (the parser comment notes it's "stable for years")
+and reuses 100% of the existing mapping/prefill code instead of inventing a
+second, riskier fill mechanism for one code path.
+
+**Security note.** `/forms/parse-html` takes client-supplied HTML rather than
+fetching a URL itself, so ADR-024's SSRF gate doesn't apply here — there is no
+outbound fetch to gate. `form_url` is only ever used as the parsed schema's
+`form_url` (for building the prefill URL) and is still capped (`MAX_URL_LEN`);
+`html` is capped at `MAX_FORM_HTML_LEN` (3M chars) so a malformed or hostile
+payload can't turn into an unbounded parse.
+
+**Bug fix, same day.** First real-device test (a sign-in-gated form pasted as
+a `forms.gle` short link) claimed "prefilled 8 fields" but every field on
+screen was empty. Root cause: `forms.gle`'s redirect is a static,
+pre-registered mapping that DROPS any query string appended to the short
+link — confirmed live (`curl -I "forms.gle/xxx?entry.1=y"` redirects to the
+long URL with the entry param gone, `usp` silently rewritten to
+`send_form`). Both `parse_form` and the new sign-in flow were building the
+prefill URL against the ORIGINAL possibly-short URL instead of the resolved
+one. Fix: `fetch_form_html` now returns `(html, final_url)` instead of just
+`html`, and `parse_form` uses `final_url` for everything downstream; the
+client's `_maybeAutofillAfterSignIn` uses the WebView's actual current `url`
+(already past any short-link redirect) instead of `widget.signInUrl`. The
+canonical `docs.google.com/forms/d/e/.../viewform` URL does NOT drop query
+params, even through its own sign-in redirect (verified live: `continue=`
+carries the full encoded query string back after login) — so building on
+the resolved URL fixes both the new gated-form path and the pre-existing
+public-form path whenever a user pastes a short link, which nothing had
+exercised before now.

@@ -92,9 +92,22 @@ def is_google_form_url(url: str) -> bool:
     return "docs.google.com/forms" in url or "forms.gle/" in url
 
 
-async def fetch_form_html(url: str) -> str:
+async def fetch_form_html(url: str) -> tuple[str, str]:
     """Same posture as fetch_manual_job_text, but returns raw HTML (the Google
-    parser needs the embedded JSON, not stripped text).
+    parser needs the embedded JSON, not stripped text) alongside the RESOLVED
+    final URL.
+
+    ADR-053 bug fix: a `forms.gle` short link's redirect is a static,
+    pre-registered mapping that DROPS any query string appended to it — so a
+    prefill URL built on top of the short link (`forms.gle/xxx?entry.1=y`)
+    silently loses every `entry.*` param on redirect, landing on the real form
+    completely unfilled despite the app reporting success. The canonical
+    `docs.google.com/forms/d/e/.../viewform` URL this function already
+    resolves to (to follow the redirect chain below) does NOT have that
+    problem — confirmed live: it carries prefill params through even a
+    sign-in redirect via `continue=`. Every caller must build/store the
+    prefill URL against THIS resolved URL, never the original possibly-short
+    one.
 
     ADR-024 / Phase 4 SSRF fix: redirects are followed MANUALLY so every hop is
     re-validated through _assert_public_url — a forms.gle short link (or any
@@ -122,6 +135,15 @@ async def fetch_form_html(url: str) -> str:
         # The SSRF gate speaks in ManualJobFetchError; the forms client expects
         # FormFetchError → a clean 422 with the "private or internal" message.
         raise FormFetchError(str(e)) from e
+    except httpx.HTTPStatusError as e:
+        # Some sign-in-gated forms answer with a direct 401/403 instead of a
+        # redirect to accounts.google.com (the case handled below) — same
+        # "you need to sign in" reality, just no location header to catch it
+        # by. Route it to the same typed error so the client still shows the
+        # open-in-browser fallback instead of a raw httpx message.
+        if e.response.status_code in (401, 403):
+            raise FormAuthRequiredError("This form requires sign-in to view") from e
+        raise FormFetchError(f"Could not fetch that URL: {e}") from e
     except httpx.HTTPError as e:
         raise FormFetchError(f"Could not fetch that URL: {e}") from e
 
@@ -132,7 +154,7 @@ async def fetch_form_html(url: str) -> str:
     content_type = response.headers.get("content-type", "")
     if "html" not in content_type:
         raise FormFetchError(f"That URL didn't return a web page (content-type: {content_type or 'unknown'})")
-    return response.text
+    return response.text, final_url
 
 
 def parse_google_form(html: str, form_url: str) -> FormSchema:

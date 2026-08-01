@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from db.supabase_client import supabase
-from models.common import MAX_URL_LEN, StrictModel
+from models.common import MAX_FORM_HTML_LEN, MAX_URL_LEN, StrictModel
 from models.form import FormAnswer, FormQuestion, FormSchema
 from services.auth import get_current_profile
 from services.rate_limit import enforce_rate_limit
@@ -49,6 +49,19 @@ class ParseFormRequest(StrictModel):
     url: str = Field(min_length=1, max_length=MAX_URL_LEN)
 
 
+class ParseFormHtmlRequest(StrictModel):
+    """ADR-053: a sign-in-gated form can't be fetched server-side (no Google
+    session), so the client fetches the page itself — inside an authenticated
+    in-app WebView the user signed into with their own Google account — and
+    hands the resulting HTML here for the identical parse /forms/parse
+    already does. No SSRF surface: this endpoint makes no outbound fetch at
+    all, so the ADR-024 URL-fetch gate doesn't apply; `form_url` is only used
+    as the parsed schema's `form_url` and this row's prefill/redirect target."""
+
+    html: str = Field(min_length=1, max_length=MAX_FORM_HTML_LEN)
+    form_url: str = Field(min_length=1, max_length=MAX_URL_LEN)
+
+
 class FillFormRequest(BaseModel):
     form: FormSchema
 
@@ -85,6 +98,54 @@ def _build_answer_history(profile_id: str) -> dict[str, FormAnswer]:
     return history
 
 
+async def _parse_schema_from_html(html: str, form_url: str, profile: dict) -> FormSchema:
+    """Shared by /parse (server-fetched HTML) and /parse-html (client-fetched
+    HTML): Google Forms parse deterministically from FB_PUBLIC_LOAD_DATA_ (no
+    LLM); anything else falls back to BeautifulSoup text + LLM extraction
+    flagged source='llm_extracted'."""
+    if is_google_form_url(form_url) or "FB_PUBLIC_LOAD_DATA_" in html:
+        try:
+            return parse_google_form(html, form_url=form_url)
+        except FormAuthRequiredError as e:
+            raise HTTPException(status_code=403, detail=f"form_auth_required: {e}") from e
+        except FormParseError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = soup.get_text(separator="\n", strip=True)
+    if not text:
+        raise HTTPException(status_code=422, detail="That page had no readable text to extract from")
+    try:
+        extraction = extract_form_from_text(text, profile_id=profile["id"])
+    except FormExtractError as e:
+        raise HTTPException(status_code=422, detail=f"Could not extract a form from that page: {e}") from e
+    except LlmApiError as e:
+        raise HTTPException(status_code=502, detail=f"Form extraction is temporarily unavailable: {e}") from e
+    return FormSchema(
+        title=extraction.title,
+        description=extraction.description,
+        questions=[FormQuestion(**q.model_dump()) for q in extraction.questions],
+        form_url=form_url,
+        source="llm_extracted",
+    )
+
+
+def _create_job_from_description(description: str, form_url: str, profile: dict) -> tuple[str | None, str | None]:
+    """JD heuristic (plain len() — Golden Rule 2): a long description is
+    probably the job posting itself. Best-effort — a failed extraction must
+    never sink the parse the caller actually asked for."""
+    if len(description) < JD_MIN_CHARS:
+        return None, None
+    try:
+        extraction = extract_job_from_text(description, profile_id=profile["id"])
+        job_row = insert_manual_job(extraction, redirect_url=form_url)
+        return job_row["id"], job_row["title"]
+    except Exception:  # noqa: BLE001 — incl. JobExtractError/LlmApiError; JD capture is a bonus, not the request
+        return None, None
+
+
 @router.post(
     "/parse",
     dependencies=[
@@ -92,63 +153,46 @@ def _build_answer_history(profile_id: str) -> dict[str, FormAnswer]:
     ],
 )
 async def parse_form(body: ParseFormRequest, profile: dict = Depends(get_current_profile)):
-    """Fetch + parse a form URL. Google Forms parse deterministically from
-    FB_PUBLIC_LOAD_DATA_ (no LLM); anything else falls back to
-    BeautifulSoup text + LLM extraction flagged source='llm_extracted'.
-    If the form's description looks like a full JD, a job row is created
-    via the existing manual-job flow so 'Tailor resume for this JD' can
-    jump straight into the normal tailoring pipeline."""
+    """Fetch + parse a form URL. If the form's description looks like a full
+    JD, a job row is created via the existing manual-job flow so 'Tailor
+    resume for this JD' can jump straight into the normal tailoring
+    pipeline."""
     try:
-        html = await fetch_form_html(body.url)
+        html, final_url = await fetch_form_html(body.url)
     except FormAuthRequiredError as e:
-        # Typed for the client: it shows the open-in-browser fallback.
+        # Typed for the client: it shows the sign-in-and-autofill fallback
+        # (ADR-053) rather than a raw error.
         raise HTTPException(status_code=403, detail=f"form_auth_required: {e}") from e
     except FormFetchError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
-    if is_google_form_url(body.url) or "FB_PUBLIC_LOAD_DATA_" in html:
-        try:
-            schema = parse_google_form(html, form_url=body.url)
-        except FormAuthRequiredError as e:
-            raise HTTPException(status_code=403, detail=f"form_auth_required: {e}") from e
-        except FormParseError as e:
-            raise HTTPException(status_code=422, detail=str(e)) from e
-    else:
-        soup = BeautifulSoup(html, "html.parser")
-        for tag in soup(["script", "style", "noscript"]):
-            tag.decompose()
-        text = soup.get_text(separator="\n", strip=True)
-        if not text:
-            raise HTTPException(status_code=422, detail="That page had no readable text to extract from")
-        try:
-            extraction = extract_form_from_text(text, profile_id=profile["id"])
-        except FormExtractError as e:
-            raise HTTPException(status_code=422, detail=f"Could not extract a form from that page: {e}") from e
-        except LlmApiError as e:
-            raise HTTPException(status_code=502, detail=f"Form extraction is temporarily unavailable: {e}") from e
-        schema = FormSchema(
-            title=extraction.title,
-            description=extraction.description,
-            questions=[FormQuestion(**q.model_dump()) for q in extraction.questions],
-            form_url=body.url,
-            source="llm_extracted",
-        )
+    # ADR-053 bug fix: build everything off the RESOLVED url (final_url), not
+    # body.url — if the user pasted a forms.gle short link, appending
+    # ?entry.*=... to THAT and later navigating to it silently drops every
+    # param on the short link's own redirect (see fetch_form_html's doc).
+    schema = await _parse_schema_from_html(html, final_url, profile)
+    job_id, job_title = _create_job_from_description(schema.description or "", final_url, profile)
+    return {"data": {"form": schema.model_dump(), "job_id": job_id, "job_title": job_title}, "error": None}
 
-    # JD heuristic (plain len() — Golden Rule 2): a long description is
-    # probably the job posting itself. Best-effort — a failed extraction
-    # must not sink the parse the user actually asked for.
-    job_id = None
-    job_title = None
-    description = schema.description or ""
-    if len(description) >= JD_MIN_CHARS:
-        try:
-            extraction = extract_job_from_text(description, profile_id=profile["id"])
-            job_row = insert_manual_job(extraction, redirect_url=body.url)
-            job_id = job_row["id"]
-            job_title = job_row["title"]
-        except Exception:  # noqa: BLE001 — incl. JobExtractError/LlmApiError; JD capture is a bonus, not the request
-            pass
 
+@router.post(
+    "/parse-html",
+    dependencies=[
+        Depends(enforce_rate_limit("forms_parse", settings.rate_limit_forms_parse, settings.rate_limit_window_seconds))
+    ],
+)
+async def parse_form_html(body: ParseFormHtmlRequest, profile: dict = Depends(get_current_profile)):
+    """ADR-053: the sign-in-gated counterpart to /parse. When /parse comes
+    back `form_auth_required`, the app opens the form in an in-app WebView so
+    the user can sign into their own Google account (we never see the
+    credentials, same guarantee as the existing WebView flow), waits for the
+    real form page to load, and does a ONE-TIME read of that page's HTML —
+    never an injection into the page, never a fill or submit happening there.
+    That HTML lands here and goes through the exact same deterministic parse
+    /parse uses; the client then calls the existing /forms/fill and opens the
+    resulting prefill URL, same as the public-form path."""
+    schema = await _parse_schema_from_html(body.html, body.form_url, profile)
+    job_id, job_title = _create_job_from_description(schema.description or "", body.form_url, profile)
     return {"data": {"form": schema.model_dump(), "job_id": job_id, "job_title": job_title}, "error": None}
 
 

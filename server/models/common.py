@@ -43,10 +43,16 @@ MAX_HEADLINE_LEN = 1_000
 MAX_EMAIL_LEN = 320  # RFC 5321: 64-char local part + @ + 255-char domain
 MAX_FCM_TOKEN_LEN = 512
 MAX_USN_LEN = 64
+MAX_PHONE_LEN = 40  # generous enough for "+91 98765 43210 (WhatsApp)"
 MAX_ROLE_LEN = 120
 MAX_SKILL_LEN = 120
 MAX_BULLET_LEN = 2_000
 MAX_BRANCH_LEN = 120  # academic branch/major, e.g. "Computer Science"
+# A raw Google Form page (POST /forms/parse-html) is a whole rendered document
+# with Google's inline JS bundle, not stripped text — routinely a few hundred
+# KB. 3M chars (~3MB) is generous headroom above that while still bounding one
+# request's worst case.
+MAX_FORM_HTML_LEN = 3_000_000
 
 # List-length caps: max_length on a str caps one item, not how many items are
 # sent. A 10k-entry skills array is as effective a token bomb as one 10k-char

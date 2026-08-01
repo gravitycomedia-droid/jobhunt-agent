@@ -18,11 +18,12 @@ import hashlib
 from io import BytesIO
 
 from reportlab.lib.colors import HexColor
-from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
+    HRFlowable,
     KeepInFrame,
     Paragraph,
     SimpleDocTemplate,
@@ -30,6 +31,7 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from reportlab.platypus.doctemplate import LayoutError
 from xml.sax.saxutils import escape
 
 # Framework §3.7: the accent varies per application purely for human visual
@@ -74,11 +76,19 @@ def _styles(accent: HexColor, scale: float) -> dict[str, ParagraphStyle]:
     )
     return {
         "body": body,
+        # Centered, oversized name over a centered contact line — the classic
+        # one-page résumé header (see the reference layout this was built to).
         "name": ParagraphStyle(
-            "name", parent=body, fontName="Helvetica-Bold", fontSize=17 * scale, leading=20 * scale,
-            textColor=accent, spaceAfter=1,
+            "name", parent=body, fontName="Helvetica-Bold", fontSize=20 * scale, leading=23 * scale,
+            textColor=accent, alignment=TA_CENTER, spaceAfter=2,
         ),
-        "title": ParagraphStyle("title", parent=body, fontSize=11 * scale, leading=14 * scale, spaceAfter=6),
+        "contact": ParagraphStyle(
+            "contact", parent=body, fontSize=9 * scale, leading=12 * scale,
+            alignment=TA_CENTER, spaceAfter=2,
+        ),
+        "title": ParagraphStyle(
+            "title", parent=body, fontSize=11 * scale, leading=14 * scale, alignment=TA_CENTER, spaceAfter=6
+        ),
         "headline": ParagraphStyle("headline", parent=body, fontSize=10.5 * scale, spaceAfter=6),
         "section": ParagraphStyle(
             "section", parent=body, fontName="Helvetica-Bold", fontSize=11 * scale, leading=14 * scale,
@@ -157,16 +167,78 @@ def _p(text: str, style: ParagraphStyle) -> Paragraph:
     return Paragraph(escape(text), style)
 
 
-def _skills_flowables(skills: list[str], st: dict) -> list:
+def _section(label: str, st: dict, accent: HexColor) -> list:
+    """A section heading and the hairline rule under it — the visual spine of a
+    one-page résumé. ATS-safe: the rule is a vector line, so the heading itself
+    stays plain extractable text."""
+    return [
+        _p(label, st["section"]),
+        HRFlowable(width="100%", thickness=0.6, color=accent, spaceBefore=1, spaceAfter=4),
+    ]
+
+
+# Only these schemes ever reach a clickable PDF annotation. The contact URLs are
+# hand-typed in Settings, so "whatever the user pasted" is untrusted input —
+# `javascript:` / `file:` must never be turned into a link a recruiter can click.
+_SAFE_SCHEMES = ("http://", "https://", "mailto:", "tel:")
+
+
+def _link(raw: str, href: str | None = None) -> str | None:
+    """One contact item as escaped ReportLab inline markup.
+
+    Returns the display text as a clickable, underlined link, or plain escaped
+    text when the target isn't a safe URL. `href` overrides the target (used for
+    mailto:/tel:, where what's displayed isn't what's linked)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    target = (href or raw).strip()
+    lowered = target.lower()
+    if not lowered.startswith(_SAFE_SCHEMES):
+        # A bare "linkedin.com/in/jane" is the normal way people write these —
+        # assume https. Anything with some OTHER scheme is dropped to plain text.
+        if "://" in lowered or lowered.startswith("javascript:") or ":" in lowered.split("/")[0]:
+            return escape(raw)
+        target = f"https://{target}"
+    # Display bare: no scheme, no www., no trailing slash — "linkedin.com/in/jane".
+    shown = raw
+    for prefix in ("https://", "http://"):
+        if shown.lower().startswith(prefix):
+            shown = shown[len(prefix):]
+    if shown.lower().startswith("www."):
+        shown = shown[4:]
+    shown = shown.rstrip("/")
+    return f'<link href="{escape(target, {chr(34): "&quot;"})}"><u>{escape(shown)}</u></link>'
+
+
+def contact_line(profile: dict) -> str:
+    """The " · "-separated contact block under the name: phone, email, LinkedIn,
+    GitHub, personal site, location — each one omitted entirely when the profile
+    doesn't have it, so a sparse profile renders a short line rather than empty
+    labels. Returns ReportLab inline markup (already escaped)."""
+    phone = (profile.get("phone") or "").strip()
+    email = (profile.get("email") or "").strip()
+    parts = [
+        _link(phone, href=f"tel:{phone.replace(' ', '')}") if phone else None,
+        _link(email, href=f"mailto:{email}") if email else None,
+        _link(profile.get("linkedin_url") or ""),
+        _link(profile.get("github_url") or ""),
+        _link(profile.get("website_url") or ""),
+        escape(profile["location"].strip()) if (profile.get("location") or "").strip() else None,
+    ]
+    return " &nbsp;|&nbsp; ".join(p for p in parts if p)
+
+
+def _skills_flowables(skills: list[str], st: dict, accent: HexColor) -> list:
     if not skills:
         return []
-    return [_p("SKILLS", st["section"]), _p(", ".join(skills), st["body"])]
+    return _section("SKILLS", st, accent) + [_p(", ".join(skills), st["body"])]
 
 
-def _experience_flowables(experience: list[dict], st: dict) -> list:
+def _experience_flowables(experience: list[dict], st: dict, accent: HexColor) -> list:
     if not experience:
         return []
-    out = [_p("EXPERIENCE", st["section"])]
+    out = _section("EXPERIENCE", st, accent)
     for exp in experience:
         title_bits = [exp.get("role") or "", exp.get("company") or ""]
         title = " — ".join(bit for bit in title_bits if bit)
@@ -177,10 +249,10 @@ def _experience_flowables(experience: list[dict], st: dict) -> list:
     return out
 
 
-def _projects_flowables(projects: list[dict], st: dict) -> list:
+def _projects_flowables(projects: list[dict], st: dict, accent: HexColor) -> list:
     if not projects:
         return []
-    out = [_p("PROJECTS", st["section"])]
+    out = _section("PROJECTS", st, accent)
     for proj in projects:
         tech = ", ".join(proj.get("tech") or [])
         name = proj.get("name") or ""
@@ -190,49 +262,61 @@ def _projects_flowables(projects: list[dict], st: dict) -> list:
     return out
 
 
-def _education_flowables(education: list[dict], st: dict) -> list:
+def _education_flowables(education: list[dict], st: dict, accent: HexColor) -> list:
     if not education:
         return []
-    out = [_p("EDUCATION", st["section"])]
+    out = _section("EDUCATION", st, accent)
     for ed in education:
         bits = [ed.get("degree") or "", ed.get("institution") or "", ed.get("year") or ""]
         out.append(_p(" — ".join(bit for bit in bits if bit), st["body"]))
     return out
 
 
-def _summary_flowables(summary: str, st: dict) -> list:
+def _summary_flowables(summary: str, st: dict, accent: HexColor) -> list:
     if not summary:
         return []
-    return [_p("SUMMARY", st["section"]), _p(summary, st["headline"])]
+    return _section("SUMMARY", st, accent) + [_p(summary, st["headline"])]
 
 
-def _header_flowables(name: str, jd_title: str, st: dict) -> list:
+def _header_flowables(profile: dict, jd_title: str, st: dict) -> list:
+    """Centered name, the JD title, then the contact line — phone, email,
+    LinkedIn, GitHub, personal site and location, each a real clickable link
+    (migration 026). A recruiter opening the PDF can reach the candidate from
+    the first line; before this, the header carried only the name."""
+    out = [_p(profile.get("name") or "", st["name"])]
     # Framework §3.8: the title field mirrors the exact JD title so ATS
     # literal title-matching hits before a human opens the file.
-    out = [_p(name, st["name"])]
     if jd_title:
         out.append(_p(jd_title, st["title"]))
+    contact = contact_line(profile)
+    if contact:
+        # Already-escaped inline markup (links) — Paragraph directly, not _p.
+        out.append(Paragraph(contact, st["contact"]))
     return out
 
 
-def _single_column_story(name, jd_title, summary, skills, experience, projects, education, st) -> list:
-    story = _header_flowables(name, jd_title, st)
-    story += _summary_flowables(summary, st)
-    story += _skills_flowables(skills, st)
-    story += _experience_flowables(experience, st)
-    story += _projects_flowables(projects, st)
-    story += _education_flowables(education, st)
+def _single_column_story(profile, jd_title, summary, skills, experience, projects, education, st, accent) -> list:
+    story = _header_flowables(profile, jd_title, st)
+    story += _summary_flowables(summary, st, accent)
+    story += _skills_flowables(skills, st, accent)
+    story += _experience_flowables(experience, st, accent)
+    story += _projects_flowables(projects, st, accent)
+    story += _education_flowables(education, st, accent)
     story.append(Spacer(1, 0.1 * inch))
     return story
 
 
-def _two_column_story(name, jd_title, summary, skills, experience, projects, education, st) -> list:
+def _two_column_story(profile, jd_title, summary, skills, experience, projects, education, st, accent) -> list:
     """Framework §3.2 startup layout: 60/40, left = summary/experience/
     projects, right = skills/education. A single borderless two-cell table —
     no grid, no nesting — so ATS extraction reads the left cell fully, then the
     right cell, keeping the machine-readable text layer coherent."""
-    left = _summary_flowables(summary, st) + _experience_flowables(experience, st) + _projects_flowables(projects, st)
-    right = _skills_flowables(skills, st) + _education_flowables(education, st)
+    left = (
+        _summary_flowables(summary, st, accent)
+        + _experience_flowables(experience, st, accent)
+        + _projects_flowables(projects, st, accent)
+    )
+    right = _skills_flowables(skills, st, accent) + _education_flowables(education, st, accent)
 
     table = Table(
         [[left, right]],
@@ -251,7 +335,7 @@ def _two_column_story(name, jd_title, summary, skills, experience, projects, edu
             ]
         )
     )
-    return _header_flowables(name, jd_title, st) + [Spacer(1, 0.06 * inch), table]
+    return _header_flowables(profile, jd_title, st) + [Spacer(1, 0.06 * inch), table]
 
 
 def _build(name, author, story, scale) -> tuple[bytes, int]:
@@ -298,9 +382,14 @@ def compile_ats_pdf(profile: dict, tailored: dict | list) -> bytes:
     summary = analysis.get("summary_line") or profile.get("headline") or ""
     # JD-priority skill order (already subset-verified upstream); else profile's.
     skills = analysis.get("skills_ordered") or profile.get("skills") or []
-    # Framework §3.3: two-column for startup signal, single-column otherwise
-    # (the safest ATS parse, and the default when there's no analysis at all).
-    two_column = analysis.get("culture_signal") == "startup"
+    # Two-column is now the default layout (denser, one-page-friendly, and the
+    # look the app markets). The single-column fallback only kicks in for sparse
+    # résumés where a 60/40 split would leave a near-empty right rail — i.e. no
+    # skills AND no education to fill it. ATS text still extracts left-then-right
+    # from the single borderless two-cell table (see module docstring).
+    has_right_rail = bool(skills) or bool(education)
+    has_left_body = bool(experience) or bool(projects) or bool(summary)
+    two_column = has_right_rail and has_left_body
 
     accent = _accent_for(row.get("job_id"))
 
@@ -308,8 +397,15 @@ def compile_ats_pdf(profile: dict, tailored: dict | list) -> bytes:
     for scale in _FIT_SCALES:
         st = _styles(accent, scale)
         builder = _two_column_story if two_column else _single_column_story
-        story = builder(name, jd_title, summary, skills, experience, projects, education, st)
-        pdf, pages = _build(name, name, story, scale)
+        story = builder(profile, jd_title, summary, skills, experience, projects, education, st, accent)
+        try:
+            pdf, pages = _build(name, name, story, scale)
+        except LayoutError:
+            # The two-column layout is a single-row table that can't split across
+            # pages, so an over-long story raises here instead of flowing to
+            # page 2. Shrink a step and retry; the tightest scale wraps the story
+            # in a shrink-to-fit KeepInFrame (see _build) so it can never raise.
+            continue
         if pages <= 1:
             break
     return pdf

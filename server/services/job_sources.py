@@ -1,7 +1,8 @@
+import asyncio
 import html
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -23,9 +24,30 @@ LINKEDIN_JOBS_SEARCH = "https://www.linkedin.com/jobs/search/"
 # Unstop's public opportunity-search API — the endpoint its own frontend calls,
 # no auth/cookies (confirmed by live recon 2026-07-20, docs/UNSTOP_ENDPOINT.md).
 UNSTOP_SEARCH_URL = "https://unstop.com/api/public/opportunity/search-result"
-# Recon tested per_page up to 100 without issue. We never pull the whole 800-item
-# catalogue — UNSTOP_MAX_RESULTS caps it — so a single page usually suffices.
+# Recon tested per_page up to 100 without issue, and that's the ceiling we use:
+# at 100/page the ENTIRE open catalogue is ~21 requests (836 internships + 1,186
+# jobs, measured 2026-07-26), so a full crawl is cheaper in requests than the old
+# per-role searchTerm loop was.
 UNSTOP_PAGE_SIZE = 100
+
+# The `opportunity` path segment. Probed live 2026-07-26: only these two carry
+# actual hiring listings. "freshers" and "entry-level" are NOT opportunity types
+# (both return total=0) — Unstop surfaces those as filters *inside* `jobs`, which
+# is why the entry-level cut is our gate's job, not a query param.
+# "competitions"/"hiring-challenges" also respond but are contests, not postings.
+UNSTOP_OPPORTUNITY_TYPES = ("internships", "jobs")
+
+# Results arrive newest-first, so once a whole page is older than
+# max_job_age_days every later page is too — is_fresh() would discard them all
+# anyway. Bailing there turns steady-state from a 21-request full crawl into
+# ~3 requests/day. Requires TWO consecutive fully-stale pages before stopping:
+# a single page of undated rows (posted_at=None) shouldn't truncate the crawl.
+UNSTOP_STALE_PAGE_STREAK = 2
+
+# Pause between pages of the same crawl. Small — the whole point is that we're a
+# handful of requests a day, not a scraper — but non-zero so a cold-start full
+# crawl reads as a person browsing rather than a burst of 21 parallel hits.
+UNSTOP_PAGE_DELAY_SECONDS = 0.3
 
 # Browser-like headers mirroring what unstop.com's own frontend fetch() sends —
 # a real Chrome UA, a JSON Accept, same-origin Referer/Origin. Defensive against
@@ -511,89 +533,402 @@ async def fetch_naukri_apify(role: str, location: str, max_results: int) -> list
     return jobs
 
 
-def _internshala_salary(r: dict) -> tuple[float | None, float | None, str | None]:
-    """Internshala stipend → (min, max, currency), annualized.
+def _internshala_posted_at(badge: str | None, now: datetime | None = None) -> datetime | None:
+    """Internshala's relative-time badge → an absolute UTC timestamp.
 
-    This actor is like Naukri, not LinkedIn: it hands us structured
-    salaryMin/salaryMax/salaryCurrency ints plus a salaryPeriod word, and a
-    stipendText fallback ("₹10,000 /month", "Unpaid"). Prefer the structured
-    ints; annualize a monthly stipend (×12) so it sits on the same axis as a
-    per-year salary. Unpaid comes through as 0/0 → nulls, never a real ₹0.
+    The listing HTML carries no absolute date anywhere — only a rendered badge
+    ("Just now", "Today", "2 days ago", "3 weeks ago"). is_fresh() needs a real
+    datetime, so the badge is resolved against `now` at parse time.
+
+    Deliberately coarse: "3 weeks ago" becomes exactly 21 days back, not a range.
+    The only consumer is the ≤max_job_age_days freshness cut, where day-level
+    precision is all that can matter. An unrecognized badge returns None rather
+    than guessing "now" — an undated posting must not be able to masquerade as
+    fresh, and is_fresh() already has a defined answer for None.
     """
-    salary_min = r.get("salaryMin") or None  # 0 (unpaid) → None
-    salary_max = r.get("salaryMax") or None
-    currency = r.get("salaryCurrency")
-    period = (r.get("salaryPeriod") or "").lower()
+    if not badge:
+        return None
+    text = badge.strip().lower()
+    now = now or datetime.now(timezone.utc)
 
-    if (salary_min or salary_max) and period:
-        mult = 12 if "month" in period else 1
-        salary_min = salary_min * mult if salary_min else salary_min
-        salary_max = salary_max * mult if salary_max else salary_max
-        return salary_min, salary_max, currency
+    if text in ("just now", "today"):
+        return now
+    if text == "yesterday":
+        return now - timedelta(days=1)
 
-    # No structured amount, or an amount with no period to trust: parse the text,
-    # which carries its own period ("/month" is handled by salary.py now).
-    p_min, p_max, p_cur = parse_salary_text(r.get("stipendText"))
-    if p_min or p_max:
-        return p_min, p_max, currency or p_cur
-    return salary_min, salary_max, currency
+    m = re.match(r"^(\d+)\s+(hour|day|week|month)s?\s+ago$", text)
+    if not m:
+        return None
+    amount, unit = int(m.group(1)), m.group(2)
+    delta = {
+        "hour": timedelta(hours=amount),
+        "day": timedelta(days=amount),
+        "week": timedelta(weeks=amount),
+        "month": timedelta(days=30 * amount),
+    }[unit]
+    return now - delta
 
 
-async def fetch_internshala_apify(role: str, location: str, max_results: int) -> list[JobIn]:
-    """Internshala via blackfalcondata~internshala-scraper (no-login, $0.0015/result).
+# The badge text itself, matched anchored so a stray "Today" inside a company
+# name or a skill tag can't be mistaken for a posting date.
+_INTERNSHALA_BADGE = re.compile(r"^(just now|today|yesterday|\d+\s+(hour|day|week|month)s?\s+ago)$", re.I)
 
-    Schema verified against a live run on 2026-07-21 (docs — see the .env.example
-    note), same as the other three actors were on 2026-07-13. This actor is the
-    good kind: it pre-parses INR stipends into salaryMin/salaryMax/salaryCurrency
-    and already canonicalizes the city ("Bangalore"), so the mapping is mostly
-    a rename.
+# Internshala's technical category slugs, confirmed against the site's own
+# category nav on 2026-07-27. Internships and fresher-jobs use different URL
+# stems for the same slug, so the stem is applied at fetch time.
+#
+# Restricting to these ~12 is the FIRST of two IT filters — it removes the
+# marketing/finance/HR categories wholesale. It is not sufficient on its own:
+# a "Food Technologist" and a "Quality Inspector" were both observed on the
+# computer-science page, which is why every card still goes through the
+# category classifier downstream.
+INTERNSHALA_TECH_SLUGS = (
+    "computer-science",
+    "web-development",
+    "mobile-app-development",
+    "programming",
+    "software-development",
+    "software-testing",
+    "cloud-computing",
+    "cyber-security",
+    "network-engineering",
+    "blockchain-development",
+    "data-science",
+    "machine-learning",
+)
 
-    listingType is fixed to "internship" — Internshala also has a "job" (fresher
-    full-time) mode, but querying both would be a second paid call per role, so we
-    take the internship pool and let the shared relevance gate keep the fresher
-    full-time roles it finds. Same "don't double the bill" logic as the LinkedIn/
-    Indeed single-query decision.
+INTERNSHALA_BASE = "https://internshala.com"
+
+# Same posture as UNSTOP_PAGE_DELAY_SECONDS: we are a handful of requests a day,
+# not a scraper, but the delay is non-zero so a multi-category pass reads as a
+# person browsing rather than a burst of parallel hits. ADR-003 v4 constraint.
+INTERNSHALA_PAGE_DELAY_SECONDS = 0.5
+
+INTERNSHALA_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def _internshala_card_to_job(card, now: datetime | None = None, entry_level_hint: bool | None = None) -> JobIn | None:
+    """One `.individual_internship` card → JobIn. Never raises; a card missing
+    an id or a title is skipped rather than half-mapped.
+
+    Selectors pinned against live markup on 2026-07-27 (a saved trim of that
+    response is server/tests/fixtures/internshala_listing.html, so a markup
+    change shows up as a test failure rather than a silent zero-row day).
     """
-    rows = await run_actor(
-        settings.apify_internshala_actor_id,
-        {
-            "query": role,
-            "location": location,
-            "listingType": "internship",
-            "country": settings.adzuna_country.upper(),  # reuse existing country config ("in" → "IN")
-            "maxResults": max_results,
-            "includeDetails": True,  # full JD text for embeddings, like Naukri's fetchDetails
-            "emitExpired": False,  # don't ingest postings past their apply-by date
-        },
+    external_id = card.get("internshipid")
+    title_el = card.select_one(".job-internship-name")
+    if not external_id or not title_el:
+        return None
+    title = title_el.get_text(" ", strip=True)
+    if not title:
+        return None
+
+    badge = None
+    for span in card.select(".color-labels span"):
+        text = span.get_text(strip=True)
+        if _INTERNSHALA_BADGE.match(text):
+            badge = text
+            break
+
+    company_el = card.select_one(".company-name")
+    location_el = card.select_one(".locations")
+    stipend_el = card.select_one(".stipend")
+    about_el = card.select_one(".about_job")
+
+    # Skill tags are prepended to the JD text rather than dropped: they are the
+    # cleanest signal both the embedding and the category classifier get from
+    # this source, and the `.about_job` blurb is often generic prose.
+    skills = [s.get_text(strip=True) for s in card.select(".job_skill")]
+    description = about_el.get_text(" ", strip=True) if about_el else None
+    if skills:
+        description = f"Skills: {', '.join(skills)}. {description or ''}".strip()
+
+    raw_location = location_el.get_text(" ", strip=True) if location_el else None
+    salary_min, salary_max, currency = parse_salary_text(stipend_el.get_text(" ", strip=True) if stipend_el else None)
+
+    link = card.select_one("a.job-title-href")
+    href = link.get("href") if link else None
+    redirect_url = f"{INTERNSHALA_BASE}{href}" if href and href.startswith("/") else href
+
+    return JobIn(
+        source="internshala",
+        external_id=str(external_id),
+        title=title,
+        company=company_el.get_text(" ", strip=True) if company_el else None,
+        location=_primary_city(raw_location),
+        description=description or None,
+        salary_min=salary_min,
+        salary_max=salary_max,
+        # India-only source, so a missing currency defaults to INR, not $.
+        salary_currency=currency or infer_currency(raw_location, default="INR"),
+        redirect_url=redirect_url,
+        posted_at=_internshala_posted_at(badge, now),
+        entry_level_hint=entry_level_hint,
     )
 
+
+def parse_internshala_html(
+    markup: str, now: datetime | None = None, entry_level_hint: bool | None = None
+) -> list[JobIn]:
+    """All parseable cards in one listing page. Pure (no I/O) so the selectors
+    are unit-testable against the saved fixture.
+
+    `entry_level_hint` is passed down from the CALLER, which knows which URL
+    stem it fetched — the markup itself carries no reliable seniority signal
+    (card titles are profile names like "Android App Development", so only 3 of
+    50 contain "intern").
+    """
+    soup = BeautifulSoup(markup, "html.parser")
     jobs: list[JobIn] = []
-    for r in rows:
-        # jobKey is Internshala's stable numeric listing id; jobId is a content
-        # hash that shifts when the posting is edited, so it's the fallback.
-        external_id = r.get("jobKey") or r.get("jobId")
-        title = r.get("title")
-        if not external_id or not title:
+    for card in soup.select(".individual_internship"):
+        try:
+            job = _internshala_card_to_job(card, now, entry_level_hint)
+        except Exception as e:
+            # One malformed card must not lose the other 49 on the page.
+            logger.warning("Internshala card parse failed: %s: %s", type(e).__name__, e)
             continue
-        raw_location = r.get("location")
-        salary_min, salary_max, currency = _internshala_salary(r)
-        jobs.append(
-            JobIn(
-                source="internshala",
-                external_id=str(external_id),
-                title=title,
-                company=r.get("company"),
-                location=_primary_city(raw_location),
-                description=r.get("description") or r.get("descriptionMarkdown"),
-                salary_min=salary_min,
-                salary_max=salary_max,
-                # India-only source, so a missing currency defaults to INR, not $.
-                salary_currency=currency or infer_currency(raw_location, default="INR"),
-                redirect_url=r.get("applyUrl") or r.get("canonicalUrl") or r.get("sourceUrl"),
-                posted_at=r.get("postedAt"),
-            )
-        )
+        if job:
+            jobs.append(job)
     return jobs
+
+
+async def fetch_internshala() -> list[JobIn]:
+    """Internshala via plain HTTP + BeautifulSoup — free, no Apify, no JS.
+
+    Replaces fetch_internshala_apify() (ADR-003 v4, 2026-07-27). Recon on
+    2026-07-27 confirmed the category listing pages are server-rendered: a bare
+    GET returns all 50 cards per page with title, company, location, stipend,
+    duration, skill tags and a relative posted-time badge already in the HTML.
+    Nothing the paid actor provided required the actor. Going free is what lets
+    this run DAILY at full page depth instead of tue/fri capped at 10 results.
+
+    Two constraints worth not "simplifying" away later:
+
+    1. **No early-stop on the first stale card.** Cards are NOT uniformly
+       recency-sorted — measured on the live computer-science page, positions
+       1-32 are a promoted/featured block in mixed order ("3 weeks ago" sat at
+       position 1, "Just now" at position 2) and only the tail is sorted. An
+       early-stop on the first non-fresh badge would have returned zero jobs.
+       Every card on a fetched page is parsed.
+    2. **Freshness is is_fresh()'s job, not this function's.** The badge is
+       resolved into a real posted_at and the shared ≤max_job_age_days gate in
+       _dedup_embed_insert() does the cutting, exactly like every other source.
+       Filtering to "Just now"/"Today" here would make this the one source with
+       a private, stricter freshness rule.
+
+    Per-category and per-page errors are swallowed (logged, then continue) so
+    one 404 slug or one throttled page never sinks the day's whole fetch —
+    the same tolerance pattern as fetch_adzuna()/fetch_jsearch().
+    """
+    slugs = [s.strip() for s in settings.internshala_slugs.split(",") if s.strip()]
+    pages = max(1, settings.internshala_pages_per_slug)
+    # (name, url template, entry_level_hint). The hint is True only for the
+    # internships stem: everything on those pages IS an internship because of the
+    # URL we requested, which is stronger evidence than any title-text guess.
+    #
+    # fresher-jobs gets None, NOT True. Despite the name, that catalogue is
+    # full-time roles pitched at freshers and does carry the occasional
+    # experienced posting, so it keeps going through the normal text check.
+    stems = [("internships", "{base}/internships/{slug}-internship/", True)]
+    if settings.internshala_include_fresher_jobs:
+        # The fresher-jobs catalogue is full-time entry roles rather than
+        # internships — same markup, different stem. Free, so unlike the Apify
+        # path there is no "don't double the bill" reason to skip it.
+        stems.append(("fresher-jobs", "{base}/fresher-jobs/{slug}-jobs/", None))
+
+    jobs: list[JobIn] = []
+    now = datetime.now(timezone.utc)
+    async with httpx.AsyncClient(timeout=30, headers=INTERNSHALA_HEADERS, follow_redirects=True) as client:
+        for _, template, entry_hint in stems:
+            for slug in slugs:
+                base_url = template.format(base=INTERNSHALA_BASE, slug=slug)
+                for page in range(1, pages + 1):
+                    url = base_url if page == 1 else f"{base_url.rstrip('/')}/page-{page}/"
+                    try:
+                        response = await client.get(url)
+                        response.raise_for_status()
+                    except Exception as e:
+                        # A slug that doesn't exist for this stem 404s — expected
+                        # for some combinations, so this is a warning, not an error.
+                        logger.warning("Internshala %s failed: %s: %s", url, type(e).__name__, e)
+                        break
+                    page_jobs = parse_internshala_html(response.text, now, entry_hint)
+                    jobs.extend(page_jobs)
+                    if not page_jobs:
+                        # Past the last page of this category — no point walking
+                        # deeper into empty pages.
+                        break
+                    await asyncio.sleep(INTERNSHALA_PAGE_DELAY_SECONDS)
+
+    logger.info("Internshala: parsed %d cards across %d slugs × %d stems", len(jobs), len(slugs), len(stems))
+    return jobs
+
+
+# Instahyre's public job-search API — the endpoint its own /search-jobs/ page
+# calls. Confirmed live 2026-07-27 with NO auth, cookies or session of any kind.
+INSTAHYRE_SEARCH_URL = "https://www.instahyre.com/api/v1/job_search"
+
+# `job_categories=1` is Instahyre's own "Software Engineering" bucket (confirmed
+# by reading the request its Software Engineering Jobs page issues). This is the
+# source-side IT filter and does most of the work before our code sees a row —
+# but it is NOT trusted alone: every row still goes through the shared category
+# classifier downstream, same as Internshala.
+INSTAHYRE_SOFTWARE_CATEGORY = 1
+
+# 2 = internship, 0 = full-time. INTERNSHIPS FIRST, and the order is load-bearing.
+#
+# Measured live 2026-07-27: full-time is 7,911 rows and skews overwhelmingly
+# senior (an entire sample page was Staff/Principal/Senior — 120/120 rejected by
+# the entry-level gate), while the internship catalogue is ~8 rows of which most
+# survive. Since both crawls share one cap, iterating full-time first let it
+# consume the entire budget before internships were ever requested — so the only
+# part of this source that can actually pass the gate was never fetched, and
+# Instahyre inserted exactly 0 rows on its first production run.
+#
+# Cheapest correct fix: ask for the small, high-yield catalogue first. The cap
+# then bounds the low-yield one, which is what it was always for.
+INSTAHYRE_JOB_TYPES = (2, 0)
+
+INSTAHYRE_PAGE_SIZE = 50
+INSTAHYRE_PAGE_DELAY_SECONDS = 0.3
+
+# Hard ceiling on pages per job_type, independent of the row cap.
+#
+# The row cap alone is NOT a termination guarantee: new rows are deduped by id
+# before being counted, so a source that keeps handing back `meta.next` with
+# content we've already seen never grows `len(jobs)` and the crawl spins
+# forever. Found by a test that modelled exactly that (a paginating endpoint
+# returning repeated ids) and hung the suite.
+#
+# At 50 rows/page this bounds a crawl at 2,000 rows — far above any cap we'd
+# realistically set, so it never binds in normal operation. It exists purely so
+# a misbehaving or malicious endpoint costs a bounded number of requests instead
+# of hanging the daily pipeline.
+INSTAHYRE_MAX_PAGES = 40
+
+INSTAHYRE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.instahyre.com/search-jobs/",
+}
+
+
+def _instahyre_row_to_job(r: dict) -> JobIn | None:
+    """One `objects[]` entry → JobIn. Returns None for a row missing an id or a
+    title rather than inventing either."""
+    external_id = r.get("id")
+    # candidate_title already carries the "(Internship)" suffix where relevant,
+    # which the entry-level gate reads — so prefer it over the plain `title`.
+    title = r.get("candidate_title") or r.get("title")
+    if not external_id or not title:
+        return None
+
+    employer = r.get("employer") or {}
+    # `locations` is a COMMA-SEPARATED STRING ("Bangalore,Noida,Pune"), not an
+    # array — _primary_city already collapses on the first comma, so it needs no
+    # special handling here, but the shape is easy to misread.
+    raw_location = r.get("locations")
+
+    # keywords[] are clean skill tags ("Python", "Django", "React.js"). This
+    # source has no JD text at all in the search response, so the tags plus the
+    # employer blurb ARE the description — they're what gets embedded and what
+    # the category classifier reads.
+    keywords = [k for k in (r.get("keywords") or []) if k]
+    parts = []
+    if keywords:
+        parts.append(f"Skills: {', '.join(keywords)}.")
+    if employer.get("instahyre_note"):
+        parts.append(employer["instahyre_note"])
+    elif employer.get("company_tagline"):
+        parts.append(employer["company_tagline"])
+
+    return JobIn(
+        source="instahyre",
+        external_id=str(external_id),
+        title=title,
+        company=employer.get("company_name"),
+        location=_primary_city(raw_location),
+        description=" ".join(parts) or None,
+        # No salary anywhere in the search response — left null rather than guessed.
+        salary_min=None,
+        salary_max=None,
+        salary_currency=None,
+        redirect_url=r.get("public_url"),
+        # DELIBERATELY None: the response carries no posting date. `reviewed_at`
+        # looks like one but is a candidate-interaction field (always null on a
+        # public query). is_fresh() passes undated rows, so "new today" for this
+        # source is decided by dedup — an id we haven't stored is new. That is
+        # the ceiling the API allows, not an oversight.
+        posted_at=None,
+    )
+
+
+async def fetch_instahyre(max_results: int | None = None) -> list[JobIn]:
+    """Instahyre via its public JSON API — free, no auth, no Apify (ADR-003 v4).
+
+    Crawls the Software Engineering category for both full-time and internship
+    listings, paginating via the response's own `meta.next` until it runs out or
+    the cap is hit. Per-page errors are swallowed so one bad page doesn't sink
+    the rest, matching the Adzuna/JSearch tolerance pattern.
+    """
+    cap = max_results if max_results is not None else settings.instahyre_max_results
+    jobs: list[JobIn] = []
+    seen_ids: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=30, headers=INSTAHYRE_HEADERS, follow_redirects=True) as client:
+        for job_type in INSTAHYRE_JOB_TYPES:
+            params = {
+                "company_size": 0,
+                "isLandingPage": "true",
+                "job_type": job_type,
+                "job_categories": INSTAHYRE_SOFTWARE_CATEGORY,
+                "offset": 0,
+                "limit": INSTAHYRE_PAGE_SIZE,
+                "source": "opportunities",
+            }
+            url = f"{INSTAHYRE_SEARCH_URL}?{urlencode(params)}"
+
+            pages = 0
+            while url and len(jobs) < cap and pages < INSTAHYRE_MAX_PAGES:
+                pages += 1
+                try:
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    payload = response.json()
+                except Exception as e:
+                    logger.warning("Instahyre job_type=%s page failed: %s: %s", job_type, type(e).__name__, e)
+                    break
+
+                rows = payload.get("objects") or []
+                for r in rows:
+                    job = _instahyre_row_to_job(r)
+                    # The two job_type crawls can surface the same posting; drop
+                    # the repeat here so `fetched` counts don't double-count it.
+                    if job and job.external_id not in seen_ids:
+                        seen_ids.add(job.external_id)
+                        jobs.append(job)
+
+                # meta.next is a ready-to-use relative URL, or null on the last
+                # page. Following it beats recomputing offsets ourselves.
+                next_path = (payload.get("meta") or {}).get("next")
+                if not next_path or not rows:
+                    break
+                url = f"https://www.instahyre.com{next_path}"
+                await asyncio.sleep(INSTAHYRE_PAGE_DELAY_SECONDS)
+
+    logger.info("Instahyre: fetched %d listings (cap %d)", len(jobs), cap)
+    return jobs[:cap]
 
 
 # Unstop hands us a period word rather than a suffix on a string. Monthly stipends
@@ -681,8 +1016,50 @@ def _unstop_row_to_job(r: dict) -> JobIn | None:
     )
 
 
-async def fetch_unstop_internships(max_results: int) -> list[JobIn]:
-    """Unstop internships via its public search API (ADR-003 v2, no login).
+def _unstop_opportunity_types() -> list[str]:
+    """Which Unstop catalogues to crawl. Unknown values are dropped with a loud
+    log rather than sent: a typo'd type returns total=0, which would look exactly
+    like "the source died" in the Phase F health log."""
+    raw = [t.strip().lower() for t in settings.unstop_opportunity_types.split(",") if t.strip()]
+    valid = [t for t in raw if t in UNSTOP_OPPORTUNITY_TYPES]
+    if len(valid) != len(raw):
+        logger.warning(
+            "Unstop: ignoring unknown opportunity type(s) %s — valid values are %s",
+            sorted(set(raw) - set(valid)),
+            list(UNSTOP_OPPORTUNITY_TYPES),
+        )
+    return valid
+
+
+def _unstop_search_terms() -> list[str | None]:
+    """Empty setting → [None], i.e. ONE unfiltered pass over the whole catalogue.
+
+    This inverts the pre-2026-07-26 behaviour, which searched once per
+    `target_roles` entry. That kept the fetch narrow but capped the pool at the
+    three fullstack/frontend/cloud role names; the broad pool (ADR-003 v3) wants
+    every category, and a full crawl is also FEWER requests than three keyword
+    passes. Set UNSTOP_SEARCH_TERMS to go back to keyword mode.
+    """
+    terms = [t.strip() for t in settings.unstop_search_terms.split(",") if t.strip()]
+    return list(terms) if terms else [None]
+
+
+def _unstop_page_is_stale(jobs: list[JobIn], now: datetime) -> bool:
+    """True when every DATED job on the page is older than max_job_age_days.
+
+    Undated rows (posted_at=None) don't count as stale — they're unknown, not
+    old — so a page of them can't trigger the early stop on its own. A page with
+    no dated rows at all returns False for the same reason.
+    """
+    dated = [j for j in jobs if j.posted_at]
+    if not dated:
+        return False
+    cutoff = timedelta(days=settings.max_job_age_days)
+    return all(now - j.posted_at.astimezone(timezone.utc) > cutoff for j in dated)
+
+
+async def fetch_unstop(max_results: int) -> list[JobIn]:
+    """Unstop internships AND jobs via its public search API (ADR-003 v2/v3, no login).
 
     Direct httpx, not Apify: the endpoint carries no per-result cost, so unlike
     the Apify sources there's no cost-cadence to schedule around — it's capped by
@@ -690,20 +1067,21 @@ async def fetch_unstop_internships(max_results: int) -> list[JobIn]:
     "no high-volume polling"). Follows fetch_adzuna()'s error contract: a failed
     page logs and stops the loop, never raises, so a bad response yields whatever
     was already collected rather than sinking the pipeline.
+
+    `max_results` is a cap PER (opportunity type × search term), not a grand
+    total — same shape as the Apify sources' per-call cap, so adding a second
+    opportunity type doesn't silently halve the internship budget.
+
+    Volume note (measured live 2026-07-26): the full open catalogue is ~836
+    internships + ~1,186 jobs = ~21 requests at 100/page. Steady state is far
+    cheaper than that because results are newest-first and the crawl stops after
+    UNSTOP_STALE_PAGE_STREAK consecutive pages that are entirely older than
+    max_job_age_days — typically ~3 requests/day.
     """
     if max_results <= 0:
         return []
     per_page = min(max_results, UNSTOP_PAGE_SIZE)
-
-    # searchTerm biases the catalogue toward our roles. Without it Unstop returns
-    # all 760+ open internships newest-first (finance, marketing, campus-ambassador
-    # …) and almost none survive the fullstack/frontend/cloud relevance gate, so
-    # the source would fetch fine and still land ~0 jobs. One search per role,
-    # each capped at max_results — Unstop is free, so this is a per-role cap like
-    # the Apify sources' per-call cap. No roles configured → one unfiltered pass.
-    # (Unstop has no working server-side city filter, verified live — the gate
-    # handles Hyd/Blr.)
-    search_terms = _roles() or [None]
+    now = datetime.now(timezone.utc)
 
     jobs: list[JobIn] = []
     # follow_redirects: a WAF may 302 a suspicious request to a challenge/login
@@ -711,63 +1089,111 @@ async def fetch_unstop_internships(max_results: int) -> list[JobIn]:
     # misreading a 302 body. The URL is a fixed constant, not user input, so
     # there's no SSRF concern in following redirects here.
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        for term in search_terms:
-            collected = 0
-            page = 1
-            while collected < max_results:
-                params = {
-                    "opportunity": "internships",
-                    "page": page,
-                    "per_page": per_page,
-                    "oppstatus": "open",  # currently-open internships only
-                }
-                if term:
-                    params["searchTerm"] = term
-                try:
-                    response = await client.get(UNSTOP_SEARCH_URL, params=params, headers=UNSTOP_HEADERS)
-                    response.raise_for_status()
-                    payload = response.json()
-                except (httpx.HTTPError, ValueError) as e:
-                    logger.warning("Unstop %r page %d request failed: %s", term, page, e)
-                    break
+        for opportunity in _unstop_opportunity_types():
+            for term in _unstop_search_terms():
+                found = await _crawl_unstop(client, opportunity, term, max_results, per_page, now)
+                logger.info("Unstop %s/%r: %d rows", opportunity, term, len(found))
+                jobs += found
 
-                # Scraped frontend API we don't control: from some networks (a
-                # datacenter IP, a WAF challenge) it can 200 with a different shape
-                # than the recon captured, so every level is type-checked rather
-                # than trusted. A wrong shape logs WHAT it got and stops — never
-                # raises, so the pipeline and the Phase F health row survive.
-                paginator = payload.get("data") if isinstance(payload, dict) else None
-                if not isinstance(paginator, dict):
-                    logger.warning(
-                        "Unstop %r page %d: unexpected response shape (data=%s) — possible WAF/IP block",
-                        term,
-                        page,
-                        type(paginator).__name__,
-                    )
-                    break
+    return jobs
 
-                rows = paginator.get("data")
-                if not isinstance(rows, list) or not rows:
-                    break
-                for r in rows:
-                    if not isinstance(r, dict):
-                        continue
-                    try:
-                        job = _unstop_row_to_job(r)
-                    except Exception as e:
-                        # One malformed row must not lose the page — skip and log.
-                        logger.warning("Unstop row skipped (mapping error): %s", e)
-                        continue
-                    if job:
-                        jobs.append(job)
-                        collected += 1
-                    if collected >= max_results:
-                        break
 
-                last_page = paginator.get("last_page")
-                if not isinstance(last_page, int) or page >= last_page:
-                    break
-                page += 1
+async def _crawl_unstop(
+    client: httpx.AsyncClient,
+    opportunity: str,
+    term: str | None,
+    max_results: int,
+    per_page: int,
+    now: datetime,
+) -> list[JobIn]:
+    """One paginated crawl of a single (opportunity type, search term) pair.
+
+    Split out of fetch_unstop() so the two nested loops don't bury the pagination
+    logic three indents deep. Never raises — every exit path is a `break` that
+    returns whatever was collected, matching fetch_adzuna()'s error contract.
+    """
+    jobs: list[JobIn] = []
+    page = 1
+    stale_pages = 0
+    while len(jobs) < max_results:
+        params = {
+            "opportunity": opportunity,
+            "page": page,
+            "per_page": per_page,
+            "oppstatus": "open",  # currently-open postings only
+        }
+        if term:
+            params["searchTerm"] = term
+        try:
+            response = await client.get(UNSTOP_SEARCH_URL, params=params, headers=UNSTOP_HEADERS)
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as e:
+            logger.warning("Unstop %s/%r page %d request failed: %s", opportunity, term, page, e)
+            break
+
+        # Scraped frontend API we don't control: from some networks (a
+        # datacenter IP, a WAF challenge) it can 200 with a different shape
+        # than the recon captured, so every level is type-checked rather
+        # than trusted. A wrong shape logs WHAT it got and stops — never
+        # raises, so the pipeline and the Phase F health row survive.
+        paginator = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(paginator, dict):
+            logger.warning(
+                "Unstop %s/%r page %d: unexpected response shape (data=%s) — possible WAF/IP block",
+                opportunity,
+                term,
+                page,
+                type(paginator).__name__,
+            )
+            break
+
+        rows = paginator.get("data")
+        if not isinstance(rows, list) or not rows:
+            break
+
+        page_jobs: list[JobIn] = []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            try:
+                job = _unstop_row_to_job(r)
+            except Exception as e:
+                # One malformed row must not lose the page — skip and log.
+                logger.warning("Unstop row skipped (mapping error): %s", e)
+                continue
+            if job:
+                page_jobs.append(job)
+            if len(jobs) + len(page_jobs) >= max_results:
+                break
+        jobs += page_jobs
+
+        # Newest-first ordering means an all-stale page implies every LATER page
+        # is stale too — those rows would be dropped by is_fresh() at ingestion
+        # anyway, so paging on just burns requests against someone else's server.
+        # Two consecutive stale pages, not one, so a single odd page (all-undated,
+        # or one bumped posting) can't truncate an otherwise-fresh crawl.
+        stale_pages = stale_pages + 1 if _unstop_page_is_stale(page_jobs, now) else 0
+        if stale_pages >= UNSTOP_STALE_PAGE_STREAK:
+            logger.info(
+                "Unstop %s/%r: stopping at page %d — %d consecutive pages older than %dd",
+                opportunity,
+                term,
+                page,
+                stale_pages,
+                settings.max_job_age_days,
+            )
+            break
+
+        last_page = paginator.get("last_page")
+        if not isinstance(last_page, int) or page >= last_page:
+            break
+        page += 1
+        # Deliberate throttle between pages. A full cold-start crawl is ~21
+        # requests; spacing them keeps us a visibly polite caller rather than a
+        # burst, which is the behaviour ADR-003's "no high-volume polling" is
+        # really about.
+        await asyncio.sleep(UNSTOP_PAGE_DELAY_SECONDS)
 
     return jobs
 

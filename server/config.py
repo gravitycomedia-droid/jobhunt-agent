@@ -213,12 +213,106 @@ class Settings(BaseSettings):
     # Unstop. Default false: nothing new scrapes on a fresh deploy, so the ADR
     # sign-off gate can't be bypassed by simply shipping the code.
     enable_india_sources: bool = False
-    apify_internshala_actor_id: str = ""
-    # Same per-source cadence pattern as the other Apify sources — blank = never
-    # runs (an independent gate on top of enable_india_sources and the actor ID).
-    apify_internshala_weekdays: str = "tue,fri"
-    internshala_max_results: int = 10
-    unstop_max_results: int = 20
+
+    # --- Internshala (ADR-003 v4, 2026-07-27: free HTML, was paid Apify) ------
+    # The Apify actor knobs (apify_internshala_actor_id / _weekdays /
+    # internshala_max_results) are GONE, not deprecated: recon on 2026-07-27
+    # showed the category listing pages are fully server-rendered, so the actor
+    # was paying per result for HTML that a bare GET already returns. Being free
+    # is what lets this run daily at full page depth instead of tue/fri × 10.
+    #
+    # Slugs default to the ~12 technical categories confirmed from Internshala's
+    # own nav. This list is the FIRST IT filter (it excludes the marketing/
+    # finance/HR categories wholesale); the category classifier is the second,
+    # because non-technical postings do leak onto technical category pages.
+    internshala_slugs: str = (
+        "computer-science,web-development,mobile-app-development,programming,"
+        "software-development,software-testing,cloud-computing,cyber-security,"
+        "network-engineering,blockchain-development,data-science,machine-learning"
+    )
+    # 50 cards/page. 1 page × 12 slugs × 2 stems is already ~1,200 cards/day
+    # before dedup, so the default stays at 1 — raise it only if the freshness
+    # gate is visibly starving, not by reflex.
+    internshala_pages_per_slug: int = 1
+    # The fresher-jobs catalogue (full-time entry roles) alongside internships.
+    # Free, so unlike the Apify path there's no per-result reason to skip it.
+    internshala_include_fresher_jobs: bool = True
+
+    # --- Instahyre (ADR-003 v4) ---------------------------------------------
+    # Public JSON API, no auth (confirmed live 2026-07-27). Cap is a runaway
+    # guard, not a target: the full-time catalogue is ~7,900 rows but skews
+    # heavily senior, so the entry-level gate — not this number — is what
+    # actually decides the yield.
+    instahyre_max_results: int = 300
+
+    # Pass 2 of technical sub-categorization (services/job_tech_category.py):
+    # ONE batched DeepSeek call per ingestion run for the rows keyword matching
+    # couldn't place. Off → those rows fall back to 'other_it' and ingestion
+    # makes no LLM calls at all. On by default because the residue is small and
+    # the call is batched, but it's a kill switch worth having: if a source ever
+    # floods the pool with untitled rows, this is the line item that would grow.
+    enable_tech_category_llm: bool = True
+
+    # --- Unstop volume (ADR-003 v3, 2026-07-26) -----------------------------
+    # Was 20, and searched once per target_role — which capped the pool at the
+    # three fullstack/frontend/cloud keywords and landed ~20 rows/day. Measured
+    # live 2026-07-26: the open catalogue is 836 internships + 1,186 jobs, of
+    # which 1,443 are within max_job_age_days and ~131/day are genuinely new.
+    #
+    # This is a cap PER (opportunity type × search term), not a grand total, so
+    # 1000 means "don't runaway-crawl if Unstop's catalogue 10x's overnight"
+    # rather than a number we expect to hit. The real volume control is the
+    # freshness early-stop in _crawl_unstop(), which ends the crawl once results
+    # go older than max_job_age_days — typically ~3 requests/day in steady state.
+    unstop_max_results: int = 1000
+
+    # Which Unstop catalogues to crawl. "internships,jobs" are the only two
+    # values that carry hiring listings — probed live 2026-07-26: "freshers" and
+    # "entry-level" are NOT opportunity types (they return total=0), they're
+    # filters inside `jobs`, so the fresher cut is job_filter.py's entry-level
+    # gate rather than a query param. "competitions"/"hiring-challenges" respond
+    # but are contests, not postings, and are deliberately excluded.
+    unstop_opportunity_types: str = "internships,jobs"
+
+    # Comma-separated keyword searches. EMPTY (the default) = one unfiltered
+    # crawl of the whole catalogue, which is what the broad pool wants and is
+    # also fewer requests than one pass per keyword. Set this to narrow the
+    # fetch back to specific roles without touching code.
+    unstop_search_terms: str = ""
+
+    # --- per-source relevance gates (ADR-003 v3) ----------------------------
+    # Format: "source:gate+gate, source2:none". Gates are role / entry / location
+    # (services/job_filter.py). A source NOT named here gets all three, so every
+    # existing source is unaffected by this setting existing.
+    #
+    # Default "unstop:entry" is the measured sweet spot for the broad pool. Live
+    # counts over Unstop's full open catalogue, 2026-07-26:
+    #
+    #     gates applied        day-one backfill   new per day
+    #     all three (old)              441             55
+    #     entry only  (this)           791             87   ← chosen
+    #     location only                711             76
+    #     none                       1,443            131
+    #
+    # Entry-level stays ON because a senior sales role is dead weight in a
+    # fresher's pool no matter how the app filters it. The role and location cuts
+    # move to the APP as user-facing filters (category chips, city filter), which
+    # is reversible per-user — an ingestion gate is not, since a posting we never
+    # stored can't be un-filtered later.
+    # Amended 2026-08-01 (ADR-003 v4): internshala and instahyre join unstop on
+    # entry-only. They were on the strict default and it was starving them —
+    # measured live, Internshala stored 85/day of 540 fresh postings and
+    # Instahyre 2 of 300, against Unstop's ~174. The pool was 91% Unstop not
+    # because Unstop fetches more but because it was the only source allowed to
+    # keep what it found.
+    #
+    # The cut being removed is mostly `role`: it admits only fullstack/frontend/
+    # cloud, so ai_ml, data_science, mobile, backend, cybersecurity and
+    # qa_testing postings were discarded at ingestion — exactly the specialisms
+    # migration 028's tech_category exists to let users browse. Same reasoning
+    # v3 used for Unstop: role and city are reversible per-user in the app, an
+    # ingestion gate is not, and a posting we never stored can't be un-filtered.
+    ingestion_gate_overrides: str = "unstop:entry,internshala:entry,instahyre:entry"
 
     # --- Ingestion health alerting (plan 15, Phase F) -----------------------
     # Ops mailbox for "a source stopped returning data" alerts — NOT a

@@ -1,0 +1,249 @@
+{
+    "objects": [
+        {
+            "reviewed_at": null,
+            "title": "Research and Software Development Intern (AI)",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-431710-research-and-software-development-intern-ai-internship-at-cortiqolabs-work-from-home/",
+            "locations": "Work From Home",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/55206/f1e4fe9a8d/1781970903205.webp",
+                "company_tagline": "The sovereignty standard in applied AI",
+                "company_founded": 2026,
+                "company_name": "CortiqoLabs",
+                "employee_count": 1,
+                "instahyre_note": "CortiqoLabs is an AI company specializing in geospatial AI, computer vision, and intelligent multi-step systems for defense, energy, manufacturing, agriculture, and government to enable high-accuracy operations. ",
+                "id": 55206,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/55206"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "Python"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/431710",
+            "id": 431710,
+            "accept_outstation": true,
+            "candidate_title": "Research and Software Development Intern (AI) (Internship)"
+        },
+        {
+            "reviewed_at": null,
+            "title": "GenAI Developer",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-424689-genai-developer-internship-at-vibencode-work-from-home/",
+            "locations": "Work From Home",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/39861/8f706427c0/logo-new.webp",
+                "company_tagline": "Innovate, collaborate and create",
+                "company_founded": 2021,
+                "company_name": "Vibencode",
+                "employee_count": 10,
+                "instahyre_note": "Vibencode is an end-to-end custom product development company that delivers discovery, design, development, and support services for software products by leveraging the latest technologies. ",
+                "id": 39861,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/39861"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "Algorithms",
+                "Data Structures",
+                "Python"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/424689",
+            "id": 424689,
+            "accept_outstation": true,
+            "candidate_title": "GenAI Developer (Internship)"
+        },
+        {
+            "reviewed_at": null,
+            "title": "AI Engineer",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-413442-ai-engineer-internship-at-leansummits-work-from-home/",
+            "locations": "Work From Home",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/34917/0c03aef21e/1629414958302.webp",
+                "company_tagline": "Helping organizations achieve unified customer experiences",
+                "company_founded": 2018,
+                "company_name": "LeanSummits",
+                "employee_count": 10,
+                "instahyre_note": "LeanSummits is consulting firm that offers professional services in the areas of marketing and sales, growth marketing, operations, data and technology, and customer insights to diverse industry segments. ",
+                "id": 34917,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/34917"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "Augmented Reality",
+                "FastAPI",
+                "LLMs",
+                "Python"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/413442",
+            "id": 413442,
+            "accept_outstation": true,
+            "candidate_title": "AI Engineer (Internship)"
+        },
+        {
+            "reviewed_at": null,
+            "title": "Software Development Engineer",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-421514-software-development-engineer-internship-at-yellow-bangalore/",
+            "locations": "Bangalore",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/8189/e0c01ccf35/Yellow.ai__Logo__4.webp",
+                "company_tagline": "The World\u2019s Leading CX Automation Platform",
+                "company_founded": 2016,
+                "company_name": "yellow.ai (Formerly Yellow Messenger)",
+                "employee_count": 500,
+                "instahyre_note": "yellow.ai is an app that enables users to discover and connect with local businesses for various categories such as restaurants, real estate agencies, automobiles, furniture shops, home service centres etc. ",
+                "id": 8189,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/8189"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "Algorithms",
+                "Data Structures",
+                "Golang",
+                "Java",
+                "Node.js",
+                "Python"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/421514",
+            "id": 421514,
+            "accept_outstation": true,
+            "candidate_title": "Software Development Engineer (Internship)"
+        },
+        {
+            "reviewed_at": null,
+            "title": "DevOps Engineer - Intern",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-399709-devops-engineer-intern-internship-at-inceptionmind-technologies-bangalore/",
+            "locations": "Bangalore",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/52030/7c697344fa/logo.webp",
+                "company_tagline": "Provides top-quality software solutions",
+                "company_founded": 2023,
+                "company_name": "Inceptionmind Technologies",
+                "employee_count": 10,
+                "instahyre_note": "Inceptionmind Technologies is an IT services company with expertise in cloud solutions, digital marketing, web and mobile app development, and custom software development that drives business forward. ",
+                "id": 52030,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/52030"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "Python"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/399709",
+            "id": 399709,
+            "accept_outstation": false,
+            "candidate_title": "DevOps Engineer - Intern (Internship)"
+        },
+        {
+            "reviewed_at": null,
+            "title": "MERN Stack Intern",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-396070-mern-stack-intern-internship-at-adroapex-multi-services-kolhapur/",
+            "locations": "Kolhapur",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/51839/ca6c9bc815/adroapex_multi_services_logo.webp",
+                "company_tagline": "Empowering businesses with tailored web and software solutions",
+                "company_founded": 2025,
+                "company_name": "AdroApex Multi Services",
+                "employee_count": 1,
+                "instahyre_note": "AdroApex is software development startup offering bespoke website, e-commerce, customized software solutions, and strategic IT consulting services, focusing on serving local businesses and SMEs across India. ",
+                "id": 51839,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/51839"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "JavaScript",
+                "Node.js",
+                "React.js"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/396070",
+            "id": 396070,
+            "accept_outstation": true,
+            "candidate_title": "MERN Stack Intern (Internship)"
+        },
+        {
+            "reviewed_at": null,
+            "title": "Backend Engineer",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-413264-backend-engineer-internship-at-lawvriksh-work-from-home/",
+            "locations": "Work From Home",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/53792/09b796657b/lawvriksh_logo.webp",
+                "company_tagline": "Helping build a strong legal digital presence",
+                "company_founded": 2025,
+                "company_name": "LawVriksh",
+                "employee_count": 10,
+                "instahyre_note": "LawVriksh is an AI-powered legal-tech platform and workspace that supports lawyers, law students, and legal professionals with research, drafting, and legal content to streamline legal work and boost productivity. ",
+                "id": 53792,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/53792"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "Python",
+                "Flask"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/413264",
+            "id": 413264,
+            "accept_outstation": true,
+            "candidate_title": "Backend Engineer (Internship)"
+        },
+        {
+            "reviewed_at": null,
+            "title": "C++ Content Writer - Intern",
+            "gender": 0,
+            "public_url": "https://www.instahyre.com/job-411902-c-plus-plus-content-writer-intern-internship-at-amoolya-capital-work-from-home/",
+            "locations": "Work From Home",
+            "employer": {
+                "profile_image_src": "https://media.instahyre.com/images/profile/base/employer/51202/f8a9a8ee65/amoolyacapital_logo.webp",
+                "company_tagline": "Leading angel syndicate and Pre-IPO firm",
+                "company_founded": 2020,
+                "company_name": "Amoolya Capital",
+                "employee_count": 10,
+                "instahyre_note": "Amoolya Capital is an investment firm helping startups raise funds through its angel network by guiding SME IPOs and facilitating pre-IPO share deals across the private equity spectrum. ",
+                "id": 51202,
+                "resource_uri": "/api/v1/candidate_opportunity_employer/51202"
+            },
+            "score": null,
+            "is_strong_match": null,
+            "keywords": [
+                "Software Engineering",
+                "C++"
+            ],
+            "interview_status": null,
+            "resource_uri": "/api/v1/job_search/411902",
+            "id": 411902,
+            "accept_outstation": true,
+            "candidate_title": "C++ Content Writer - Intern (Internship)"
+        }
+    ],
+    "meta": {
+        "total_count": 8,
+        "next": null,
+        "limit": 20,
+        "total_count_relation": "eq",
+        "offset": 0,
+        "previous": null
+    }
+}

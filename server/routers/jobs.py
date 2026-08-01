@@ -1,6 +1,6 @@
 import io
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import Field
 from pypdf import PdfReader
 
@@ -17,6 +17,8 @@ from models.common import (
 )
 from models.job import JobExtraction
 from services.auth import get_current_profile, get_current_user_id
+from services.background_tasks import create_task, run_task
+from services.job_category import CATEGORIES, UnknownCategoryError, parse_category_filter
 from services.pdf_safety import PdfSafetyError, assert_is_pdf, assert_within_size_limit
 from services.rate_limit import enforce_rate_limit, enforce_rate_limit_by_user
 from services.job_ingestion import (
@@ -73,6 +75,7 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
 
 @router.post(
     "/refresh",
+    status_code=202,
     dependencies=[
         Depends(
             enforce_rate_limit_by_user(
@@ -81,24 +84,59 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
         )
     ],
 )
-async def refresh_jobs(user_id: str = Depends(get_current_user_id)):
+async def refresh_jobs(background: BackgroundTasks, profile: dict = Depends(get_current_profile)):
     """Requires login but isn't scoped to the caller — the job pool is
     shared across all beta users (the pool itself has no owner). Note: this
     endpoint hits API/board sources only; no-login Apify + Unstop scraping is
-    cron-only and never reachable from here (ADR-003 v2, Golden Rule 8)."""
-    result = await refresh_job_pool()
-    return {"data": result, "error": None}
+    cron-only and never reachable from here (ADR-003 v2, Golden Rule 8).
+
+    ADR-011-shaped, same as /tailor/{job_id}: fanning out to four job
+    sources routinely runs well past a minute (JSearch alone ~60s), which
+    held the client's connection open long enough for Android's network
+    stack to abort it (ClientException: Software caused connection abort).
+    This now returns 202 + a task id immediately; the client polls
+    GET /tasks/{id} for the `{fetched, inserted}` result.
+    """
+    task = create_task(profile["id"], "jobs_refresh")
+    background.add_task(run_task, task["id"], refresh_job_pool)
+    return {"data": {"task_id": task["id"]}, "error": None}
 
 
 @router.get("")
-async def list_jobs(limit: int = Query(20, le=100), offset: int = Query(0, ge=0), user_id: str = Depends(get_current_user_id)):
-    result = (
-        supabase.table("jobs")
-        .select("*")
-        .order("ingested_at", desc=True)
-        .range(offset, offset + limit - 1)
-        .execute()
-    )
+async def list_jobs(
+    limit: int = Query(20, le=100),
+    offset: int = Query(0, ge=0),
+    category: str | None = Query(
+        None,
+        description="Comma-separated categories to include (see services/job_category.CATEGORIES). Omit for all.",
+    ),
+    user_id: str = Depends(get_current_user_id),
+):
+    """The shared pool, newest first.
+
+    `category` filters SERVER-side rather than in the client (ADR-003 v3). The
+    work_type/source filters are a client-side narrowing of an already-fetched
+    page, which was fine when the whole pool was on-target roles. It is not fine
+    now: with the broad Unstop pool ~75% of rows are non-engineering, so a client
+    filtering page-by-page would show two matching jobs on a page of twenty and
+    make the list look empty. Filtering before pagination keeps every page full.
+    """
+    # Retired postings (migration 028) are excluded from browsing. This is a
+    # DISCOVERY read; the reads that hydrate a job the user already applied to or
+    # tailored against deliberately do NOT filter on is_active, which is the
+    # whole point of retirement being a soft flag rather than a delete.
+    query = supabase.table("jobs").select("*").eq("is_active", True)
+
+    try:
+        wanted = parse_category_filter(category)
+    except UnknownCategoryError as e:
+        # 422, not an empty 200: a typo'd filter must not be indistinguishable
+        # from an empty pool.
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    if wanted:
+        query = query.in_("category", wanted)
+
+    result = query.order("ingested_at", desc=True).range(offset, offset + limit - 1).execute()
     return {"data": result.data, "error": None}
 
 
@@ -110,26 +148,39 @@ def build_facets(jobs: list[dict]) -> dict:
     (migration 019's honest "unclassified") buckets as 'unknown', never dropped."""
     work_type: dict[str, int] = {"remote": 0, "hybrid": 0, "onsite": 0, "unknown": 0}
     source: dict[str, int] = {}
+    # Seeded with every known category at 0 so the client can render a stable set
+    # of chips whose order doesn't shuffle as counts change day to day. (source is
+    # NOT seeded — its values are open-ended.)
+    category: dict[str, int] = {c: 0 for c in CATEGORIES}
     for j in jobs:
         wt = j.get("work_type") or "unknown"
         work_type[wt] = work_type.get(wt, 0) + 1
         src = j.get("source") or "unknown"
         source[src] = source.get(src, 0) + 1
+        # NULL category = a row ingested before migration 027 that the backfill
+        # couldn't place. Buckets as 'other' so it stays reachable through a real
+        # filter chip rather than becoming invisible.
+        cat = j.get("category") or "other"
+        category[cat] = category.get(cat, 0) + 1
     return {
         "total": len(jobs),
         "work_type": work_type,
         # busiest source first — the client renders chips in this order
         "source": dict(sorted(source.items(), key=lambda kv: kv[1], reverse=True)),
+        "category": dict(sorted(category.items(), key=lambda kv: kv[1], reverse=True)),
     }
 
 
 @router.get("/facets")
 async def job_facets(user_id: str = Depends(get_current_user_id)):
-    """Filter-sheet histogram (§4.4): job counts per work_type and per source
-    across the shared pool. Login-gated like GET /jobs, not profile-scoped — the
-    pool has no owner. Toggling these filters is a client-side narrowing of the
-    already-fetched list; this endpoint just supplies the counts on the chips."""
-    rows = supabase.table("jobs").select("work_type,source").execute().data
+    """Filter-sheet histogram (§4.4): job counts per work_type, source and
+    category across the shared pool. Login-gated like GET /jobs, not
+    profile-scoped — the pool has no owner. These counts drive the filter chips;
+    category is additionally applied server-side by GET /jobs."""
+    # Same is_active exclusion as GET /jobs — the chip counts have to describe
+    # the pool the user can actually browse, or every filter would look like it
+    # lost jobs.
+    rows = supabase.table("jobs").select("work_type,source,category").eq("is_active", True).execute().data
     return {"data": build_facets(rows), "error": None}
 
 

@@ -12,7 +12,24 @@ from routers.chat import ChatSend
 from services import chat as chat_service
 from services.chat import answer_chat, build_context_block
 
-PROFILE = {"id": "p1", "headline": "Backend intern", "skills": ["Python", "FastAPI"], "target_roles": ["Backend"]}
+PROFILE = {
+    "id": "p1",
+    "name": "Harish Kumar",
+    "headline": "Backend intern",
+    "skills": ["Python", "FastAPI"],
+    "target_roles": ["Backend"],
+    "experience": [
+        {"role": "SWE Intern", "company": "Electronics Co", "duration": "May–Aug 2020", "bullets": ["Built a CI report pipeline"]}
+    ],
+    "projects": [
+        {"name": "Gym Reservation Bot", "tech": ["Python", "GCP"], "description": "Books a slot every morning"}
+    ],
+    "education": [{"degree": "BS Computer Science", "institution": "State University", "year": "2021"}],
+    "employment_type": "student",
+    "branch": "CSE",
+    "grad_year": 2026,
+    "target_locations": ["Hyderabad", "Bengaluru"],
+}
 MATCHES = [{"job": {"title": "API Intern", "company": "Acme"}, "fit_score": 88}]
 APPS = [{"job": {"title": "Data Intern", "company": "Globex"}, "state": "applied"}]
 
@@ -29,10 +46,45 @@ def test_context_includes_profile_matches_and_applications():
     assert "status: applied" in block
 
 
+def test_context_carries_the_whole_resume():
+    """The failure this guards: "what's my name?" / "which project is my best?"
+    used to be unanswerable because the context only held headline+skills, so an
+    honest model correctly said it had no such information."""
+    block = build_context_block(PROFILE, MATCHES, APPS)
+    assert "Harish Kumar" in block                       # name — "what is my name?"
+    assert "Gym Reservation Bot" in block                # projects — "my best project?"
+    assert "Books a slot every morning" in block         # ...with enough detail to judge it
+    assert "SWE Intern at Electronics Co" in block       # experience
+    assert "Built a CI report pipeline" in block         # ...down to the bullets
+    assert "BS Computer Science" in block                # education
+
+
+def test_context_carries_onboarding_facts_and_skips_blank_ones():
+    block = build_context_block(PROFILE, [], [])
+    assert "Branch/major: CSE" in block
+    assert "Graduation year: 2026" in block
+    assert "Preferred locations: Hyderabad, Bengaluru" in block
+    # Fields the user never filled are absent entirely, not printed as empty
+    # claims the model could read as "no employer".
+    assert "Current employer" not in block
+
+
 def test_context_is_honest_when_empty():
     block = build_context_block({"headline": None, "skills": [], "target_roles": []}, [], [])
+    assert "(name not on file)" in block
+    assert "(no work experience on file)" in block
+    assert "(no projects on file)" in block
+    assert "(no education on file)" in block
     assert "(no ranked matches yet)" in block
     assert "(no applications tracked yet)" in block
+
+
+def test_prompt_allows_advice_while_still_banning_invented_facts():
+    """Both halves matter: the old prompt was so absolute the model refused to
+    suggest anything ("what projects can I build?"), while the fabrication ban
+    must survive that loosening."""
+    assert "NEVER invent" in chat_service.CHAT_SYSTEM_PROMPT
+    assert "ADVICE is different from facts" in chat_service.CHAT_SYSTEM_PROMPT
 
 
 # --- anti-fabrication + schema validation via the LLM loop ------------------

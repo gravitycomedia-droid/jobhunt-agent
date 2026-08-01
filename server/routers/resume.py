@@ -155,6 +155,13 @@ def _upsert_profile(user_id: str, profile: ResumeProfile, raw_text: str) -> dict
         # new resume doesn't print a USN shouldn't blank out one the user
         # already entered by hand via PATCH /resume/profile/student-info.
         payload["usn"] = profile.usn
+    # Migration 026 contact block, same only-if-found rule as usn above: these
+    # are hand-editable from Settings, and a résumé that simply doesn't print a
+    # GitHub link must not wipe the one the user typed in themselves.
+    for field in ("email", "phone", "location", "linkedin_url", "github_url", "website_url"):
+        value = getattr(profile, field)
+        if value:
+            payload[field] = value
     payload["embedding"] = embed_text(profile_embedding_text(payload))
     # Brick 9: one profile row per authenticated user — was "the one global
     # row" pre-auth (see DECISIONS.md ADR-008).

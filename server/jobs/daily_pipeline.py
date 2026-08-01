@@ -6,6 +6,7 @@ from db.supabase_client import supabase
 from services.ingestion_health import record_and_alert_ingestion
 from services.job_ingestion import (
     backfill_job_embeddings,
+    refresh_india_boards,
     refresh_job_pool,
     refresh_scraped_sources,
     refresh_unstop,
@@ -203,11 +204,10 @@ async def _refresh_scraped_if_due() -> dict:
             logger.exception("Apify scraped-source refresh failed, continuing pipeline: %s", e)
     else:
         logger.info(
-            "Apify scraped sources: none due today (linkedin=%s indeed=%s naukri=%s internshala=%s)",
+            "Apify scraped sources: none due today (linkedin=%s indeed=%s naukri=%s)",
             settings.apify_linkedin_weekdays or "off",
             settings.apify_indeed_weekdays or "off",
             settings.apify_naukri_weekdays or "off",
-            settings.apify_internshala_weekdays if settings.enable_india_sources else "off",
         )
 
     # --- Unstop (free/direct, India-source-gated) ---
@@ -215,6 +215,15 @@ async def _refresh_scraped_if_due() -> dict:
         _merge(await refresh_unstop())
     except Exception as e:
         logger.exception("Unstop refresh failed, continuing pipeline: %s", e)
+
+    # --- Internshala + Instahyre (free/direct, India-source-gated) — ADR-003 v4.
+    # Here rather than in _refresh_and_backfill() for the same containment reason
+    # as Unstop: free of COST does not make them free of CADENCE, and ADR-003
+    # allows these boards only on a daily cron, never on a user's button press.
+    try:
+        _merge(await refresh_india_boards())
+    except Exception as e:
+        logger.exception("India boards refresh failed, continuing pipeline: %s", e)
 
     return summary
 

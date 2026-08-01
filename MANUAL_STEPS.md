@@ -40,6 +40,117 @@ Dashboard → SQL Editor → paste and run each file:
       (`/matches/rerank`, `/tailor/{id}`, `/pipeline/run-mine`, `/resume/parse`,
       `/jobs/manual/parse`, `/jobs/from-jd/parse`, `/jobs/refresh`) 500 on their
       first request.
+- [x] **⚠️ `server/db/migrations/026_profile_contact.sql` — ADR-046. MUST BE
+      APPLIED *BEFORE* THE NEXT CLOUD RUN DEPLOY.** Adds
+      `profiles.email/phone/location/linkedin_url/github_url/website_url` (the
+      résumé PDF's contact header). Unlike most migrations here, this one is
+      **not** safe to apply after the code: `routers/resume.py::_upsert_profile`
+      writes whichever of these the parser found on the uploaded résumé, so with
+      the new code live and the columns missing, **POST /resume/parse 500s for
+      any résumé that prints an email** — i.e. résumé upload, and therefore
+      onboarding, is broken for everyone. Applying it first is harmless to the
+      currently-deployed code (old code simply never writes the columns).
+- [x] **⚠️ `server/db/migrations/027_jobs_category.sql` — ADR-003 v3. MUST BE
+      APPLIED *BEFORE* THE NEXT CLOUD RUN DEPLOY.** Adds `jobs.category` (+ a
+      CHECK, an index, and a coarse backfill of existing rows). Not safe to
+      apply after the code: `_dedup_embed_insert()` now writes `category` on
+      every ingested row, so with the new code live and the column missing
+      **every job insert 500s** — the daily pipeline lands zero postings and
+      `POST /jobs/refresh` fails. Applying it first is harmless to the currently
+      deployed code (old code simply never writes the column).
+- [x] **⚠️ `server/db/migrations/028_tech_category_and_is_active.sql` — ADR-003
+      v4. MUST BE APPLIED *BEFORE* THE NEXT CLOUD RUN DEPLOY.** Same failure mode
+      as 027, for the same reason: `_dedup_embed_insert()` now writes
+      `tech_category` on every ingested row, so with the new code live and the
+      column missing **every job insert 500s**. Adds:
+      - `jobs.tech_category` (+ CHECK, index, title-only backfill of existing
+        engineering/data rows),
+      - `jobs.is_active` (boolean, `not null default true`) — the soft-delete
+        flag driving stale-job retirement,
+      - a redefinition of `match_jobs_by_similarity()` adding `and j.is_active`.
+        **This part is not optional**: without it, retired postings keep being
+        shortlisted and re-ranked (spending tokens) and keep showing up as fresh
+        matches, even though `GET /jobs` hides them.
+
+      Applying it first is harmless to the currently deployed code — old code
+      never writes either column, and `is_active` defaults to true so the
+      redefined RPC behaves identically until something retires a row.
+
+## 1a1. Cloud Run — Unstop volume env vars (ADR-003 v3)
+
+These four control the broad pool. All have working defaults in `config.py`, so
+the deploy is safe without them — but the defaults are the *new* behaviour, so
+set them explicitly if you want anything else.
+
+- [ ] `ENABLE_INDIA_SOURCES=true` — **check this first.** It is absent from
+      `server/.env`, which means it defaults to `false` and Unstop is fetching
+      NOTHING today. Everything else here is moot until this is on.
+- [ ] `UNSTOP_MAX_RESULTS=1000` (was 20) — a runaway guard, not a target; the
+      freshness early-stop is the real volume control.
+- [ ] `UNSTOP_OPPORTUNITY_TYPES=internships,jobs` — adds the 1,186-posting
+      `jobs` catalogue.
+- [ ] `UNSTOP_SEARCH_TERMS=` (blank) — blank means crawl the whole catalogue.
+- [ ] `INGESTION_GATE_OVERRIDES=unstop:entry` — keeps the entry-level gate,
+      drops role+location for Unstop only. See ADR-003 v3 for the measured
+      volume of each combination.
+
+**Watch the first run.** It's a cold crawl of ~21 requests taking ~77s, and it
+inserts ~790 rows — versus ~3 requests and ~87 rows/day afterwards. The cron
+route `POST /pipeline/run` is synchronous, so if Cloud Scheduler's attempt
+deadline is tight, that first run is where it would time out. Either raise the
+deadline for one day, or trigger the first crawl manually and let the cron pick
+up from the cheap steady state.
+
+## 1a2. Cloud Run — Internshala/Instahyre env vars (ADR-003 v4)
+
+All have working defaults in `config.py`, so the deploy is safe without them.
+Three **removed** vars are the thing to actually action:
+
+- [ ] **Delete `APIFY_INTERNSHALA_ACTOR_ID`, `APIFY_INTERNSHALA_WEEKDAYS` and
+      `INTERNSHALA_MAX_RESULTS`** from the Cloud Run service if they are set.
+      Internshala no longer uses Apify at all (ADR-003 v4) and these settings no
+      longer exist in `config.py`. Pydantic-settings ignores unknown env vars, so
+      leaving them set is harmless — but it will read as "Internshala is still
+      costing Apify credits" to a future you, and it isn't.
+- [x] `ENABLE_INDIA_SOURCES=true` — **already set on Cloud Run** (verified
+      2026-07-27 against the live service, not the checklist). Master kill switch
+      for all three India boards (Internshala, Instahyre, Unstop).
+- [ ] `INSTAHYRE_MAX_RESULTS=300` — runaway guard, not a target. Note the cap is
+      shared across both job types and internships are crawled FIRST for a
+      reason (see the comment on `INSTAHYRE_JOB_TYPES`): full-time is ~7,900 rows
+      of which ~100% fails the entry-level gate, so if it runs first it eats the
+      whole cap and the ~8 internships — the only rows that can pass — are never
+      fetched. That shipped once and made Instahyre insert 0 rows while
+      reporting 300 fetched.
+- [ ] `INTERNSHALA_PAGES_PER_SLUG=1` — 50 cards/page; 1 page × 12 slugs × 2 stems
+      is already ~1,200 cards/day before dedup.
+- [ ] `ENABLE_TECH_CATEGORY_LLM=true` — set `false` to make ingestion do zero LLM
+      calls (unresolved rows become `other_it`). Measured 96% of rows never reach
+      the LLM anyway, so leaving it on costs about one small DeepSeek call/day.
+
+**Expected first run:** Internshala ~24 requests (12 slugs × 2 stems), Instahyre
+a handful. Both are far cheaper than Unstop's cold crawl, so no attempt-deadline
+concern like §1a1 had.
+
+## 1a3. Cloud Scheduler — 7:00 AM IST (VERIFIED, no action needed)
+
+- [x] **Verified live 2026-07-27.** The job is correct as-is:
+
+      ```
+      jobhunt-daily-pipeline   0 7 * * *   Asia/Kolkata   ENABLED
+      ```
+
+      The timezone was set explicitly at creation, so `0 7 * * *` really is
+      7:00 AM IST. The concern previously recorded here — that Cloud Scheduler
+      defaults to UTC and would therefore be firing at 12:30 PM IST — did not
+      apply. Kept as a note because `DAILY_PIPELINE_HOUR` in `config.py` is
+      genuinely NOT what schedules the run (it is only read for display/logic),
+      so if the cron time ever looks wrong, this job is the thing to check:
+
+      ```bash
+      gcloud scheduler jobs describe jobhunt-daily-pipeline --location=asia-south1 \
+        --format="value(schedule,timeZone)"
+      ```
 
 ## 1a. Cloud Run — new secret (Phase 14 / ADR-023)
 

@@ -27,11 +27,21 @@ Return ONLY valid JSON matching this schema:
   "experience": [{"role": str, "company": str, "duration": str, "bullets": [str]}],
   "projects": [{"name": str, "tech": [str], "description": str}],
   "education": [{"degree": str, "institution": str, "year": str}],
-  "usn": str | null
+  "usn": str | null,
+  "email": str | null, "phone": str | null, "location": str | null,
+  "linkedin_url": str | null, "github_url": str | null, "website_url": str | null
 }
 "usn" is a USN (University Seat Number), roll number, or registration number
 — extract it only if literally printed on the resume (common on student
 resumes, rare otherwise); use null rather than guessing.
+The contact fields come from the resume's header/footer contact line:
+  - "email"/"phone": exactly as printed.
+  - "location": the city/address line, if any.
+  - "linkedin_url"/"github_url": the profile link as printed (keep it as
+    written — "linkedin.com/in/jane" stays that, don't expand or shorten it).
+  - "website_url": a personal site or portfolio — NOT LinkedIn or GitHub.
+Never guess a handle from the person's name, and never build a URL that isn't
+printed on the page; use null instead.
 If a field is absent, use null (or [] for lists). No markdown fences, no commentary."""
 
 # Golden Rule 3's retry, appended to the USER half of the prompt on the second
@@ -304,6 +314,11 @@ _TASK_PROVIDERS: dict[str, str] = {
     "skill_growth": DEEPSEEK,
     "extract_form": DEEPSEEK,
     "form_fill": DEEPSEEK,
+    # ADR-003 v4: the Pass-2 residue of technical sub-categorization. One batched
+    # call per ingestion run, never per job — see services/job_tech_category.py
+    # for why this task gets an LLM at all when job_category.py deliberately
+    # doesn't.
+    "tech_category": DEEPSEEK,
 }
 
 _gemini_client = genai.Client(api_key=settings.gemini_api_key)
@@ -712,6 +727,40 @@ def rerank_jobs(
         temperature=0.2,
         profile_id=profile_id,
         postprocess=_reslot,
+    )
+
+
+class TechCategoryError(Exception):
+    """Pass-2 tech categorization failed after the retry. Callers in
+    job_tech_category.py treat this as "fall back to other_it", never as fatal —
+    a missing specialism label must not be able to fail an ingestion run."""
+
+
+def run_tech_category_batch(rows: list[dict], profile_id: str | None = None):
+    """ADR-003 v4 Pass 2: classify the rows keyword matching couldn't place, in
+    ONE call. Returns a TechCategoryBatch; raises TechCategoryError on failure.
+
+    Deliberately thin — the prompt, the closed enum and the validator all live in
+    services/job_tech_category.py next to Pass 1, so the two passes share one
+    definition of the vocabulary. This function only supplies the provider flow
+    (validate → retry once → log), same as every other task here.
+
+    No `index` re-slotting guard like rerank's: a skipped row here degrades to
+    'other_it' in the caller, which is a correct-if-vague label. rerank has to
+    raise on a missing verdict because a mis-slotted SCORE attaches the wrong
+    reasons to the wrong job; a mis-slotted category is merely wrong, and the
+    caller matches on the echoed index rather than on list order anyway.
+    """
+    from services.job_tech_category import _PASS2_SYSTEM, _pass2_user_prompt, TechCategoryBatch
+
+    return _run_llm_task(
+        task="tech_category",
+        system=_PASS2_SYSTEM,
+        user=_pass2_user_prompt(rows),
+        response_model=TechCategoryBatch,
+        error_cls=TechCategoryError,
+        temperature=0.1,
+        profile_id=profile_id,
     )
 
 

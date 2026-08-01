@@ -14,20 +14,23 @@ from db.supabase_client import supabase
 from models.job import JobExtraction, JobIn
 from services.dedup import is_duplicate, make_dedup_key
 from services.embeddings import embed_text, embed_texts, job_embedding_text
-from services.job_filter import classify_work_type, is_relevant
+from services.job_category import classify_category
+from services.job_filter import classify_work_type, gates_for_source, is_relevant
 from services.job_sources import (
     _locations,
     _roles,
     fetch_adzuna,
     fetch_greenhouse,
     fetch_indeed_apify,
-    fetch_internshala_apify,
+    fetch_instahyre,
+    fetch_internshala,
     fetch_jsearch,
     fetch_lever,
     fetch_linkedin_apify,
     fetch_naukri_apify,
-    fetch_unstop_internships,
+    fetch_unstop,
 )
+from services.job_tech_category import classify_tech_categories_batch
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +188,7 @@ def insert_manual_job(extraction: JobExtraction, redirect_url: str | None = None
         "redirect_url": redirect_url,
         "dedup_key": dedup_key,
         "work_type": classify_work_type(extraction.location, extraction.title, extraction.description),
+        "category": classify_category(extraction.title, extraction.description),
         "embedding": embed_text(job_embedding_text(extraction.model_dump())),
     }
     return supabase.table("jobs").insert(payload).execute().data[0]
@@ -209,26 +213,77 @@ def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
     # keywords, and Greenhouse/Lever not at all (they return a company's entire
     # board, every role and city). One gate, applied uniformly, is the only way
     # the pool means the same thing regardless of where a job came from.
-    relevant = [job for job in fresh if is_relevant(job.title, job.location, job.description)]
+    #
+    # ADR-003 v3: `job.source` is passed so the gate can apply a per-source gate
+    # set. It is NOT a loosening of the default — a source with no configured
+    # override still gets role+entry+location exactly as before.
+    relevant = [
+        job
+        for job in fresh
+        if is_relevant(
+            job.title,
+            job.location,
+            job.description,
+            source=job.source,
+            # A fetcher that knows the posting is entry-level from WHERE it found
+            # it (Internshala's /internships/ URL) says so here, instead of
+            # leaving the gate to guess it from wording it doesn't contain.
+            entry_level_hint=job.entry_level_hint,
+        )
+    ]
 
     if len(fetched) != len(relevant):
         logger.info(
-            "Ingestion gate: %d fetched → %d fresh (≤%dd) → %d relevant (role+entry-level+city)",
+            "Ingestion gate: %d fetched → %d fresh (≤%dd) → %d relevant (gates: %s)",
             len(fetched),
             len(fresh),
             settings.max_job_age_days,
             len(relevant),
+            settings.ingestion_gate_overrides or "all sources strict",
         )
+
+    # Per-source funnel. The aggregate line above hides the failure mode that
+    # actually bit us: on 2026-07-27 Instahyre fetched 300 and stored 0, and
+    # every summary reported a healthy "instahyre: 300" because by_source counts
+    # FETCHED. A source can look fine forever while contributing nothing.
+    #
+    # This is deliberately a SECOND metric rather than a replacement — migration
+    # 018's reasoning still holds, fetched==0 is the "source went dark" signal
+    # and inserted==0 is a normal all-duplicates day. The signal missing until
+    # now is "the gate ate everything this source returned".
+    funnel: dict[str, dict[str, int]] = {}
+    for job in fetched:
+        funnel.setdefault(job.source, {"fetched": 0, "fresh": 0, "relevant": 0})["fetched"] += 1
+    for job in fresh:
+        funnel.setdefault(job.source, {"fetched": 0, "fresh": 0, "relevant": 0})["fresh"] += 1
+    for job in relevant:
+        funnel.setdefault(job.source, {"fetched": 0, "fresh": 0, "relevant": 0})["relevant"] += 1
+
+    for source, counts in sorted(funnel.items()):
+        if counts["fetched"] and not counts["relevant"]:
+            # The Instahyre case. Loud, because it is indistinguishable from a
+            # working source in every other number we report.
+            logger.warning(
+                "Source %s contributed NOTHING: %d fetched → %d fresh → 0 passed the gate "
+                "(gates for this source: %s). The source is alive; the filter is rejecting all of it.",
+                source,
+                counts["fetched"],
+                counts["fresh"],
+                ",".join(sorted(gates_for_source(source))) or "none",
+            )
+        elif counts["fetched"]:
+            logger.info(
+                "Funnel %s: %d fetched → %d fresh → %d relevant (%.0f%% of fetched survives)",
+                source,
+                counts["fetched"],
+                counts["fresh"],
+                counts["relevant"],
+                100 * counts["relevant"] / counts["fetched"],
+            )
+
     fetched = relevant
 
-    existing = (
-        supabase.table("jobs")
-        .select("title,company,location,dedup_key")
-        .order("ingested_at", desc=True)
-        .limit(500)
-        .execute()
-        .data
-    )
+    existing = _existing_rows_for_dedup(fetched)
     existing_keys = {row["dedup_key"] for row in existing}
 
     # Collect the new (non-duplicate) jobs first, embed them all in one
@@ -253,7 +308,29 @@ def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
         # Persist the remote/hybrid classification the relevance gate above already
         # computed internally (migration 019) so the filter sheet can read it.
         payload["work_type"] = classify_work_type(job.location, job.title, job.description)
+        # ADR-003 v3 (migration 027): with the role gate off for the broad pool,
+        # the category is the only thing separating an SDE internship from a
+        # telecalling one in the app's list.
+        payload["category"] = classify_category(job.title, job.description)
         payloads.append(payload)
+
+    # ADR-003 v4 (migration 028): the technical SUB-specialism, which `category`
+    # can't express because every one of them collapses to 'engineering'.
+    #
+    # Batched across the whole run on purpose: Pass 1 (keywords) resolves most
+    # rows for free, and whatever's left becomes ONE LLM call for the entire
+    # insert rather than one per job. Called after the loop above because it
+    # needs each row's `category` as its input — non-technical rows are skipped
+    # outright and get NULL.
+    tech_categories = classify_tech_categories_batch(
+        [
+            {"title": p.get("title"), "category": p.get("category"), "description": p.get("description")}
+            for p in payloads
+        ],
+        use_llm=settings.enable_tech_category_llm,
+    )
+    for payload, tech_category in zip(payloads, tech_categories):
+        payload["tech_category"] = tech_category
 
     # One batched upsert instead of one insert() round-trip per row — with
     # Greenhouse/Lever added (job source expansion, ADR-018), a single
@@ -262,12 +339,80 @@ def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
     # timeout. ignore_duplicates=True does the same job the old per-row
     # try/except did (skip a dedup_key collision from a concurrent refresh
     # race without erroring), just as one request instead of N.
+    #
+    # Chunked since ADR-003 v3: the broad Unstop pool's first run inserts ~800
+    # rows at once, and a single upsert of 800 payloads each carrying a 768-dim
+    # embedding is a multi-megabyte request body — big enough to hit PostgREST's
+    # limits and slow enough to risk the cron's own timeout. Chunking is a pure
+    # transport concern: on_conflict/ignore_duplicates make each chunk
+    # independently idempotent, so a chunk failing mid-run leaves the earlier
+    # ones committed rather than rolling everything back.
     inserted = 0
-    if payloads:
-        result = supabase.table("jobs").upsert(payloads, on_conflict="dedup_key", ignore_duplicates=True).execute()
-        inserted = len(result.data)
+    for i in range(0, len(payloads), _UPSERT_CHUNK_SIZE):
+        chunk = payloads[i : i + _UPSERT_CHUNK_SIZE]
+        result = supabase.table("jobs").upsert(chunk, on_conflict="dedup_key", ignore_duplicates=True).execute()
+        inserted += len(result.data)
 
-    return {"fetched": len(fetched), "inserted": inserted}
+    # `funnel` rides along so callers (and the cron's HTTP response) can see
+    # WHERE a source's rows died, not just that few arrived. `fetched` here is
+    # post-gate by this point, which is why the funnel carries the raw counts.
+    return {"fetched": len(fetched), "inserted": inserted, "funnel": funnel}
+
+
+# One upsert request per this many rows. 200 × 768-dim float embedding ≈ a few MB
+# of JSON, which PostgREST handles comfortably; 800 in one request does not.
+_UPSERT_CHUNK_SIZE = 200
+
+# How many recent rows to pull as fuzzy-match context when the keyed lookup
+# returns few. Not a correctness bound — exact duplicates are caught by
+# dedup_key regardless — just enough recent history for is_duplicate()'s
+# near-match heuristic to have something to compare against.
+_DEDUP_CONTEXT_ROWS = 500
+
+
+def _existing_rows_for_dedup(fetched: list[JobIn]) -> list[dict]:
+    """Rows to check `fetched` against for duplicates.
+
+    Fixed 2026-07-26 (ADR-003 v3). This used to be a blind "most recent 500 rows
+    by ingested_at", which was fine at ~30 new rows/day and silently breaks at
+    100-200: a 500-row window then covers under three days, so a posting we
+    ingested last week is no longer in the comparison set at all.
+
+    Exact duplicates were never actually at risk — the upsert's
+    `on_conflict="dedup_key"` catches those in the database no matter what this
+    returns. What broke is `is_duplicate()`'s FUZZY near-match check (same job,
+    slightly different title/company punctuation), which only ever sees what this
+    function hands it. So: look the incoming batch's dedup_keys up directly, and
+    top up with recent rows for the fuzzy comparison. The keyed half is now exact
+    and unbounded by volume; the recency half is a heuristic and stays capped.
+    """
+    keys = list({make_dedup_key(job.title, job.company, job.location) for job in fetched})
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    # Chunked for the same reason the upsert is: a few hundred keys in one
+    # `in_()` builds a very long URL, and PostgREST rejects those.
+    for i in range(0, len(keys), _UPSERT_CHUNK_SIZE):
+        chunk = keys[i : i + _UPSERT_CHUNK_SIZE]
+        matched = supabase.table("jobs").select("title,company,location,dedup_key").in_("dedup_key", chunk).execute().data
+        for row in matched:
+            if row["dedup_key"] not in seen:
+                seen.add(row["dedup_key"])
+                rows.append(row)
+
+    recent = (
+        supabase.table("jobs")
+        .select("title,company,location,dedup_key")
+        .order("ingested_at", desc=True)
+        .limit(_DEDUP_CONTEXT_ROWS)
+        .execute()
+        .data
+    )
+    for row in recent:
+        if row["dedup_key"] not in seen:
+            seen.add(row["dedup_key"])
+            rows.append(row)
+    return rows
 
 
 # The free sources, as (name, fetcher) pairs. Named here so refresh_job_pool()
@@ -361,20 +506,12 @@ def _scraped_sources_due(now: datetime | None = None) -> list[tuple[str, object,
         ),
     ]
 
-    # India source expansion (ADR-003 v2, 2026-07-20): Internshala only enters
-    # the rotation when the master switch is on, even if its actor ID and
-    # weekdays are set. This is the ADR sign-off gate expressed in code — the
-    # source cannot go live by config alone.
-    if settings.enable_india_sources:
-        configured.append(
-            (
-                "internshala",
-                settings.apify_internshala_actor_id,
-                fetch_internshala_apify,
-                settings.apify_internshala_weekdays,
-                settings.internshala_max_results,
-            )
-        )
+    # Internshala used to be appended here as a fourth Apify source (ADR-003 v2).
+    # It moved OUT of the paid rotation entirely in ADR-003 v4 (2026-07-27):
+    # its listing pages turned out to be server-rendered, so it's now a free
+    # direct-HTML fetch in refresh_india_boards() alongside Instahyre. Nothing
+    # weekday-gated remains here but the three original paid actors — the
+    # weekday cadence exists to ration MONEY, and these two no longer cost any.
 
     return [
         (name, fetcher, cap)
@@ -493,14 +630,14 @@ async def refresh_unstop() -> dict:
         logger.info("Unstop skipped: ENABLE_INDIA_SOURCES is false")
         return {"fetched": 0, "inserted": 0, "by_source": {}, "errors": {}, "skipped": "disabled"}
 
-    # fetch_unstop_internships() is written to never raise, but wrap it anyway:
+    # fetch_unstop() is written to never raise, but wrap it anyway:
     # if it somehow does, Unstop must still land in the health log as an ERROR
     # row (by_source={"unstop":0} + an errors entry) rather than being swallowed
     # by the pipeline's outer handler and vanishing — a dead source the ops alert
     # can't see is worse than a dead source. This is the fix for the 2026-07-21
     # incident where an Unstop exception left NO row at all.
     try:
-        jobs = await fetch_unstop_internships(settings.unstop_max_results)
+        jobs = await fetch_unstop(settings.unstop_max_results)
     except Exception as e:
         logger.exception("Unstop fetch raised")
         return {"fetched": 0, "inserted": 0, "by_source": {"unstop": 0}, "errors": {"unstop": f"{type(e).__name__}: {e}"}}
@@ -509,6 +646,153 @@ async def refresh_unstop() -> dict:
     summary = _dedup_embed_insert(jobs)
     summary["by_source"] = {"unstop": len(jobs)}
     summary["errors"] = {}
+    return summary
+
+
+def retire_stale_jobs(source: str, seen_external_ids: set[str]) -> dict:
+    """Soft-retire postings from `source` that did NOT appear in today's fetch.
+
+    Neither Internshala nor Instahyre exposes a usable expiry date on its listing
+    pages, so presence IS the signal: a posting that has dropped out of the live
+    listing is closed. Runs per-source so one source's bad day can never retire
+    another's rows.
+
+    SOFT delete (`is_active = false`), never a DELETE — migration 028 explains
+    why at length, but in short: `jobs` rows are referenced by `applications`,
+    `matches` and `tailored_resumes`, and hard-deleting one would either violate
+    the FK or silently destroy a user's own tracked history because a company
+    took a listing down. After this runs, a retired job disappears from browsing
+    and matching while every application the user already filed against it still
+    resolves and renders.
+
+    Refuses to act on an EMPTY seen-set. A source that errored out or got
+    throttled returns zero ids, and "retire everything we have from this source"
+    is exactly the wrong response to a failed fetch — that's the difference
+    between a quiet day and wiping the source from the app. A genuinely empty
+    live listing is indistinguishable from a broken fetch here, so the safe
+    reading wins and the ingestion health log is what surfaces a dead source.
+    """
+    if not seen_external_ids:
+        logger.warning("Retirement skipped for %s: empty seen-set (treated as a failed fetch, not an empty board)", source)
+        return {"retired": 0, "revived": 0, "skipped": "empty_seen_set"}
+
+    rows = supabase.table("jobs").select("id,external_id,is_active").eq("source", source).execute().data
+
+    stale_ids = [r["id"] for r in rows if r.get("is_active") and str(r.get("external_id")) not in seen_external_ids]
+    # The other direction, and it is NOT optional. The main insert upserts with
+    # ignore_duplicates=True, so a row we retired yesterday that is live on the
+    # board again today is skipped by the upsert and would stay is_active=false
+    # forever — invisible in the app despite being an open posting. Retirement
+    # is only safe to do at all because it's reversible right here.
+    revived_ids = [r["id"] for r in rows if not r.get("is_active") and str(r.get("external_id")) in seen_external_ids]
+
+    def _set_active(ids: list[str], value: bool) -> int:
+        # Chunked for the same transport reason the upsert is: a few hundred ids
+        # in one in_() builds a URL long enough for PostgREST to reject.
+        changed = 0
+        for i in range(0, len(ids), _UPSERT_CHUNK_SIZE):
+            chunk = ids[i : i + _UPSERT_CHUNK_SIZE]
+            result = supabase.table("jobs").update({"is_active": value}).in_("id", chunk).execute()
+            changed += len(result.data)
+        return changed
+
+    retired = _set_active(stale_ids, False) if stale_ids else 0
+    revived = _set_active(revived_ids, True) if revived_ids else 0
+
+    if retired or revived:
+        logger.info("Retirement %s: %d retired, %d revived, %d rows scanned", source, retired, revived, len(rows))
+    return {"retired": retired, "revived": revived}
+
+
+def _india_board_sources() -> list[tuple[str, object]]:
+    """The free India boards as (name, fetcher) pairs. Both are direct-fetch and
+    cost nothing per result, so unlike the Apify sources they carry no weekday
+    cadence — they run every cron day.
+
+    A function rather than a module-level list on purpose: a list literal binds
+    the function objects at IMPORT time, which silently defeats
+    patch("services.job_ingestion.fetch_instahyre") and let the containment tests
+    hit the live API. Resolving globals per call keeps the seam patchable.
+    """
+    return [
+        ("internshala", fetch_internshala),
+        ("instahyre", fetch_instahyre),
+    ]
+
+
+async def refresh_india_boards() -> dict:
+    """Internshala + Instahyre (ADR-003 v4) — free, direct-fetch, cron-only.
+
+    Deliberately NOT in refresh_job_pool()'s _FREE_SOURCES, despite both being
+    free. refresh_job_pool() is reachable from the app's "Run agent now" button,
+    and ADR-003 permits these sources only at personal scale on a daily cron —
+    putting them there would let any user trigger scraping on demand by tapping
+    a button. Free is about COST; ADR-003 is about CADENCE, and they're separate
+    constraints. Same containment reasoning as refresh_unstop(), whose shape this
+    follows: gated on enable_india_sources, called only from the cron batch.
+
+    Each fetcher is wrapped so its failure costs only its own jobs and still
+    lands in the ingestion health log as an explicit zero — a dead source the
+    ops alert can't see is worse than a dead source (the 2026-07-21 Unstop
+    incident).
+
+    Retirement runs per-source and only for a source that actually returned
+    rows, so a failed fetch can never be read as "the board is empty now".
+    """
+    if not settings.enable_india_sources:
+        logger.info("India boards skipped: ENABLE_INDIA_SOURCES is false")
+        return {"fetched": 0, "inserted": 0, "by_source": {}, "errors": {}, "skipped": "disabled"}
+
+    sources = _india_board_sources()
+    results = await asyncio.gather(*(fetcher() for _, fetcher in sources), return_exceptions=True)
+
+    fetched: list[JobIn] = []
+    by_source: dict[str, int] = {}
+    errors: dict[str, str] = {}
+    seen_by_source: dict[str, set[str]] = {}
+
+    for (name, _), result in zip(sources, results):
+        if isinstance(result, Exception):
+            logger.warning("India board %s raised: %s: %s", name, type(result).__name__, result)
+            by_source[name] = 0
+            errors[name] = f"{type(result).__name__}: {result}"
+            continue
+        # Health tracks FETCHED, not inserted: an all-duplicate day is a healthy
+        # day, and alerting on inserts would page on a working source.
+        by_source[name] = len(result)
+        fetched.extend(result)
+        # A source that returned NOTHING is not registered as "seen", so it can't
+        # be retired below. Both fetchers swallow their own HTTP errors and
+        # return [] rather than raising, so an empty list is far more often a
+        # broken fetch than a genuinely empty board — and "retire everything"
+        # is the worst possible response to a broken fetch. retire_stale_jobs()
+        # refuses an empty seen-set too; this is the belt to that's braces.
+        if result:
+            seen_by_source[name] = {job.external_id for job in result}
+
+    summary = _dedup_embed_insert(fetched)
+    summary["by_source"] = by_source
+    summary["errors"] = errors
+
+    # After the insert, so a posting that reappeared today is already back to
+    # is_active=true via the upsert before anything gets retired.
+    retired: dict[str, int] = {}
+    for name, seen in seen_by_source.items():
+        try:
+            retired[name] = retire_stale_jobs(name, seen).get("retired", 0)
+        except Exception as e:
+            # Retirement is housekeeping — never let it sink an otherwise good
+            # ingestion run.
+            logger.warning("Retirement failed for %s: %s: %s", name, type(e).__name__, e)
+            retired[name] = 0
+    summary["retired"] = retired
+
+    logger.info(
+        "India boards: %d fetched, %d inserted, retired %s",
+        summary["fetched"],
+        summary["inserted"],
+        retired or "nothing",
+    )
     return summary
 
 

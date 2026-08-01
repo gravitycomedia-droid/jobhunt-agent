@@ -8,15 +8,18 @@ from models.common import (
     MAX_COMPANY_LEN,
     MAX_DESCRIPTION_LEN,
     MAX_EDUCATION_ITEMS,
+    MAX_EMAIL_LEN,
     MAX_EXPERIENCE_ITEMS,
     MAX_HEADLINE_LEN,
+    MAX_LOCATION_LEN,
     MAX_NAME_LEN,
+    MAX_PHONE_LEN,
     MAX_PROJECT_ITEMS,
     MAX_ROLE_LEN,
     MAX_SKILL_LEN,
     MAX_SKILLS,
     MAX_TITLE_LEN,
-    MAX_USN_LEN,
+    MAX_URL_LEN,
     StrictModel,
 )
 
@@ -63,6 +66,15 @@ class ResumeProfile(BaseModel):
     # USN (Indian engineering college register number) or an equivalent
     # roll/registration number — most resumes won't have one, that's fine.
     usn: Optional[str] = None
+    # Migration 026 — the contact block printed at the top of the résumé. The
+    # parser lifts whatever is literally on the uploaded file; anything it
+    # can't see stays None and the user fills it in from Settings.
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    github_url: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class ResumeProfileUpdate(StrictModel):
@@ -77,3 +89,12 @@ class ResumeProfileUpdate(StrictModel):
     experience: Optional[list[ExperienceItem]] = Field(default=None, max_length=MAX_EXPERIENCE_ITEMS)
     projects: Optional[list[ProjectItem]] = Field(default=None, max_length=MAX_PROJECT_ITEMS)
     education: Optional[list[EducationItem]] = Field(default=None, max_length=MAX_EDUCATION_ITEMS)
+    # Migration 026 — the résumé's contact block, editable from Settings.
+    # Capped like everything else here: these render into a PDF and (for the
+    # URLs) into a clickable annotation, so unbounded input is not an option.
+    email: Optional[str] = Field(default=None, max_length=MAX_EMAIL_LEN)
+    phone: Optional[str] = Field(default=None, max_length=MAX_PHONE_LEN)
+    location: Optional[str] = Field(default=None, max_length=MAX_LOCATION_LEN)
+    linkedin_url: Optional[str] = Field(default=None, max_length=MAX_URL_LEN)
+    github_url: Optional[str] = Field(default=None, max_length=MAX_URL_LEN)
+    website_url: Optional[str] = Field(default=None, max_length=MAX_URL_LEN)

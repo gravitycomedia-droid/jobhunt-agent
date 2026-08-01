@@ -68,24 +68,19 @@ def test_naukri_runs_only_once_a_week():
     assert len(naukri_days) == 1
 
 
-def test_internshala_is_gated_by_the_master_switch(monkeypatch):
-    """ADR-003 v2 sign-off gate, in code: Internshala must NOT enter the rotation
-    while ENABLE_INDIA_SOURCES is false, even with its actor ID set and today on
-    its cadence. Config alone can't take a new scraped source live."""
+def test_internshala_left_the_paid_rotation(monkeypatch):
+    """ADR-003 v4: Internshala moved out of the Apify rotation entirely when it
+    became a free direct-HTML fetch. The weekday cadence here exists to ration
+    MONEY, so a source that costs nothing must not be in it on any day, with the
+    master switch either way. Its containment now lives in refresh_india_boards()
+    — see test_india_boards.py."""
     from services.job_ingestion import _scraped_sources_due
 
-    monkeypatch.setattr(settings, "apify_internshala_actor_id", "owner~internshala")
-    monkeypatch.setattr(settings, "apify_internshala_weekdays", "tue,fri")
-    monkeypatch.setattr(settings, "internshala_max_results", 10)
-
-    # Switch OFF → absent from the rotation on TUE (one of its weekdays).
-    monkeypatch.setattr(settings, "enable_india_sources", False)
-    assert "internshala" not in {n for n, _, _ in _scraped_sources_due(TUE)}
-
-    # Switch ON → runs on its own cadence, and stays off on a non-cadence day.
-    monkeypatch.setattr(settings, "enable_india_sources", True)
-    assert "internshala" in {n for n, _, _ in _scraped_sources_due(TUE)}
-    assert "internshala" not in {n for n, _, _ in _scraped_sources_due(WED)}
+    for enabled in (False, True):
+        monkeypatch.setattr(settings, "enable_india_sources", enabled)
+        for day in (MON, TUE, WED):
+            assert "internshala" not in {n for n, _, _ in _scraped_sources_due(day)}
+            assert "instahyre" not in {n for n, _, _ in _scraped_sources_due(day)}
 
 
 def test_should_scrape_today_is_true_only_when_something_is_due():

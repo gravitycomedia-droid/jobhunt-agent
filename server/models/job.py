@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class JobIn(BaseModel):
@@ -23,6 +23,20 @@ class JobIn(BaseModel):
     salary_currency: Optional[str] = None
     redirect_url: Optional[str] = None
     posted_at: Optional[datetime] = None
+
+    # Set by a fetcher that KNOWS the posting is entry-level from where it found
+    # it, rather than leaving job_filter.is_entry_level() to infer seniority from
+    # wording. Internshala is the motivating case: its card titles are the
+    # profile name ("Android App Development"), not the job title, so only 3 of
+    # 50 contain the word "intern" and the text-based gate rejected ~38% of
+    # listings fetched from the /internships/ URL — postings that are internships
+    # by definition. A hint of True skips the entry check; None/False changes
+    # nothing, so every other source behaves exactly as before.
+    #
+    # exclude=True is LOAD-BEARING: JobIn.model_dump() is written straight into
+    # the `jobs` upsert, and a field with no matching column makes PostgREST
+    # reject the whole batch. This is a transport-only hint, never a column.
+    entry_level_hint: Optional[bool] = Field(default=None, exclude=True)
 
 
 class JobExtraction(BaseModel):

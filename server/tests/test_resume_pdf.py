@@ -1,4 +1,9 @@
-from services.resume_pdf import compile_ats_pdf, compile_final_bullets, _replace_experience_bullets
+from services.resume_pdf import (
+    compile_ats_pdf,
+    compile_final_bullets,
+    contact_line,
+    _replace_experience_bullets,
+)
 
 PROFILE = {
     "name": "Ada Lovelace",
@@ -165,3 +170,62 @@ def test_single_page_fit_for_long_profile():
     ]
     pdf = compile_ats_pdf(big, {"job_id": "x", "bullets": bullets, "analysis": {}})
     assert len(PdfReader(io.BytesIO(pdf)).pages) == 1
+
+
+# --- migration 026: the contact block in the PDF header ---------------------
+
+CONTACT_PROFILE = {
+    **PROFILE,
+    "phone": "123-456-7890",
+    "email": "ada@example.com",
+    "linkedin_url": "https://www.linkedin.com/in/ada/",
+    "github_url": "github.com/ada",
+    "website_url": "https://ada.dev",
+    "location": "Bengaluru, India",
+}
+
+
+def test_contact_line_renders_every_supplied_channel():
+    line = contact_line(CONTACT_PROFILE)
+    # Displayed bare — scheme, www. and trailing slash stripped for readability.
+    assert "linkedin.com/in/ada" in line and "https://www." not in line.split("<link")[0]
+    assert "github.com/ada" in line
+    assert "ada.dev" in line
+    assert "123-456-7890" in line
+    assert "ada@example.com" in line
+    assert "Bengaluru, India" in line
+    # ...and the clickable targets are real, fully-qualified URLs.
+    assert 'href="tel:123-456-7890"' in line
+    assert 'href="mailto:ada@example.com"' in line
+    assert 'href="https://github.com/ada"' in line  # bare host got https:// added
+
+
+def test_contact_line_omits_fields_the_user_never_filled():
+    line = contact_line({"name": "Ada", "email": "ada@example.com"})
+    assert "ada@example.com" in line
+    # No empty separators or placeholder labels for the five absent channels.
+    assert "|" not in line
+    assert contact_line({"name": "Ada"}) == ""
+
+
+def test_contact_line_never_emits_an_unsafe_link():
+    """These are hand-typed in Settings, so they're untrusted input — a
+    javascript: URL must never become a clickable annotation in the PDF."""
+    line = contact_line({"website_url": "javascript:alert(1)"})
+    assert "<link" not in line
+    assert "javascript:alert(1)" in line  # degraded to inert plain text
+
+
+def test_pdf_header_carries_the_contact_details():
+    text = _extract(compile_ats_pdf(CONTACT_PROFILE, BULLETS))
+    assert "Ada Lovelace" in text
+    assert "ada@example.com" in text
+    assert "linkedin.com/in/ada" in text
+    assert "github.com/ada" in text
+    assert "Bengaluru, India" in text
+
+
+def test_pdf_still_compiles_without_any_contact_details():
+    # Every existing profile predates migration 026 — a résumé with no contact
+    # columns at all must still render, just without the line.
+    assert compile_ats_pdf(PROFILE, BULLETS).startswith(b"%PDF")
