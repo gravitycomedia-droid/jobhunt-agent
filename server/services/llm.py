@@ -122,11 +122,17 @@ STEP 1 — ANALYZE THE JOB DESCRIPTION:
 STEP 2 — TAILOR (using ONLY what the candidate actually has):
 - summary_line: one or two sentences reframing the candidate toward this
   role_type, built STRICTLY from facts already in their profile. Never
-  claim a skill, tool, metric, or experience not present in their bullets
-  or listed skills.
+  claim a skill, tool, metric, or experience not present in their bullets,
+  listed skills, or CANDIDATE PROJECTS (when given). If the candidate has no
+  work experience bullets — common for a student/fresher — lean on their
+  projects and skills instead: e.g. "final-year CS student who built X using
+  Y" is a legitimate summary grounded in project facts.
 - tailored_bullets: REPHRASE and REORDER the candidate's existing bullets
   so the most JD-relevant achievement comes first. One entry per source
-  bullet you use.
+  bullet you use. If CANDIDATE RESUME BULLETS is empty, return an empty
+  list here — do not invent bullets from the projects list; projects are
+  for summary_line grounding only, and are shown on the résumé verbatim by
+  a separate step, not through this list.
 - skills_ordered: the candidate's OWN listed skills, reordered to mirror
   the JD's hard_requirements priority. Only skills from the provided list
   — never add, rename, or invent a skill.
@@ -765,10 +771,17 @@ def run_tech_category_batch(rows: list[dict], profile_id: str | None = None):
 
 
 def _tailor_user_prompt(
-    bullets: list[str], skills: list[str], headline: str, job_description: str
+    bullets: list[str], skills: list[str], headline: str, job_description: str, projects: list[dict] | None = None
 ) -> str:
-    bullets_list = "\n".join(f"- {b}" for b in bullets)
+    bullets_list = "\n".join(f"- {b}" for b in bullets) if bullets else "(none — see CANDIDATE PROJECTS instead)"
     skills_list = ", ".join(skills) if skills else "(none listed)"
+    projects_block = ""
+    if projects:
+        lines = []
+        for proj in projects:
+            tech = ", ".join(proj.get("tech") or [])
+            lines.append(f"- {proj.get('name', '')}{f' ({tech})' if tech else ''}: {proj.get('description') or ''}")
+        projects_block = "\n\nCANDIDATE PROJECTS (grounding for summary_line only, never for tailored_bullets):\n" + "\n".join(lines)
     return f"""CANDIDATE CURRENT SUMMARY:
 {headline or "(none)"}
 
@@ -776,7 +789,7 @@ CANDIDATE SKILLS (the ONLY skills you may reorder — never add to this list):
 {skills_list}
 
 CANDIDATE RESUME BULLETS:
-{bullets_list}
+{bullets_list}{projects_block}
 
 TARGET JOB POSTING:
 {wrap_untrusted(job_description)}"""

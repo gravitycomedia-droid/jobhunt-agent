@@ -24,6 +24,15 @@ class JobIn(BaseModel):
     redirect_url: Optional[str] = None
     posted_at: Optional[datetime] = None
 
+    # The source's OWN stated deadline, where it publishes one (migration 029).
+    # Unlike entry_level_hint below this IS a real column, so it deliberately
+    # does serialize into the upsert.
+    #
+    # Only Unstop supplies it today (`end_date`). None means "this source
+    # publishes no deadline", NOT "never expires" — those rows fall back to the
+    # age rule in job_ingestion.retire_expired_jobs().
+    expires_at: Optional[datetime] = None
+
     # Set by a fetcher that KNOWS the posting is entry-level from where it found
     # it, rather than leaving job_filter.is_entry_level() to infer seniority from
     # wording. Internshala is the motivating case: its card titles are the

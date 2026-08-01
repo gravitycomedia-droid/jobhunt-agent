@@ -10,6 +10,7 @@ from services.job_ingestion import (
     refresh_job_pool,
     refresh_scraped_sources,
     refresh_unstop,
+    retire_expired_jobs,
     should_scrape_today,
 )
 from services.llm import FollowupError, LlmApiError, generate_followup_draft
@@ -224,6 +225,19 @@ async def _refresh_scraped_if_due() -> dict:
         _merge(await refresh_india_boards())
     except Exception as e:
         logger.exception("India boards refresh failed, continuing pipeline: %s", e)
+
+    # --- expiry sweep: hide postings that have closed (migration 029) ---
+    # AFTER every fetcher, so a posting that reappeared in today's crawl has
+    # already had its deadline refreshed by the upsert before being judged.
+    # Runs unconditionally — unlike the fetchers this is not gated on
+    # enable_india_sources, because a stale Adzuna or LinkedIn row is just as
+    # dead to the user as a stale Unstop one.
+    try:
+        summary["expired"] = retire_expired_jobs()
+    except Exception as e:
+        # Housekeeping must never sink the run that feeds it.
+        logger.exception("Expiry sweep failed, continuing pipeline: %s", e)
+        summary["expired"] = {"retired": 0, "error": str(e)}
 
     return summary
 

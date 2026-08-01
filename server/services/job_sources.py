@@ -1013,6 +1013,13 @@ def _unstop_row_to_job(r: dict) -> JobIn | None:
         salary_currency=currency,
         redirect_url=r.get("seo_url"),
         posted_at=_unstop_posted_at(r.get("approved_date")),
+        # The registration deadline Unstop publishes on every opportunity. This
+        # is what makes expiry a FACT rather than an age guess: registration
+        # windows here run 13 days at the median and up to 56, so a 12-day-old
+        # posting is routinely still open and a 40-day-old one sometimes is.
+        # Plain ISO-8601 with an offset, unlike approved_date's "GMT+0530"
+        # mess, so pydantic parses it without help.
+        expires_at=r.get("end_date"),
     )
 
 

@@ -76,6 +76,16 @@ Dashboard → SQL Editor → paste and run each file:
       never writes either column, and `is_active` defaults to true so the
       redefined RPC behaves identically until something retires a row.
 
+- [ ] `server/db/migrations/029_jobs_expires_at.sql` — daily expiry sweep. Adds
+      `jobs.expires_at` (nullable) + a partial index. **Safe to apply in either
+      order** relative to the deploy, unlike 027/028: the column is nullable with
+      no default and old code simply never writes it, while new code treats a
+      missing deadline as "fall back to the age rule". Nothing 500s either way.
+
+      Until applied, `retire_expired_jobs()` still runs but every row takes the
+      age branch — so Unstop postings are judged on age rather than on the real
+      `end_date`, which is exactly the imprecision this column removes.
+
 ## 1a1. Cloud Run — Unstop volume env vars (ADR-003 v3)
 
 These four control the broad pool. All have working defaults in `config.py`, so

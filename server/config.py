@@ -323,6 +323,23 @@ class Settings(BaseSettings):
     # ingestion gate is not, and a posting we never stored can't be un-filtered.
     ingestion_gate_overrides: str = "unstop:entry,internshala:entry,instahyre:entry"
 
+    # --- daily expiry sweep (retire_expired_jobs) ---------------------------
+    # How old a posting may get before it's hidden, for sources that publish NO
+    # deadline (Adzuna, JSearch, LinkedIn, Indeed, Naukri, Greenhouse, Lever).
+    # Sources that DO publish one (Unstop's end_date) ignore this entirely and
+    # are judged on the real date.
+    #
+    # Deliberately looser than max_job_age_days (10). Those settings answer
+    # different questions: max_job_age_days governs what we ADD (a 15-day-old
+    # posting isn't worth ingesting), this governs what we HIDE (a 15-day-old
+    # posting may well still be taking applications). Using 10 here would have
+    # retired 372 rows — 24% of the pool — many of them still open.
+    #
+    # Calibrated against the only real deadline data available: Unstop
+    # registration windows run 13 days at the median and up to 56, so 21 is
+    # comfortably past the typical window without hiding the long tail.
+    job_expiry_days: int = 21
+
     # --- Ingestion health alerting (plan 15, Phase F) -----------------------
     # Ops mailbox for "a source stopped returning data" alerts — NOT a
     # user-facing address. Empty → health is still logged to

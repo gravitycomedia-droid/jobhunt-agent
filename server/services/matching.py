@@ -25,6 +25,19 @@ RERANK_BATCH_SIZE = 10
 # what "no hard exclusion" means.
 ROLE_BONUS_POINTS = 15
 
+# ADR-054: location and salary preference boosts, same shape as the role
+# boost above and for the same reason: both are STRUCTURED facts (a city
+# name, a number), not a language judgment, so they're computed here in
+# Python and never sent to the LLM. Also boost-only, deliberately — job
+# `location` text is inconsistent ("Hyderabad, Telangana" vs "Hyderabad" vs
+# blank) and most postings in this pool list no salary at all, so excluding
+# on either would silently wipe out otherwise-strong matches (the same
+# reasoning that keeps the role prescreen a safety-valved filter rather than
+# a hard one). Smaller than the role bonus — role is what the candidate SAID
+# they want; location/salary are secondary preferences on top of that.
+LOCATION_BONUS_POINTS = 10
+SALARY_BONUS_POINTS = 10
+
 # Verdict thresholds. These live here, not in the prompt, because a verdict is
 # a state decision computed from the final (boosted) score — the model's own
 # suggested verdict would be blind to the boost we just applied.
@@ -55,6 +68,26 @@ _ROLE_SYNONYMS: dict[str, set[str]] = {
 # carry no discriminating signal on their own.
 _STOPWORDS = {"a", "an", "the", "and", "or", "of", "for", "senior", "junior", "sr", "jr", "lead", "i", "ii", "iii"}
 
+# ADR-054: same hand-maintained-synonym pattern as _ROLE_SYNONYMS, for the
+# city-name variants this job pool actually contains (Adzuna/JSearch/Apify
+# each spell these differently). Deliberately small — this is a preference
+# boost, not a gazetteer.
+_LOCATION_SYNONYMS: dict[str, set[str]] = {
+    "bangalore": {"bangalore", "bengaluru"},
+    "bombay": {"bombay", "mumbai"},
+    "gurgaon": {"gurgaon", "gurugram"},
+    "delhi": {"delhi", "ncr"},
+    "hyderabad": {"hyderabad", "secunderabad"},
+    "chennai": {"chennai", "madras"},
+    "kolkata": {"kolkata", "calcutta"},
+    "pune": {"pune"},
+}
+
+# "Remote" always satisfies any location preference — it's compatible with
+# every city the candidate could have listed, so it earns the bonus even if
+# the candidate never typed the word "remote" themselves.
+_REMOTE_TOKENS = {"remote", "wfh", "workfromhome", "anywhere"}
+
 
 def _tokens(text: str) -> set[str]:
     return {t for t in re.split(r"[^a-z0-9+#]+", (text or "").lower()) if t and t not in _STOPWORDS}
@@ -74,6 +107,76 @@ def _expand_role_tokens(target_roles: list[str]) -> set[str]:
             if key in role.lower().replace(" ", "") or key in role_tokens:
                 out |= synonyms
     return out - _STOPWORDS
+
+
+def _expand_location_tokens(target_locations: list[str]) -> set[str]:
+    """Mirrors _expand_role_tokens: the candidate's preferred-city tokens,
+    plus whatever city-name variants that city is known to have."""
+    out: set[str] = set()
+    for loc in target_locations:
+        loc_tokens = _tokens(loc)
+        out |= loc_tokens
+        for key, synonyms in _LOCATION_SYNONYMS.items():
+            if key in loc.lower().replace(" ", "") or key in loc_tokens:
+                out |= synonyms
+    return out
+
+
+def _location_bonus(job: dict, location_tokens: set[str]) -> float:
+    """0.0-1.0 boost input for ADR-054: 1.0 when the job's location overlaps
+    a preferred city (or the job is remote), 0.0 otherwise — including when
+    the job lists no location at all, or the candidate stated no preference.
+    Never a penalty: this only ever adds, and only when there's a positive
+    signal to add for."""
+    if not location_tokens:
+        return 0.0
+    job_tokens = _tokens(job.get("location"))
+    if not job_tokens:
+        return 0.0
+    if job_tokens & _REMOTE_TOKENS:
+        return 1.0
+    return 1.0 if job_tokens & location_tokens else 0.0
+
+
+def _salary_bonus(job: dict, min_salary: float | None) -> float:
+    """0.0-1.0 boost input for ADR-054: full boost when the job's own listed
+    ceiling clears the candidate's stated floor, half when it's close (within
+    15%), none when it falls short OR the job lists no salary at all — most
+    postings in this pool don't, and treating "unknown" as "below the floor"
+    would punish the majority of otherwise-good jobs."""
+    if not min_salary:
+        return 0.0
+    job_ceiling = job.get("salary_max") or job.get("salary_min")
+    if not job_ceiling:
+        return 0.0
+    if job_ceiling >= min_salary:
+        return 1.0
+    if job_ceiling >= min_salary * 0.85:
+        return 0.5
+    return 0.0
+
+
+# ADR-054: the message appended to `matches.gaps` when a job scores as a
+# genuine "apply" but the profile has nothing services/section_tailor.py can
+# build a tailored resume from — a fixed string so a later rescore can find
+# and de-duplicate its own prior insert (see rescore_cached_matches).
+_PROFILE_GAP_MESSAGE = "Add work experience or project details to your profile — this job scores well but there's nothing yet to build a tailored resume from"
+
+
+def _has_tailorable_content(profile: dict) -> bool:
+    """True if the profile has real bullets a tailored resume could be built
+    from: at least one experience bullet, or at least one project with a
+    description. A profile that fails this can still be an honest, strong
+    fit (the LLM's fit_score isn't wrong) — but POST /tailor/{job_id} has
+    nothing to select (services/section_tailor.py) and a bare "apply" verdict
+    promises the candidate something the agent can't yet deliver."""
+    for exp in profile.get("experience") or []:
+        if exp.get("bullets"):
+            return True
+    for proj in profile.get("projects") or []:
+        if (proj.get("description") or "").strip():
+            return True
+    return False
 
 
 def _has_role_signal(job: dict, role_tokens: set[str], skill_tokens: set[str]) -> bool:
@@ -121,11 +224,19 @@ def _prescreen(jobs: list[dict], target_roles: list[str], skills: list[str]) -> 
     return kept
 
 
-def _final_score(llm_fit: int, role_alignment: float) -> int:
+def _final_score(
+    llm_fit: int, role_alignment: float, location_bonus: float = 0.0, salary_bonus: float = 0.0
+) -> int:
     """Golden Rule 2: the model judged the language ("is this their role?"),
-    Python does the arithmetic. Clamped to the 0-100 the `matches.fit_score`
-    column and the UI both assume."""
-    boost = ROLE_BONUS_POINTS * max(0.0, min(1.0, role_alignment))
+    Python does the arithmetic — role_alignment from the LLM, location_bonus
+    and salary_bonus (ADR-054) computed purely from structured job/profile
+    fields and never seen by the model at all. Clamped to the 0-100
+    `matches.fit_score` column and the UI both assume."""
+    boost = (
+        ROLE_BONUS_POINTS * max(0.0, min(1.0, role_alignment))
+        + LOCATION_BONUS_POINTS * max(0.0, min(1.0, location_bonus))
+        + SALARY_BONUS_POINTS * max(0.0, min(1.0, salary_bonus))
+    )
     return max(0, min(100, round(llm_fit + boost)))
 
 
@@ -170,6 +281,11 @@ def rerank_shortlist(profile: dict, limit: int = DEFAULT_RERANK_LIMIT) -> dict:
 
     target_roles = profile.get("target_roles") or []
     skills = profile.get("skills") or []
+    # ADR-054: location/salary tokens + profile completeness are the same for
+    # every job in this call, so compute them once rather than per job.
+    location_tokens = _expand_location_tokens(profile.get("target_locations") or [])
+    min_salary = profile.get("min_salary")
+    has_content = _has_tailorable_content(profile)
     screened = _prescreen(shortlist, target_roles, skills)
     screened_out = len(shortlist) - len(screened)
     screened = screened[:limit]
@@ -196,19 +312,31 @@ def rerank_shortlist(profile: dict, limit: int = DEFAULT_RERANK_LIMIT) -> dict:
 
         rows = []
         for job, result in zip(batch, results):
-            score = _final_score(result.fit_score, result.role_alignment)
+            location_bonus = _location_bonus(job, location_tokens)
+            salary_bonus = _salary_bonus(job, min_salary)
+            score = _final_score(result.fit_score, result.role_alignment, location_bonus, salary_bonus)
+            verdict = _verdict_for(score)
+            gaps = list(result.gaps)
+            # ADR-054: an honestly-computed "apply" is still a dead end if
+            # there's nothing in the profile to tailor into a resume — don't
+            # let the board promise more than /tailor can deliver.
+            if verdict == "apply" and not has_content:
+                verdict = "stretch"
+                gaps = gaps + [_PROFILE_GAP_MESSAGE]
             rows.append(
                 {
                     "profile_id": profile_id,
                     "job_id": job["id"],
                     "similarity": job["similarity"],
                     "fit_score": score,
+                    "raw_fit_score": result.fit_score,
+                    "role_alignment": result.role_alignment,
                     "strengths": result.strengths,
-                    "gaps": result.gaps,
+                    "gaps": gaps,
                     "compensators": result.compensators,
                     # Recomputed from the BOOSTED score — the model's own
                     # verdict predates the boost and would contradict it.
-                    "verdict": _verdict_for(score),
+                    "verdict": verdict,
                     "one_line_reason": result.one_line_reason,
                 }
             )
@@ -220,6 +348,70 @@ def rerank_shortlist(profile: dict, limit: int = DEFAULT_RERANK_LIMIT) -> dict:
         "skipped": len(screened) - reranked,
         "screened_out": screened_out,
     }
+
+
+def rescore_cached_matches(profile: dict) -> int:
+    """ADR-054: recompute fit_score/verdict for every cached match of this
+    profile from the CURRENT target_locations/min_salary — pure Python
+    arithmetic, no LLM call, no token cost. Called synchronously right after
+    the location/salary preference PATCH endpoints save, so the Matches
+    board reorders the moment the user changes a preference instead of
+    waiting on the next full re-rank.
+
+    Only location/salary can be refreshed this way. role_alignment was the
+    LLM's judgment of "is this posting the role they want" against whatever
+    target_roles were current AT SCORE TIME — re-judging that for a changed
+    target_roles list is a language call (Golden Rule 2), so a role-target
+    change still needs a real rerank_shortlist() run.
+
+    Rows scored before ADR-054 (raw_fit_score is null) are skipped rather
+    than guessed at, and simply get the new boost on their next real re-rank.
+    Returns the number of rows updated.
+    """
+    profile_id = profile["id"]
+    rows = (
+        supabase.table("matches")
+        .select("id, job_id, raw_fit_score, role_alignment, gaps")
+        .eq("profile_id", profile_id)
+        .not_.is_("raw_fit_score", "null")
+        .execute()
+        .data
+    )
+    if not rows:
+        return 0
+
+    job_ids = [r["job_id"] for r in rows]
+    jobs = (
+        supabase.table("jobs")
+        .select("id, location, salary_min, salary_max")
+        .in_("id", job_ids)
+        .execute()
+        .data
+    )
+    jobs_by_id = {j["id"]: j for j in jobs}
+
+    location_tokens = _expand_location_tokens(profile.get("target_locations") or [])
+    min_salary = profile.get("min_salary")
+    has_content = _has_tailorable_content(profile)
+
+    updates = []
+    for row in rows:
+        job = jobs_by_id.get(row["job_id"])
+        if job is None:  # job retired/removed since this match was cached
+            continue
+        location_bonus = _location_bonus(job, location_tokens)
+        salary_bonus = _salary_bonus(job, min_salary)
+        score = _final_score(row["raw_fit_score"], row["role_alignment"] or 0.0, location_bonus, salary_bonus)
+        verdict = _verdict_for(score)
+        gaps = [g for g in (row.get("gaps") or []) if g != _PROFILE_GAP_MESSAGE]
+        if verdict == "apply" and not has_content:
+            verdict = "stretch"
+            gaps = gaps + [_PROFILE_GAP_MESSAGE]
+        updates.append({"id": row["id"], "fit_score": score, "verdict": verdict, "gaps": gaps})
+
+    if updates:
+        supabase.table("matches").upsert(updates).execute()
+    return len(updates)
 
 
 def get_ranked_matches(profile: dict, limit: int = 50) -> list[dict]:

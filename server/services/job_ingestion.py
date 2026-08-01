@@ -796,6 +796,120 @@ async def refresh_india_boards() -> dict:
     return summary
 
 
+# Sources whose rows the expiry sweep must NEVER touch. These are postings the
+# USER added by hand (pasted a link, pasted a JD) — they were a deliberate act,
+# they're usually attached to an application being tracked, and no external
+# listing governs them. Ageing one out would delete something the user put there
+# on purpose.
+_NEVER_EXPIRE_SOURCES = frozenset({"manual", "jd_paste"})
+
+
+def retire_expired_jobs(now: datetime | None = None) -> dict:
+    """The daily expiry sweep: hide postings that have closed.
+
+    This exists because `is_fresh()` runs only at INGESTION. Nothing aged a row
+    out afterwards, so the pool grew stale indefinitely — measured 2026-08-01,
+    23% of active rows were already older than the 10-day rule they were
+    admitted under, and 48 had no posted_at at all so no age rule could ever
+    reach them.
+
+    Two rules, deliberately in this order:
+
+    1. **A stated deadline is a fact.** `expires_at < now` retires the row, at
+       any age. Unstop publishes `end_date` on every opportunity and is 79% of
+       the pool, so this is the branch that does most of the work — and it is
+       exact, which age is not: Unstop registration windows run to 13 days at
+       the median and 56 at the max, so a 12-day-old posting is routinely still
+       open and would be wrongly hidden by an age rule.
+
+    2. **Age, only where no deadline was published.** Adzuna, JSearch, LinkedIn,
+       Indeed, Naukri, Greenhouse and Lever expose nothing to go on, so their
+       rows retire past `job_expiry_days`. The threshold is deliberately looser
+       than `max_job_age_days` (which governs what we ADD, a different question
+       from what we HIDE) so we don't hide postings that are still taking
+       applications on boards that simply don't tell us.
+
+    `ingested_at` is the age fallback when `posted_at` is null — otherwise the
+    48 undated rows would be permanently immortal, which is the specific bug
+    that let the oldest rows in the pool survive every previous cleanup.
+
+    Soft-delete only, never a DELETE — see migration 028. A retired job vanishes
+    from browsing and matching while every application and tailored resume
+    referencing it still resolves.
+
+    NOT the same mechanism as retire_stale_jobs(): that one is presence-based
+    ("it left the listing") and is only safe for sources whose COMPLETE listing
+    we fetch. It must never be applied to Unstop, whose crawl deliberately stops
+    early — a partial view would read as "everything vanished".
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=settings.job_expiry_days)
+
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        # Paged explicitly: PostgREST silently caps a plain select at 1000 rows,
+        # which would quietly leave the rest of the pool un-swept forever.
+        batch = (
+            supabase.table("jobs")
+            .select("id,source,posted_at,ingested_at,expires_at")
+            .eq("is_active", True)
+            .range(offset, offset + _UPSERT_CHUNK_SIZE * 5 - 1)
+            .execute()
+            .data
+        )
+        rows.extend(batch)
+        if len(batch) < _UPSERT_CHUNK_SIZE * 5:
+            break
+        offset += _UPSERT_CHUNK_SIZE * 5
+
+    def _parse(value) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    by_deadline: list[str] = []
+    by_age: list[str] = []
+    for row in rows:
+        if row.get("source") in _NEVER_EXPIRE_SOURCES:
+            continue
+        deadline = _parse(row.get("expires_at"))
+        if deadline is not None:
+            # The source told us. Age is irrelevant either way.
+            if deadline < now:
+                by_deadline.append(row["id"])
+            continue
+        effective = _parse(row.get("posted_at")) or _parse(row.get("ingested_at"))
+        if effective is not None and effective < cutoff:
+            by_age.append(row["id"])
+
+    retired = 0
+    for ids in (by_deadline, by_age):
+        for i in range(0, len(ids), _UPSERT_CHUNK_SIZE):
+            chunk = ids[i : i + _UPSERT_CHUNK_SIZE]
+            result = supabase.table("jobs").update({"is_active": False}).in_("id", chunk).execute()
+            retired += len(result.data)
+
+    logger.info(
+        "Expiry sweep: %d active scanned → retired %d (%d past a stated deadline, %d over %dd with none)",
+        len(rows),
+        retired,
+        len(by_deadline),
+        len(by_age),
+        settings.job_expiry_days,
+    )
+    return {
+        "scanned": len(rows),
+        "retired": retired,
+        "by_deadline": len(by_deadline),
+        "by_age": len(by_age),
+    }
+
+
 def backfill_tech_categories(limit: int = 500) -> dict:
     """Catch-up for rows ingested before migration 028 added `tech_category`.
 
