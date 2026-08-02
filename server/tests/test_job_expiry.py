@@ -171,3 +171,45 @@ def test_nothing_to_do_is_not_an_error():
     result, updated, _ = _sweep([])
     assert result == {"scanned": 0, "retired": 0, "by_deadline": 0, "by_age": 0}
     assert updated == []
+
+
+# --- Unstop expiry backfill: the complete-crawl requirement -------------------
+
+
+def test_backfill_demands_a_complete_crawl():
+    """The retirement half is only sound if the crawl saw the WHOLE catalogue.
+
+    The daily crawl stops after two stale pages (~3 requests), so its view is
+    partial — treating absence as "closed" against it would retire most of the
+    1,217 Unstop rows we hold. This asserts the backfill explicitly opts out of
+    that early stop.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from services import job_ingestion
+
+    spy = AsyncMock(return_value=[])
+    with patch.object(job_ingestion, "fetch_unstop", new=spy):
+        asyncio.run(job_ingestion.backfill_unstop_expiry())
+
+    assert spy.await_args.kwargs.get("stop_when_stale") is False
+
+
+def test_backfill_refuses_to_act_on_an_empty_crawl():
+    """An empty crawl is far more likely a broken fetch than an empty
+    catalogue, and 'retire everything' is the worst response to a broken
+    fetch — the same refusal retire_stale_jobs() makes."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from services import job_ingestion
+
+    client, updated = _supabase_with([_row("a")])
+    with patch.object(job_ingestion, "fetch_unstop", new=AsyncMock(return_value=[])), patch.object(
+        job_ingestion, "supabase", client
+    ):
+        result = asyncio.run(job_ingestion.backfill_unstop_expiry())
+
+    assert result["skipped"] == "empty_crawl"
+    assert updated == []

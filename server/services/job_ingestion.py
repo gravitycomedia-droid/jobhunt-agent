@@ -910,6 +910,94 @@ def retire_expired_jobs(now: datetime | None = None) -> dict:
     }
 
 
+async def backfill_unstop_expiry() -> dict:
+    """Fill `expires_at` on Unstop rows we already hold, and retire the ones that
+    have left the catalogue entirely.
+
+    Needed because the main insert upserts with `ignore_duplicates=True`: a
+    posting we already have is SKIPPED, so it never picks up the `expires_at`
+    that migration 029 added. Without this, the deadline branch of
+    retire_expired_jobs() stays dead for every existing row — 79% of the pool —
+    and they'd all fall back to the age rule for weeks until they aged out.
+    That is the difference between retiring 27 rows and retiring the real
+    backlog.
+
+    Two things this does that the daily incremental crawl deliberately cannot:
+
+    1. **A COMPLETE crawl**, with no freshness early-stop. That's what makes
+       absence meaningful here. The daily crawl stops once pages go stale (~3
+       requests), so its seen-set is partial and treating absence as "closed"
+       would retire most of the pool — the trap called out in
+       retire_expired_jobs()'s docstring. A full crawl has no such ambiguity:
+       Unstop's search API only ever returns status=LIVE / regn_open=1
+       (sampled 100/100), so a posting genuinely absent from a complete crawl
+       is closed.
+    2. **Updates existing rows** rather than inserting new ones.
+
+    Costs ~21 requests, the same as the documented cold crawl, so it is a
+    periodic/one-off repair rather than something the daily cron needs.
+    """
+    # stop_when_stale=False is what makes the retirement half of this SAFE. The
+    # daily crawl stops after two stale pages (~3 requests), so its view is
+    # partial and absence would be meaningless. Here we walk the whole catalogue
+    # (~21 requests, the documented cold-crawl cost) so a posting we hold but
+    # don't see really is gone.
+    jobs = await fetch_unstop(settings.unstop_max_results, stop_when_stale=False)
+    if not jobs:
+        # Same refusal as retire_stale_jobs(): an empty fetch is far more likely
+        # a broken crawl than an empty catalogue, and "retire everything" is the
+        # worst possible response to a broken crawl.
+        logger.warning("Unstop expiry backfill skipped: crawl returned nothing")
+        return {"updated": 0, "retired": 0, "skipped": "empty_crawl"}
+
+    live: dict[str, object] = {j.external_id: j.expires_at for j in jobs}
+
+    rows: list[dict] = []
+    offset = 0
+    page = _UPSERT_CHUNK_SIZE * 5
+    while True:
+        batch = (
+            supabase.table("jobs")
+            .select("id,external_id,expires_at")
+            .eq("source", "unstop")
+            .eq("is_active", True)
+            .range(offset, offset + page - 1)
+            .execute()
+            .data
+        )
+        rows.extend(batch)
+        if len(batch) < page:
+            break
+        offset += page
+
+    updated = 0
+    gone: list[str] = []
+    for row in rows:
+        key = str(row.get("external_id"))
+        if key in live:
+            deadline = live[key]
+            if deadline and not row.get("expires_at"):
+                supabase.table("jobs").update({"expires_at": deadline.isoformat()}).eq("id", row["id"]).execute()
+                updated += 1
+        else:
+            gone.append(row["id"])
+
+    retired = 0
+    for i in range(0, len(gone), _UPSERT_CHUNK_SIZE):
+        chunk = gone[i : i + _UPSERT_CHUNK_SIZE]
+        result = supabase.table("jobs").update({"is_active": False}).in_("id", chunk).execute()
+        retired += len(result.data)
+
+    logger.info(
+        "Unstop expiry backfill: %d live in catalogue, %d rows held → %d given a deadline, %d retired (gone from catalogue)",
+        len(live),
+        len(rows),
+        updated,
+        retired,
+    )
+    return {"crawled": len(live), "held": len(rows), "updated": updated, "retired": retired}
+
+
 def backfill_tech_categories(limit: int = 500) -> dict:
     """Catch-up for rows ingested before migration 028 added `tech_category`.
 

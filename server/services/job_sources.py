@@ -1065,7 +1065,7 @@ def _unstop_page_is_stale(jobs: list[JobIn], now: datetime) -> bool:
     return all(now - j.posted_at.astimezone(timezone.utc) > cutoff for j in dated)
 
 
-async def fetch_unstop(max_results: int) -> list[JobIn]:
+async def fetch_unstop(max_results: int, stop_when_stale: bool = True) -> list[JobIn]:
     """Unstop internships AND jobs via its public search API (ADR-003 v2/v3, no login).
 
     Direct httpx, not Apify: the endpoint carries no per-result cost, so unlike
@@ -1098,7 +1098,9 @@ async def fetch_unstop(max_results: int) -> list[JobIn]:
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         for opportunity in _unstop_opportunity_types():
             for term in _unstop_search_terms():
-                found = await _crawl_unstop(client, opportunity, term, max_results, per_page, now)
+                found = await _crawl_unstop(
+                    client, opportunity, term, max_results, per_page, now, stop_when_stale
+                )
                 logger.info("Unstop %s/%r: %d rows", opportunity, term, len(found))
                 jobs += found
 
@@ -1112,12 +1114,20 @@ async def _crawl_unstop(
     max_results: int,
     per_page: int,
     now: datetime,
+    stop_when_stale: bool = True,
 ) -> list[JobIn]:
     """One paginated crawl of a single (opportunity type, search term) pair.
 
     Split out of fetch_unstop() so the two nested loops don't bury the pagination
     logic three indents deep. Never raises — every exit path is a `break` that
     returns whatever was collected, matching fetch_adzuna()'s error contract.
+
+    `stop_when_stale=False` walks the WHOLE catalogue instead of stopping once
+    pages go older than max_job_age_days. Daily ingestion wants the early stop
+    (~3 requests instead of ~21, and those rows would fail is_fresh() anyway).
+    The expiry backfill needs the opposite: it decides which held postings have
+    left the catalogue, and absence only means "closed" if the crawl was
+    complete. A partial view would read as "everything vanished".
     """
     jobs: list[JobIn] = []
     page = 1
@@ -1181,7 +1191,7 @@ async def _crawl_unstop(
         # Two consecutive stale pages, not one, so a single odd page (all-undated,
         # or one bumped posting) can't truncate an otherwise-fresh crawl.
         stale_pages = stale_pages + 1 if _unstop_page_is_stale(page_jobs, now) else 0
-        if stale_pages >= UNSTOP_STALE_PAGE_STREAK:
+        if stop_when_stale and stale_pages >= UNSTOP_STALE_PAGE_STREAK:
             logger.info(
                 "Unstop %s/%r: stopping at page %d — %d consecutive pages older than %dd",
                 opportunity,

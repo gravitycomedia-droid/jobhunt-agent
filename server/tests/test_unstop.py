@@ -86,7 +86,12 @@ def test_maps_recon_fields():
     assert job.location == "Bangalore"  # canonicalized from "Bengaluru"
     assert job.description == "Build React components."  # HTML stripped
     assert job.redirect_url.startswith("https://unstop.com/internships/")
-    assert job.posted_at.year == 2026 and job.posted_at.month == 7  # approved_date
+    # approved_date. Asserted as RECENCY, not a hardcoded month: the fixture
+    # deliberately builds this date relative to now (see _row) so the crawl's
+    # freshness early-stop doesn't truncate it as real time moves on. Pinning
+    # "month == 7" defeated that and failed the moment the month turned.
+    assert job.posted_at is not None
+    assert (datetime.now(timezone.utc) - job.posted_at) < timedelta(days=2)
 
 
 def test_monthly_stipend_is_annualized_as_inr():
