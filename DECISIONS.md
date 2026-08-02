@@ -1629,3 +1629,87 @@ carries the full encoded query string back after login) — so building on
 the resolved URL fixes both the new gated-form path and the pre-existing
 public-form path whenever a user pastes a short link, which nothing had
 exercised before now.
+
+## ADR-054: Location/salary preference boost, and matching stops promising resumes it can't build
+
+**Date:** 2026-08-02 · **Status:** accepted
+
+**Context.** Two gaps reported from real use of the Matches board:
+
+1. `profiles.target_locations` and `profiles.min_salary` were captured at
+   onboarding and used to steer job **ingestion** (`services/job_sources.py`)
+   and career chat, but never read by `services/matching.py`. The re-ranker
+   scored purely on resume/role fit — a candidate's stated city and salary
+   floor had zero effect on which jobs scored highest.
+2. A fresher with real project work but no formal `experience` entries could
+   score a genuine 100 "apply" (the LLM's fit_score was honest — the profile
+   really was a strong fit), then hit a hard 422 the moment they tried to
+   generate a resume: `services/section_tailor.py`'s SELECTION step only
+   ever looked at `profile.experience[].bullets`, and a profile with none had
+   nothing to select. The failure toast offered "Retry," which was
+   guaranteed to fail again identically — nothing about retrying changes
+   what's in the profile.
+
+**Decision — location/salary become a boost, not a filter.** Same shape and
+same reasoning as ADR-021's role-intent boost: both are STRUCTURED facts (a
+city name, a number), so they're compared in Python, never sent to the LLM
+(Golden Rule 2), and they only ever ADD to the score, never subtract or
+exclude. A hard filter was considered and rejected: job `location` text is
+inconsistent across sources ("Hyderabad, Telangana" vs "Hyderabad" vs blank)
+and most postings in this pool list no salary at all, so excluding on either
+would silently wipe out otherwise-strong matches — the same failure mode
+ADR-021's prescreen safety valve already exists to avoid on the role side.
+`LOCATION_BONUS_POINTS = 10`, `SALARY_BONUS_POINTS = 10` (vs role's 15 —
+role is what the candidate explicitly said they want; these are secondary).
+Remote always satisfies any location preference. A job within 15% of the
+salary floor gets a half boost.
+
+**Decision — split the stored score so a preference change doesn't need a
+re-rank.** Migration 030 adds `matches.raw_fit_score` and
+`matches.role_alignment`, alongside the existing (already-boosted)
+`matches.fit_score`. `rescore_cached_matches()` recomputes
+`fit_score`/`verdict` for every cached match of a profile from the CURRENT
+location/salary preferences — pure Python arithmetic over already-cached
+values, no LLM call. `PATCH /resume/profile/target-locations` and `PATCH
+/resume/profile/target-roles` (which also carries `min_salary`) now call it
+synchronously, so the Matches board reorders the moment a preference is
+saved. This does NOT extend to `target_roles` changes themselves:
+`role_alignment` was the LLM's judgment of "is this posting the role they
+asked for" against whatever roles were current at score time, and
+re-judging that for a new role list is a language call — still needs a real
+`rerank_shortlist()` run.
+
+**Decision — a bare "apply" must mean tailoring can actually happen.**
+`services/matching.py::_has_tailorable_content()` checks, in Python, whether
+the profile has at least one experience bullet or one project with a
+description. When it doesn't, a computed "apply" verdict is downgraded to
+"stretch" and a fixed, de-duplicable message is appended to `matches.gaps`
+explaining why. The LLM's fit_score is left untouched — it isn't wrong, the
+board's promise was.
+
+**Decision — tailoring itself now uses projects when there's no formal
+experience**, rather than only softening the failure message.
+`routers/tailor.py::tailor_and_store` only 422s (`PROFILE_INCOMPLETE:` — a
+stable prefix, see below) when the profile has **neither** experience
+bullets **nor** projects. Otherwise `services/llm.py::tailor_resume` now
+also receives `projects`, and `TAILOR_SYSTEM_PROMPT` explicitly allows
+grounding `summary_line` in them ("final-year CS student who built X using
+Y" is a legitimate, traceable summary). `tailored_bullets` stays empty in
+this case — projects are never turned into fabricated experience bullets;
+they already render verbatim in the résumé's own PROJECTS section
+(`services/resume_pdf.py`, unchanged). `ResumeDiffScreen` shows a "Built
+from your projects" banner instead of the (wrong, in this case) "All
+bullets verified" one when `bullets` is empty.
+
+**Decision — Retry stops lying.** `PROFILE_INCOMPLETE:` is a stable prefix
+the client (`task_center.dart`) pattern-matches on to swap the failure
+toast's action from "Retry" (guaranteed to 422 again) to "Add resume",
+pushing straight to `/resume-upload` — there is no structured
+experience/projects editor yet, so a resume re-parse is the only way to add
+either.
+
+**Also:** `GET /jobs/role-suggestions` (new) backs the target-roles
+suggestion chips with roles the live job pool actually has postings for
+(`tech_category`, migration 028, busiest first), followed by a small curated
+list for roles the pool doesn't specifically label. Replaces a 3-item
+hardcoded list in `target_roles_screen.dart`.

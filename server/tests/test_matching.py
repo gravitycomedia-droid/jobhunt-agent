@@ -30,8 +30,11 @@ def _table_mock(select_data):
     table.eq.return_value = table
     table.in_.return_value = table
     table.insert.return_value = table
+    table.upsert.return_value = table
     table.limit.return_value = table
     table.order.return_value = table
+    table.not_ = MagicMock()
+    table.not_.is_.return_value = table
     table.execute.return_value = MagicMock(data=select_data)
     return table
 
@@ -130,3 +133,106 @@ def test_role_boost_and_verdict_are_computed_in_python(fit, alignment, expected_
     score = matching._final_score(fit, alignment)
     assert score == expected_score
     assert matching._verdict_for(score) == expected_verdict
+
+
+# --- ADR-054: location/salary preference boost + thin-profile verdict cap ---
+
+
+def test_location_bonus_matches_a_preferred_city_via_synonym():
+    job = {"location": "Bengaluru, Karnataka"}
+    tokens = matching._expand_location_tokens(["Bangalore"])
+    assert matching._location_bonus(job, tokens) == 1.0
+
+
+def test_location_bonus_always_matches_remote():
+    job = {"location": "Remote"}
+    tokens = matching._expand_location_tokens(["Hyderabad"])
+    assert matching._location_bonus(job, tokens) == 1.0
+
+
+def test_location_bonus_is_zero_without_a_preference():
+    job = {"location": "Chennai"}
+    assert matching._location_bonus(job, set()) == 0.0
+
+
+def test_location_bonus_is_zero_when_job_has_no_location_or_no_overlap():
+    tokens = matching._expand_location_tokens(["Hyderabad"])
+    assert matching._location_bonus({"location": None}, tokens) == 0.0
+    assert matching._location_bonus({"location": "Pune"}, tokens) == 0.0
+
+
+@pytest.mark.parametrize(
+    "job,min_salary,expected",
+    [
+        ({"salary_max": 900000}, 800000, 1.0),  # clears the floor
+        ({"salary_max": 700000}, 800000, 0.5),  # within 15% — partial
+        ({"salary_max": 500000}, 800000, 0.0),  # well short
+        ({"salary_max": None}, 800000, 0.0),  # unlisted — never penalized
+        ({"salary_max": 500000}, None, 0.0),  # no stated preference
+    ],
+)
+def test_salary_bonus_thresholds(job, min_salary, expected):
+    assert matching._salary_bonus(job, min_salary) == expected
+
+
+def test_final_score_combines_role_location_and_salary_boosts():
+    # 70 base + 15 (full role) + 10 (full location) + 5 (half salary) = 100
+    assert matching._final_score(70, 1.0, 1.0, 0.5) == 100
+
+
+def test_has_tailorable_content_true_with_only_a_project():
+    profile = {"experience": [], "projects": [{"name": "X", "description": "Built a thing"}]}
+    assert matching._has_tailorable_content(profile) is True
+
+
+def test_has_tailorable_content_false_when_totally_empty():
+    profile = {"experience": [], "projects": []}
+    assert matching._has_tailorable_content(profile) is False
+    assert matching._has_tailorable_content({}) is False
+
+
+def test_rerank_shortlist_caps_apply_to_stretch_for_a_profile_with_nothing_to_tailor():
+    """A fresher with no experience bullets and no project descriptions can
+    still score an honest 'apply' from the LLM — but POST /tailor/{job_id}
+    has nothing to build a resume from, so the board must not promise it."""
+    thin_profile = {"id": "profile-2", "skills": ["python"], "experience": [], "projects": []}
+    with patch.object(matching, "supabase") as mock_supabase, patch.object(matching, "rerank_jobs") as mock_rerank:
+        matches_table = _table_mock([])
+        mock_supabase.table.side_effect = lambda name: {"matches": matches_table}[name]
+        with patch.object(matching, "_stage1_shortlist", return_value=[_JOB_A]):
+            mock_rerank.return_value = [_result(fit_score=90, role_alignment=0.0)]
+            matching.rerank_shortlist(thin_profile, limit=20)
+
+    inserted_rows = matches_table.insert.call_args[0][0]
+    assert inserted_rows[0]["verdict"] == "stretch"
+    assert matching._PROFILE_GAP_MESSAGE in inserted_rows[0]["gaps"]
+
+
+def test_rescore_cached_matches_recomputes_from_stored_raw_score_without_llm():
+    profile = {
+        "id": "profile-1",
+        "target_locations": ["Hyderabad"],
+        "min_salary": None,
+        "experience": [],
+        "projects": [{"name": "X", "description": "Built a thing"}],
+    }
+    cached = [{"id": "match-1", "job_id": "job-a", "raw_fit_score": 70, "role_alignment": 1.0, "gaps": []}]
+    jobs = [{"id": "job-a", "location": "Hyderabad", "salary_min": None, "salary_max": None}]
+
+    with patch.object(matching, "supabase") as mock_supabase, patch.object(matching, "rerank_jobs"):
+        matches_table = _table_mock(cached)
+        jobs_table = _table_mock(jobs)
+        mock_supabase.table.side_effect = lambda name: {"matches": matches_table, "jobs": jobs_table}[name]
+        updated = matching.rescore_cached_matches(profile)
+
+    assert updated == 1
+    upserted = matches_table.upsert.call_args[0][0]
+    # 70 (raw) + 15 (full role) + 10 (full location, Hyderabad matches) = 95
+    assert upserted[0]["fit_score"] == 95
+    assert upserted[0]["verdict"] == "apply"
+
+
+def test_rescore_cached_matches_is_a_noop_with_nothing_cached():
+    with patch.object(matching, "supabase") as mock_supabase:
+        mock_supabase.table.return_value = _table_mock([])
+        assert matching.rescore_cached_matches(_PROFILE) == 0

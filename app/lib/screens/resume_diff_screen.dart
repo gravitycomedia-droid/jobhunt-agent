@@ -490,6 +490,18 @@ class _ResumeDiffScreenState extends ConsumerState<ResumeDiffScreen> {
   }
 
   Widget _statusBanner(TailoredResume resume) {
+    if (resume.bullets.isEmpty) {
+      // ADR-054: no work-experience bullets to select from (common for a
+      // fresher) — the reframed summary and skill order below are grounded
+      // in your projects instead, and your Projects section renders as-is
+      // on the PDF. Nothing to accept/reject here because nothing was
+      // rephrased.
+      return const AppBanner(
+        tone: BannerTone.info,
+        title: 'Built from your projects',
+        message: 'No work-experience bullets to rewrite, so this leans on your listed projects and skills instead — check the PDF preview.',
+      );
+    }
     if (resume.guardrailFlags > 0) {
       return AppBanner(
         tone: BannerTone.warning,

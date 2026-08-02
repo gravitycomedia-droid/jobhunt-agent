@@ -803,6 +803,7 @@ def tailor_resume(
     provider: str | None = None,
     skills: list[str] | None = None,
     headline: str = "",
+    projects: list[dict] | None = None,
 ) -> TailorLlmResponse:
     """Brick 6: rephrase resume bullets toward a job posting. The
     anti-fabrication guarantee is NOT this function's job —
@@ -818,11 +819,16 @@ def tailor_resume(
     `model`/`provider` override that routing for one call — used by the JD-paste
     resume builder to pin the cheap Gemini lite tier (ADR-016/017). They travel
     together: a Gemini model name means nothing to DeepSeek.
+
+    ADR-054: `bullets` may be empty (a profile with no work experience, common
+    for a fresher) — `projects` is then the only material the summary_line can
+    be grounded in. `projects` is never turned into `tailored_bullets`; those
+    render on the résumé verbatim via a separate step (services/resume_pdf.py).
     """
     return _run_llm_task(
         task="tailor",
         system=TAILOR_SYSTEM_PROMPT,
-        user=_tailor_user_prompt(bullets, skills or [], headline, job_description),
+        user=_tailor_user_prompt(bullets, skills or [], headline, job_description, projects),
         response_model=TailorLlmResponse,
         error_cls=TailorError,
         temperature=0.6,

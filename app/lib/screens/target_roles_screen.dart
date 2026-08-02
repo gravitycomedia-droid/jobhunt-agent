@@ -38,7 +38,33 @@ class _TargetRolesScreenState extends State<TargetRolesScreen> {
   bool _isSaving = false;
   String? _errorMessage;
 
-  static const _suggestions = ['Flutter Developer', 'Python Developer', 'Mobile Developer'];
+  // Static fallback if the suggestions fetch fails (offline, cold start) —
+  // never leave the chip row empty just because one GET didn't land.
+  List<String> _dbSuggestions = const [];
+  List<String> _otherSuggestions = const ['Flutter Developer', 'Python Developer', 'Mobile Developer'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuggestions();
+  }
+
+  /// Roles the job pool actually has postings for (busiest first), then a
+  /// curated list of common roles the pool doesn't specifically label —
+  /// see api_client.dart's getRoleSuggestions(). Best-effort: a failed fetch
+  /// just keeps the static fallback list rather than blocking this screen.
+  Future<void> _loadSuggestions() async {
+    try {
+      final result = await _apiClient.getRoleSuggestions();
+      if (!mounted) return;
+      setState(() {
+        _dbSuggestions = result.dbRoles;
+        _otherSuggestions = result.otherRoles;
+      });
+    } catch (_) {
+      // Keep the static fallback — this is a suggestion list, not core data.
+    }
+  }
 
   @override
   void dispose() {
@@ -86,26 +112,18 @@ class _TargetRolesScreenState extends State<TargetRolesScreen> {
                 placeholder: 'Add a role…',
               ),
               const SizedBox(height: 4),
-              Wrap(
-                spacing: 7,
-                runSpacing: 7,
-                children: [
-                  for (final s in _suggestions)
-                    if (!_roles.contains(s))
-                      OutlinedButton.icon(
-                        onPressed: () => setState(() => _roles = [..._roles, s]),
-                        icon: const Icon(Icons.add, size: 14),
-                        label: Text(s),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          side: BorderSide(color: context.c.border),
-                          shape: const StadiumBorder(),
-                        ),
-                      ),
+              // Roles the job pool actually has postings for right now, so
+              // picking one isn't a shot in the dark — then a curated list of
+              // other common roles the pool doesn't specifically label.
+              if (_dbSuggestions.any((s) => !_roles.contains(s))) ...[
+                _suggestionGroup(_dbSuggestions),
+                if (_otherSuggestions.any((s) => !_roles.contains(s))) ...[
+                  const SizedBox(height: 6),
+                  Text('More roles', style: AppTypography.caption.copyWith(color: context.c.inkSoft)),
+                  const SizedBox(height: 4),
                 ],
-              ),
+              ],
+              _suggestionGroup(_otherSuggestions),
               const SizedBox(height: AppSpacing.space5),
               AppFormField(
                 label: 'Minimum salary (optional)',
@@ -129,6 +147,29 @@ class _TargetRolesScreenState extends State<TargetRolesScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _suggestionGroup(List<String> suggestions) {
+    return Wrap(
+      spacing: 7,
+      runSpacing: 7,
+      children: [
+        for (final s in suggestions)
+          if (!_roles.contains(s))
+            OutlinedButton.icon(
+              onPressed: () => setState(() => _roles = [..._roles, s]),
+              icon: const Icon(Icons.add, size: 14),
+              label: Text(s),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                side: BorderSide(color: context.c.border),
+                shape: const StadiumBorder(),
+              ),
+            ),
+      ],
     );
   }
 }

@@ -128,6 +128,26 @@ class ApiClient {
     }
   }
 
+  /// Suggestion chips for [TargetRolesScreen]: `dbRoles` are roles the job
+  /// pool actually has postings for right now (busiest first), `otherRoles`
+  /// is a curated fallback list for roles the pool doesn't specifically
+  /// label. See routers/jobs.py's GET /jobs/role-suggestions.
+  Future<({List<String> dbRoles, List<String> otherRoles})> getRoleSuggestions() async {
+    final uri = Uri.parse('$_baseUrl/jobs/role-suggestions');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = body['data'] as Map<String, dynamic>;
+    return (
+      dbRoles: (data['db_roles'] as List).cast<String>(),
+      otherRoles: (data['other_roles'] as List).cast<String>(),
+    );
+  }
+
   /// Onboarding step between review and roles: student vs. experienced,
   /// plus USN/college name for students (only sent when the resume parse
   /// didn't already find them — see [ResumeProfile.employmentType]/[usn]).

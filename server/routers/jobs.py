@@ -19,6 +19,7 @@ from models.job import JobExtraction
 from services.auth import get_current_profile, get_current_user_id
 from services.background_tasks import create_task, run_task
 from services.job_category import CATEGORIES, UnknownCategoryError, parse_category_filter
+from services.job_tech_category import TECH_CATEGORY_LABELS
 from services.pdf_safety import PdfSafetyError, assert_is_pdf, assert_within_size_limit
 from services.rate_limit import enforce_rate_limit, enforce_rate_limit_by_user
 from services.job_ingestion import (
@@ -182,6 +183,55 @@ async def job_facets(user_id: str = Depends(get_current_user_id)):
     # lost jobs.
     rows = supabase.table("jobs").select("work_type,source,category").eq("is_active", True).execute().data
     return {"data": build_facets(rows), "error": None}
+
+
+# Curated fallback list for the target-roles suggestion chips (routers/resume.py
+# writes what the user picks to profiles.target_roles — free text, not this
+# enum). Not everything a candidate might target shows up as a tech_category
+# specialism (that vocabulary is engineering/data only, see job_tech_category.py),
+# so this rounds it out with common roles this pool doesn't yet label distinctly.
+# Deliberately hand-maintained and small, same spirit as matching.py's role/
+# location synonym tables.
+_OTHER_ROLE_SUGGESTIONS = (
+    "Product Manager",
+    "UI/UX Designer",
+    "Business Analyst",
+    "Technical Writer",
+    "Solutions Engineer",
+    "Sales Engineer",
+    "Data Engineer",
+    "Site Reliability Engineer",
+    "Support Engineer",
+)
+
+
+def build_role_suggestions(jobs: list[dict]) -> dict:
+    """Pure function (unit-testable without a DB): `db_roles` is every
+    tech_category actually present in the live, active job pool, busiest
+    first — roles the agent can realistically find postings for TODAY.
+    `other_roles` is the curated static list above, roles the pool doesn't
+    label distinctly, with anything already surfaced in db_roles removed so
+    the same role never appears twice."""
+    counts: dict[str, int] = {}
+    for j in jobs:
+        tc = j.get("tech_category")
+        if tc and tc in TECH_CATEGORY_LABELS:
+            counts[tc] = counts.get(tc, 0) + 1
+    db_roles = [TECH_CATEGORY_LABELS[tc] for tc, _ in sorted(counts.items(), key=lambda kv: kv[1], reverse=True)]
+    db_roles_set = {r.lower() for r in db_roles}
+    other_roles = [r for r in _OTHER_ROLE_SUGGESTIONS if r.lower() not in db_roles_set]
+    return {"db_roles": db_roles, "other_roles": other_roles}
+
+
+@router.get("/role-suggestions")
+async def role_suggestions(user_id: str = Depends(get_current_user_id)):
+    """Target-roles onboarding/Settings screen (app/lib/screens/
+    target_roles_screen.dart): suggestion chips backed by what's actually in
+    the job pool right now, so a candidate isn't offered a role the agent has
+    nothing to match it against, followed by a curated list of common roles
+    the pool doesn't specifically label."""
+    rows = supabase.table("jobs").select("tech_category").eq("is_active", True).execute().data
+    return {"data": build_role_suggestions(rows), "error": None}
 
 
 @router.post("/backfill-embeddings")

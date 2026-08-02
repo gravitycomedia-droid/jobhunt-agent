@@ -1,10 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/background_task.dart';
 import '../widgets/task_toast.dart';
 import 'api_client.dart';
+
+// ADR-054: a stable prefix routers/tailor.py puts on the "nothing to tailor"
+// 422 detail — lets the client tell "the profile needs more content" apart
+// from an ordinary failure a Retry might actually fix (a flaky LLM call, a
+// timeout). Retrying a PROFILE_INCOMPLETE failure would just fail again
+// identically, so it gets a different action instead: jump straight to
+// uploading an updated resume.
+const _profileIncompletePrefix = 'PROFILE_INCOMPLETE:';
 
 /// Which long-running server task a [TrackedTask] represents. One active
 /// task per kind at a time (or per kind+[TrackedTask.id] — see [TaskCenter]'s
@@ -111,12 +120,27 @@ class TaskCenter extends Notifier<Map<String, TrackedTask?>> {
     if (task.status == TrackedTaskStatus.done) {
       showTaskToast(success: true, message: _doneMessage(task));
     } else if (task.status == TrackedTaskStatus.failed) {
+      final rawError = task.error ?? 'unknown error';
+      final profileIncomplete = rawError.startsWith(_profileIncompletePrefix);
+      final displayError =
+          profileIncomplete ? rawError.substring(_profileIncompletePrefix.length).trim() : rawError;
       showTaskToast(
         success: false,
-        message: '${_label(task.kind)} failed — ${task.error ?? 'unknown error'}',
-        onRetry: () => retry(task.kind, id: task.id),
+        message: '${_label(task.kind)} failed — $displayError',
+        actionLabel: profileIncomplete ? 'Add resume' : 'Retry',
+        onRetry: profileIncomplete ? _goToResumeUpload : () => retry(task.kind, id: task.id),
       );
     }
+  }
+
+  /// PROFILE_INCOMPLETE's action: a Retry would just 422 again identically,
+  /// so this jumps straight to where the fix actually happens — re-uploading
+  /// a resume that lists work experience or at least one project (structured
+  /// profile fields have no dedicated editor yet; a resume re-parse is the
+  /// only way to add them).
+  void _goToResumeUpload() {
+    final context = appScaffoldMessengerKey.currentContext;
+    if (context != null) GoRouter.of(context).push('/resume-upload');
   }
 
   String _label(TaskKind kind) => switch (kind) {

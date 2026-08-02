@@ -22,6 +22,7 @@ from services.auth import get_current_profile, get_current_user_id
 from services.embeddings import embed_text, profile_embedding_text
 from config import settings
 from services.llm import LlmApiError, ResumeParseError, parse_resume
+from services.matching import rescore_cached_matches
 from services.pdf_safety import PdfSafetyError, pdf_to_page_images
 from services.rate_limit import enforce_rate_limit_by_user
 
@@ -352,6 +353,10 @@ async def update_target_locations(body: TargetLocationsUpdate, profile: dict = D
     locations = list(dict.fromkeys(body.target_locations))
     row = supabase.table("profiles").update({"target_locations": locations}).eq("id", profile["id"]).execute().data[0]
     _advance_onboarding(profile["id"], profile.get("onboarding_step"), "roles")
+    # ADR-054: reorder the existing Matches board for the new location
+    # preference immediately — pure Python, no LLM call, so there's no reason
+    # to make the user wait for a full re-rank just to see this reflected.
+    rescore_cached_matches(row)
     return {"data": row, "error": None}
 
 
@@ -389,7 +394,15 @@ async def update_target_roles(body: TargetRolesUpdate, profile: dict = Depends(g
     # Phase 3B: target roles is onboarding's last input step — saving it
     # completes onboarding (forward-only; no-op for revisits from Profile).
     _advance_onboarding(profile["id"], profile.get("onboarding_step"), "done")
-    return {"data": result.data[0], "error": None}
+    row = result.data[0]
+    # ADR-054: min_salary lives on this same endpoint, and its boost is pure
+    # Python — refresh the board for it now rather than waiting on a re-rank.
+    # (target_roles itself needs a real re-rank to update role_alignment; see
+    # rescore_cached_matches's docstring — this call still updates the score
+    # for jobs whose location/salary boost changed, and is a harmless no-op
+    # otherwise.)
+    rescore_cached_matches(row)
+    return {"data": row, "error": None}
 
 
 @router.patch("/profile/onboarding-step")

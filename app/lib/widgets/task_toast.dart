@@ -20,7 +20,12 @@ final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey = GlobalKey<Scaf
 /// Scaffold `bottomNavigationBar` — so the messenger has no idea it exists and
 /// can't route around it. Hence: an opaque fill, and a bottom margin equal to
 /// the nav cluster's own height so the toast always sits clear above it.
-void showTaskToast({required bool success, required String message, VoidCallback? onRetry}) {
+void showTaskToast({
+  required bool success,
+  required String message,
+  VoidCallback? onRetry,
+  String actionLabel = 'Retry',
+}) {
   final messenger = appScaffoldMessengerKey.currentState;
   if (messenger == null) return; // app not mounted yet — nothing to show on
 
@@ -71,7 +76,7 @@ void showTaskToast({required bool success, required String message, VoidCallback
       action: onRetry == null
           ? null
           : SnackBarAction(
-              label: 'Retry',
+              label: actionLabel,
               textColor: c.critical,
               onPressed: onRetry,
             ),

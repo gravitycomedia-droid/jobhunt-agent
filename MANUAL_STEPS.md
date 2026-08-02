@@ -75,6 +75,22 @@ Dashboard → SQL Editor → paste and run each file:
       Applying it first is harmless to the currently deployed code — old code
       never writes either column, and `is_active` defaults to true so the
       redefined RPC behaves identically until something retires a row.
+- [x] **⚠️ `server/db/migrations/030_match_preference_boost.sql` — ADR-054.
+      MUST BE APPLIED *BEFORE* THE NEXT CLOUD RUN DEPLOY.** Adds
+      `matches.raw_fit_score` and `matches.role_alignment` (both nullable, no
+      backfill). Not safe to apply after the code: `services/matching.py::
+      rerank_shortlist` now writes both columns on every insert, so with the
+      new code live and the columns missing **every match insert 500s** — the
+      Matches board stops updating for everyone. Applying it first is harmless
+      to the currently deployed code (old code never writes either column).
+      Existing cached matches simply won't benefit from a preference-only
+      rescore (`rescore_cached_matches`) until they're re-ranked from scratch,
+      which already happens for any job not yet cached.
+      **Applied 2026-08-02** (confirmed live: re-rank error against the local
+      dev server cleared after running it). Was briefly numbered 029 and
+      collided with a concurrent session's `029_jobs_expires_at.sql` — renamed
+      to 030 before this commit; the SQL content itself (and what you already
+      ran in the Supabase SQL Editor) is unchanged, only the filename moved.
 
 - [ ] `server/db/migrations/029_jobs_expires_at.sql` — daily expiry sweep. Adds
       `jobs.expires_at` (nullable) + a partial index. **Safe to apply in either

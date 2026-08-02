@@ -73,8 +73,20 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
     # never dropped. ONLY the survivors go to the LLM; the drops are disclosed.
     scored = score_bullets(experiences, jd_text)
     selection = select_bullets(experiences, scored)
-    if not selection.selected:
-        raise HTTPException(status_code=422, detail="Stored profile has no experience bullets to tailor")
+    projects = profile.get("projects") or []
+    # ADR-054: a profile with no experience bullets AT ALL but real projects
+    # (common for a fresher) is NOT a dead end — tailor_resume() below still
+    # produces a JD-grounded summary_line and skill reordering from `projects`,
+    # and the résumé's PROJECTS section renders those verbatim regardless
+    # (services/resume_pdf.py). Only a profile with neither has nothing to
+    # tailor. PROFILE_INCOMPLETE is a stable prefix the client matches on to
+    # show an "Edit profile" action instead of a Retry that would just fail
+    # again identically.
+    if not selection.selected and not projects:
+        raise HTTPException(
+            status_code=422,
+            detail="PROFILE_INCOMPLETE: add work experience or at least one project to your profile before this can be tailored",
+        )
 
     # JD-paste resume builder jobs (routers/jobs.py's `from-jd` flow) run on
     # the cheap tier end-to-end (ADR-017) — this is the only place that
@@ -97,6 +109,7 @@ def tailor_and_store(profile: dict, job_id: str) -> dict:
             provider=provider,
             skills=skills,
             headline=profile.get("headline") or "",
+            projects=projects,
         )
     except TailorError as e:
         raise HTTPException(status_code=422, detail=f"Could not tailor resume: {e}") from e

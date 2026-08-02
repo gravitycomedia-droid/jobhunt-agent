@@ -62,6 +62,24 @@ TECH_CATEGORIES = (
     "other_it",
 )
 
+# Human-readable label for each TECH_CATEGORIES member — the vocabulary above
+# is a stable enum for filtering/storage, this is what a candidate reads as a
+# target-role suggestion (routers/jobs.py's role-suggestions endpoint).
+# 'other_it' has no entry: it means "ingestion couldn't resolve a specialism",
+# which is meaningless as something to suggest a candidate TARGET.
+TECH_CATEGORY_LABELS: dict[str, str] = {
+    "frontend": "Frontend Developer",
+    "backend": "Backend Developer",
+    "full_stack": "Full Stack Developer",
+    "mobile": "Mobile Developer",
+    "ai_ml": "AI/ML Engineer",
+    "data_science": "Data Scientist",
+    "devops_cloud": "DevOps/Cloud Engineer",
+    "cybersecurity": "Cybersecurity Engineer",
+    "qa_testing": "QA/Test Engineer",
+    "blockchain": "Blockchain Developer",
+}
+
 # The `category` values (migration 027) this module applies to. Everything else
 # is non-technical and gets None.
 _TECHNICAL_CATEGORIES = frozenset({"engineering", "data"})

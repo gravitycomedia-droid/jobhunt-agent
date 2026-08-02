@@ -2,7 +2,7 @@
 'unknown' (never dropped), all three real work types are always present as keys
 even at zero, and sources are ordered busiest-first."""
 
-from routers.jobs import build_facets
+from routers.jobs import build_facets, build_role_suggestions
 
 
 def test_empty_pool_has_zeroed_work_types_and_no_sources():
@@ -46,3 +46,37 @@ def test_sources_ordered_busiest_first():
 def test_missing_source_buckets_as_unknown():
     f = build_facets([{"work_type": "remote", "source": None}])
     assert f["source"] == {"unknown": 1}
+
+
+# --- ADR-054: GET /jobs/role-suggestions for TargetRolesScreen ---
+
+
+def test_role_suggestions_orders_db_roles_busiest_first():
+    jobs = (
+        [{"tech_category": "frontend"} for _ in range(2)]
+        + [{"tech_category": "backend"} for _ in range(5)]
+        + [{"tech_category": "mobile"}]
+    )
+    result = build_role_suggestions(jobs)
+    assert result["db_roles"] == ["Backend Developer", "Frontend Developer", "Mobile Developer"]
+
+
+def test_role_suggestions_drops_null_and_other_it():
+    jobs = [{"tech_category": None}, {"tech_category": "other_it"}, {"tech_category": "frontend"}]
+    result = build_role_suggestions(jobs)
+    assert result["db_roles"] == ["Frontend Developer"]
+
+
+def test_role_suggestions_other_roles_never_duplicates_a_db_role():
+    jobs = [{"tech_category": "data_science"}, {"tech_category": "frontend"}]
+    result = build_role_suggestions(jobs)
+    db_lower = {r.lower() for r in result["db_roles"]}
+    other_lower = {r.lower() for r in result["other_roles"]}
+    assert not (db_lower & other_lower)
+    assert "Product Manager" in result["other_roles"]
+
+
+def test_role_suggestions_empty_pool_falls_back_to_curated_list_only():
+    result = build_role_suggestions([])
+    assert result["db_roles"] == []
+    assert result["other_roles"]
