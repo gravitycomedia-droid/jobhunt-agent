@@ -1,5 +1,5 @@
 -- ============================================
--- Job-Hunt Agent — Migration 029: location/salary preference boost (ADR-054)
+-- Job-Hunt Agent — Migration 030: location/salary preference boost (ADR-054)
 -- Run in Supabase SQL Editor (Dashboard → SQL).
 -- ============================================
 
