@@ -1,7 +1,7 @@
 # Privacy Policy — FirstRole
 
 **Effective date:** 14 July 2026
-**Last updated:** 14 July 2026
+**Last updated:** 2 August 2026
 
 FirstRole ("the app") is an AI job-search agent for entry-level and internship
 roles. It finds job postings, scores them against your resume, and tailors your
@@ -64,10 +64,17 @@ review first. There is no auto-apply.
 
 Your data is kept for as long as your account exists.
 
-To delete your account and all associated data — profile, resume text,
-uploaded resume, matches, tailored resumes, and application history — email
+You can delete your account and all associated data — profile, resume text,
+uploaded resume, matches, tailored resumes, and application history —
+yourself, instantly, from **Profile → Delete account** in the app. If you no
+longer have the app installed or can't sign in, email
 **gravity.co.media@gmail.com** from the email address associated with your
-account. We will delete it within 30 days and confirm when it is done.
+account and we will delete it within 30 days and confirm when it is done.
+
+Anonymized operational logs of AI calls (model, token counts, latency,
+validation result) are retained after deletion for cost/reliability
+monitoring, with the link to your account removed. See
+[how to delete your account](delete-account) for full detail.
 
 ## 5. Security
 
