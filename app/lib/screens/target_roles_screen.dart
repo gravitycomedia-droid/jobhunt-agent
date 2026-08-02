@@ -93,58 +93,80 @@ class _TargetRolesScreenState extends State<TargetRolesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.space5, AppSpacing.space5, AppSpacing.space5, AppSpacing.space6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('What are you looking for?', style: AppTypography.headingSm),
-              const SizedBox(height: 6),
-              Text(
-                'Add target roles. The agent matches new postings against these.',
-                style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
-              ),
-              const SizedBox(height: AppSpacing.space5),
-              ChipInput(
-                label: 'Target roles',
-                value: _roles,
-                onChange: (next) => setState(() => _roles = next),
-                placeholder: 'Add a role…',
-              ),
-              const SizedBox(height: 4),
-              // Roles the job pool actually has postings for right now, so
-              // picking one isn't a shot in the dark — then a curated list of
-              // other common roles the pool doesn't specifically label.
-              if (_dbSuggestions.any((s) => !_roles.contains(s))) ...[
-                _suggestionGroup(_dbSuggestions),
-                if (_otherSuggestions.any((s) => !_roles.contains(s))) ...[
-                  const SizedBox(height: 6),
-                  Text('More roles', style: AppTypography.caption.copyWith(color: context.c.inkSoft)),
-                  const SizedBox(height: 4),
-                ],
-              ],
-              _suggestionGroup(_otherSuggestions),
-              const SizedBox(height: AppSpacing.space5),
-              AppFormField(
-                label: 'Minimum salary (optional)',
-                controller: _salaryController,
-                placeholder: '150000',
-                keyboardType: TextInputType.number,
-              ),
-              if (_errorMessage != null) ...[
-                const SizedBox(height: AppSpacing.space3),
-                Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
-              ],
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _submit,
-                  child: Text(_isSaving ? 'Saving…' : 'Find matching jobs'),
+        child: Column(
+          children: [
+            // ADR-054: DB-backed suggestions can run to ~19 chips (vs the old
+            // hardcoded 3), which routinely overflows a fixed-height Column —
+            // that overflow was pushing "Find matching jobs" off-screen and
+            // unreachable. Scrollable content + a footer pinned outside the
+            // scroll (same pattern as resume_diff_screen.dart) fixes it for
+            // any suggestion-list length, not just today's.
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.space5,
+                  AppSpacing.space5,
+                  AppSpacing.space5,
+                  AppSpacing.space3,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('What are you looking for?', style: AppTypography.headingSm),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Add target roles. The agent matches new postings against these.',
+                      style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
+                    ),
+                    const SizedBox(height: AppSpacing.space5),
+                    ChipInput(
+                      label: 'Target roles',
+                      value: _roles,
+                      onChange: (next) => setState(() => _roles = next),
+                      placeholder: 'Add a role…',
+                    ),
+                    const SizedBox(height: 4),
+                    // Roles the job pool actually has postings for right now,
+                    // so picking one isn't a shot in the dark — then a
+                    // curated list of other common roles the pool doesn't
+                    // specifically label.
+                    if (_dbSuggestions.any((s) => !_roles.contains(s))) ...[
+                      _suggestionGroup(_dbSuggestions),
+                      if (_otherSuggestions.any((s) => !_roles.contains(s))) ...[
+                        const SizedBox(height: 6),
+                        Text('More roles', style: AppTypography.caption.copyWith(color: context.c.inkSoft)),
+                        const SizedBox(height: 4),
+                      ],
+                    ],
+                    _suggestionGroup(_otherSuggestions),
+                    const SizedBox(height: AppSpacing.space5),
+                    AppFormField(
+                      label: 'Minimum salary (optional)',
+                      controller: _salaryController,
+                      placeholder: '150000',
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.space5, 0, AppSpacing.space5, AppSpacing.space5),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_errorMessage != null) ...[
+                    Text(_errorMessage!, style: AppTypography.bodySm.copyWith(color: context.c.critical)),
+                    const SizedBox(height: AppSpacing.space3),
+                  ],
+                  ElevatedButton(
+                    onPressed: _isSaving ? null : _submit,
+                    child: Text(_isSaving ? 'Saving…' : 'Find matching jobs'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
