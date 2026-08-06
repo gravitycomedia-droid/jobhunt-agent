@@ -102,14 +102,20 @@ Dashboard → SQL Editor → paste and run each file:
       age branch — so Unstop postings are judged on age rather than on the real
       `end_date`, which is exactly the imprecision this column removes.
 
-- [ ] **Career-ops integration, Bricks 1-6 (2026-08-03) — NONE of these are
-      applied yet, and NONE of this code is pushed/deployed yet either
-      (confirmed: working tree has 20+ modified files and 30+ untracked new
-      files, `git push --dry-run` has no remote credentials in this
-      session). Run ALL FIVE below before redeploying (§3) — every one is
-      pure `create table if not exists` / new nullable columns, so, like
-      029 above, they're safe to apply in EITHER order relative to the
-      deploy — old code just never writes the new columns/tables.**
+- [x] **Career-ops integration, Bricks 1-6 — DONE as of 2026-08-06.** All six
+      migrations (031-036) are applied, and the code is committed, pushed to
+      `origin/main` and deployed to Cloud Run. Verified live against the running
+      Supabase project rather than trusted from this checklist: every table
+      (`cover_letters`, `application_emails`, `interview_stories`,
+      `offer_reviews`, `referrals`) and every added column
+      (`jobs.legitimacy_tier`, `jobs.legitimacy_signals`,
+      `profiles.referral_code`) resolves. The per-file boxes below are kept for
+      the record of what each migration did.
+
+      Still outstanding: `POST /jobs/backfill-legitimacy` has NOT been called,
+      so existing pool rows carry no legitimacy badge — `score_posting()` only
+      runs at ingestion, so without it badges appear on newly-ingested jobs
+      only. This is the usual cause of "no badge in jobs" after a deploy.
   - [ ] `server/db/migrations/031_jobs_legitimacy.sql` — ADR-055. Adds
         `jobs.legitimacy_tier`/`legitimacy_signals`. Applying this alone does
         **not** retroactively badge your existing job pool — `score_posting()`
