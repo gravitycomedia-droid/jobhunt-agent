@@ -25,6 +25,20 @@ class Job {
   /// backfill couldn't place; treated as 'other'.
   final String? category;
 
+  /// Migration 031 (career-ops integration, ADR-055): 'high_confidence' |
+  /// 'proceed_with_caution' | 'suspicious', or null when this row hasn't
+  /// been scored yet. Drives the optional badge on [JobCard]/[MatchCard] —
+  /// see StatusPill's PillContext.legitimacy. Null and 'high_confidence'
+  /// both render no badge; only the two lower tiers are worth a candidate's
+  /// attention.
+  final String? legitimacyTier;
+
+  /// The individual signals behind [legitimacyTier] — `{signals: [...],
+  /// contractor_language_note: ...}` — shown in the badge's detail sheet.
+  /// Not parsed further here; server/services/job_legitimacy.py owns the
+  /// shape.
+  final Map<String, dynamic>? legitimacySignals;
+
   /// Phase 5: exact server JSON, cached verbatim for round-tripping.
   final Map<String, dynamic> raw;
 
@@ -41,6 +55,8 @@ class Job {
     this.salaryCurrency,
     this.workType,
     this.category,
+    this.legitimacyTier,
+    this.legitimacySignals,
     this.raw = const {},
   });
 
@@ -59,6 +75,8 @@ class Job {
       salaryCurrency: json['salary_currency'] as String?,
       workType: json['work_type'] as String?,
       category: json['category'] as String?,
+      legitimacyTier: json['legitimacy_tier'] as String?,
+      legitimacySignals: (json['legitimacy_signals'] as Map?)?.cast<String, dynamic>(),
     );
   }
 

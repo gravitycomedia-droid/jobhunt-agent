@@ -353,6 +353,25 @@ class _ProfileBodyState extends State<ProfileBody> {
             showDivider: true,
           ),
           _navRow(
+            // Career-ops integration Brick 4 (ADR-058): the story bank
+            // persists independent of any one application, so it needs a
+            // standalone entry point here in addition to the one inside
+            // InterviewPrepScreen's app bar.
+            icon: AppIconName.book,
+            label: 'Interview story bank',
+            onTap: () => context.push('/story-bank'),
+            showDivider: true,
+          ),
+          _navRow(
+            // Plan 21: the referral screen's permanent home. The Matches-tab
+            // upsell only appears for a gated profile, so without this an
+            // ungated user has no way back to their own invite code.
+            icon: AppIconName.share,
+            label: 'Invite friends',
+            onTap: () => context.push('/referrals'),
+            showDivider: true,
+          ),
+          _navRow(
             icon: AppIconName.settings,
             label: 'Settings',
             onTap: _openSettings,

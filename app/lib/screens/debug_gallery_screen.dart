@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/background_task.dart';
+import '../services/api_client.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import '../widgets/agent_mascot.dart';
@@ -30,6 +31,41 @@ class DebugGalleryScreen extends StatefulWidget {
 class _DebugGalleryScreenState extends State<DebugGalleryScreen> {
   bool _dark = false;
   int _gaugeKey = 0; // bump to replay the gauge reveal
+
+  // Career-ops integration Brick 1 (ADR-055) ops action — see _runBackfill.
+  final ApiClient _apiClient = ApiClient();
+  bool _isBackfilling = false;
+  String? _backfillStatus;
+
+  /// Loops POST /jobs/backfill-legitimacy (services/job_ingestion.py caps
+  /// each call at 500 rows) until it reports 0 scored, so one tap here
+  /// clears the whole existing pool's backlog rather than requiring the
+  /// user to keep re-tapping. Debug-gallery-only (kDebugMode) — this
+  /// mirrors the endpoint's own docstring: "not something the app
+  /// surfaces to end users."
+  Future<void> _runBackfill() async {
+    setState(() {
+      _isBackfilling = true;
+      _backfillStatus = 'Starting…';
+    });
+    var total = 0;
+    try {
+      while (true) {
+        final scored = await _apiClient.backfillJobLegitimacy();
+        total += scored;
+        if (!mounted) return;
+        setState(() => _backfillStatus = 'Scored $total so far…');
+        if (scored == 0) break;
+      }
+      if (!mounted) return;
+      setState(() => _backfillStatus = 'Done — scored $total job(s) total.');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _backfillStatus = 'Failed: $e');
+    } finally {
+      if (mounted) setState(() => _isBackfilling = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,6 +170,23 @@ class _DebugGalleryScreenState extends State<DebugGalleryScreen> {
                     onPressed: () => showCelebration(context),
                     child: const Text('Fire celebration'),
                   ),
+                ]),
+                _section(c, 'Ops actions', [
+                  Text(
+                    'Career-ops integration Brick 1 (ADR-055): scores every existing '
+                    'job with a null legitimacy_tier — new jobs get scored '
+                    'automatically at ingestion, this is only for the backlog.',
+                    style: mono(11, color: c.inkFaint),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: _isBackfilling ? null : _runBackfill,
+                    child: Text(_isBackfilling ? 'Backfilling…' : 'Backfill job legitimacy'),
+                  ),
+                  if (_backfillStatus != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_backfillStatus!, style: mono(11, color: c.accent)),
+                  ],
                 ]),
               ],
             ),

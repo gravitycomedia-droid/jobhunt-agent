@@ -9,15 +9,30 @@ class FormQuestion {
   final List<String> options;
   final bool required;
 
+  /// Smart AI Fill (non-Google ATS pages — Unstop/Internshala/Naukri/Indeed):
+  /// a CSS selector built deterministically server-side
+  /// (services/form_parser.extract_dom_fields), never LLM-generated. Empty
+  /// for google_form/llm_extracted questions, which have nothing to inject
+  /// into — see [FormSchemaModel.isDomExtracted].
+  final String domSelector;
+
   const FormQuestion({
     required this.entryId,
     required this.text,
     required this.type,
     this.options = const [],
     this.required = false,
+    this.domSelector = '',
   });
 
   bool get isFileUpload => type == 'file_upload';
+
+  /// v1 Smart AI Fill only injects plain text-like fields — anything else
+  /// (dropdown, choice, checkbox, scale, file_upload) surfaces as a
+  /// tap-to-apply suggestion instead of being written into the page
+  /// directly, same conservative posture as ADR-053's "no DOM injection"
+  /// rule for Google Forms, just scoped down rather than dropped entirely.
+  bool get isInjectable => domSelector.isNotEmpty && (type == 'short' || type == 'paragraph');
 
   factory FormQuestion.fromJson(Map<String, dynamic> json) {
     return FormQuestion(
@@ -26,6 +41,7 @@ class FormQuestion {
       type: json['type'] as String? ?? 'unknown',
       options: (json['options'] as List? ?? []).map((o) => o as String).toList(),
       required: json['required'] as bool? ?? false,
+      domSelector: json['dom_selector'] as String? ?? '',
     );
   }
 
@@ -35,6 +51,7 @@ class FormQuestion {
         'type': type,
         'options': options,
         'required': required,
+        'dom_selector': domSelector,
       };
 }
 
@@ -54,6 +71,11 @@ class FormSchemaModel {
   });
 
   bool get isLlmExtracted => source == 'llm_extracted';
+
+  /// Smart AI Fill: a real ATS page (not Google Forms) whose fields were
+  /// found via services/form_parser.extract_dom_fields — questions with
+  /// [FormQuestion.isInjectable] can be written into the live page.
+  bool get isDomExtracted => source == 'dom_extracted';
 
   factory FormSchemaModel.fromJson(Map<String, dynamic> json) {
     return FormSchemaModel(

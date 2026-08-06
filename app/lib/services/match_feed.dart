@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/locked_match_item.dart';
 import '../models/match_item.dart';
 import 'api_client.dart';
 import 'cache_service.dart';
@@ -12,18 +13,32 @@ import 'task_center.dart';
 /// loaded, genuinely no matches. [staleSince] is non-null only when a cached
 /// list is painted but the last refresh failed — bodies show the stale banner.
 class MatchFeedState {
-  const MatchFeedState({this.matches, this.staleSince});
+  const MatchFeedState({
+    this.matches,
+    this.staleSince,
+    this.locked = const [],
+    this.effectiveMatchLimit = 0,
+  });
   final List<MatchItem>? matches;
   final DateTime? staleSince;
+
+  /// Plan 21: teaser rows past the profile's quota. Always empty for an ungated
+  /// (tier `pro`) profile, and empty on a cache-only paint — see [loadFromCache].
+  final List<LockedMatchItem> locked;
+  final int effectiveMatchLimit;
 
   MatchFeedState copyWith({
     List<MatchItem>? matches,
     DateTime? staleSince,
+    List<LockedMatchItem>? locked,
+    int? effectiveMatchLimit,
     bool clearStale = false,
   }) =>
       MatchFeedState(
         matches: matches ?? this.matches,
         staleSince: clearStale ? null : (staleSince ?? this.staleSince),
+        locked: locked ?? this.locked,
+        effectiveMatchLimit: effectiveMatchLimit ?? this.effectiveMatchLimit,
       );
 }
 
@@ -72,8 +87,16 @@ class MatchFeed extends Notifier<MatchFeedState> {
 
   Future<List<MatchItem>> refresh({int limit = 50}) async {
     try {
-      final items = _canonical(await _api.fetchMatches(limit: limit));
-      state = MatchFeedState(matches: items);
+      final page = await _api.fetchMatches(limit: limit);
+      final items = _canonical(page.matches);
+      state = MatchFeedState(
+        matches: items,
+        locked: page.locked,
+        effectiveMatchLimit: page.effectiveMatchLimit,
+      );
+      // Only the real matches are cached. Locked teasers are stage-1 output
+      // that shifts with every ingestion run, so a cached copy would age badly
+      // for no benefit — and they carry no analysis worth preserving offline.
       await CacheService.instance.write(CacheService.keyMatches, [for (final m in items) m.raw]);
       return items;
     } catch (_) {

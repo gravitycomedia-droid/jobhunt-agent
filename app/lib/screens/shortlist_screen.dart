@@ -50,6 +50,7 @@ class ShortlistScreen extends StatelessWidget {
                     salary: job.salaryLabel,
                     postedAt: job.postedAtLabel,
                     bookmarked: true,
+                    legitimacyTier: job.legitimacyTier,
                   );
                 },
               ),

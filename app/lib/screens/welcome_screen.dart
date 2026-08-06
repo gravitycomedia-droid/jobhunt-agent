@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../services/api_client.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
+import '../widgets/app_form_field.dart';
 import '../widgets/app_icon.dart';
 
 class _WelcomeStep {
@@ -19,7 +21,14 @@ const _steps = [
 
 /// Onboarding step 2 (frontend rebuild Phase 1, prototype `ui.isWelcome`):
 /// shown once right after first sign-in, before the resume upload step.
-class WelcomeScreen extends StatelessWidget {
+///
+/// Plan 21: also hosts the optional invite-code field. It lives here rather
+/// than in a new onboarding step on purpose — [OnboardingStep] is mirrored by
+/// the server's `onboarding_step` column (migration 011), so a new step would
+/// mean a migration and a resume-point change for a field that is entirely
+/// skippable. Redeeming here still lands well before the first
+/// MatchingLoadingScreen run, which is what the bonus needs to affect.
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key, required this.name, required this.onContinue, this.embedded = false});
 
   final String name;
@@ -30,7 +39,63 @@ class WelcomeScreen extends StatelessWidget {
   final bool embedded;
 
   @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  final ApiClient _apiClient = ApiClient();
+  final TextEditingController _codeController = TextEditingController();
+
+  bool _showCodeField = false;
+  bool _isRedeeming = false;
+  String? _codeError;
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  /// Skippable by construction: an empty field just continues. A non-empty one
+  /// must succeed before we move on — otherwise a typo'd code would be silently
+  /// swallowed and the user would never learn their bonus didn't apply.
+  Future<void> _continue() async {
+    final code = _codeController.text.trim();
+    if (code.isEmpty) {
+      widget.onContinue();
+      return;
+    }
+
+    setState(() {
+      _isRedeeming = true;
+      _codeError = null;
+    });
+    try {
+      await _apiClient.redeemReferralCode(code);
+      if (!mounted) return;
+      setState(() => _isRedeeming = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invite applied — you both got 5 bonus matches')),
+      );
+      widget.onContinue();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isRedeeming = false;
+        // The server's 400 detail is written to be shown as-is ("That invite
+        // code isn't valid.", "You can't use your own invite code.").
+        _codeError = _cleanError(e);
+      });
+    }
+  }
+
+  /// ApiClient wraps failures as `Exception: <detail>`; strip the prefix so the
+  /// inline error reads as a sentence rather than a stack-trace fragment.
+  String _cleanError(Object e) => e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+
+  @override
   Widget build(BuildContext context) {
+    final name = widget.name;
     final body = Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.space6, vertical: AppSpacing.space6),
       child: Column(
@@ -63,19 +128,62 @@ class WelcomeScreen extends StatelessWidget {
                         ],
                       ],
                     ),
+                    const SizedBox(height: AppSpacing.space4),
+                    _inviteCodeSection(context),
                   ],
                 ),
               ),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(onPressed: onContinue, child: const Text('Upload your resume')),
+                child: ElevatedButton(
+                  onPressed: _isRedeeming ? null : _continue,
+                  child: _isRedeeming
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Upload your resume'),
+                ),
               ),
             ],
           ),
     );
 
-    if (embedded) return body;
+    if (widget.embedded) return body;
     return Scaffold(body: SafeArea(child: body));
+  }
+
+  /// Collapsed to a single link by default. Most users arrive without a code,
+  /// and a permanently-visible empty field on the very first screen reads as
+  /// something you're required to deal with.
+  Widget _inviteCodeSection(BuildContext context) {
+    if (!_showCodeField) {
+      return TextButton(
+        onPressed: () => setState(() => _showCodeField = true),
+        child: const Text('Got an invite code?'),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppFormField(
+          label: 'Invite code',
+          controller: _codeController,
+          placeholder: 'e.g. K7M2Q9X',
+          hint: 'Optional — you and your friend both get 5 bonus matches.',
+          error: _codeError,
+          disabled: _isRedeeming,
+          // No forced uppercasing here — normalize_code() on the server upper-
+          // cases and strips spaces/hyphens, so "k7m2 q9x" resolves fine.
+          onChanged: (_) {
+            // Clear a stale error the moment they start fixing it.
+            if (_codeError != null) setState(() => _codeError = null);
+          },
+        ),
+      ],
+    );
   }
 }
 

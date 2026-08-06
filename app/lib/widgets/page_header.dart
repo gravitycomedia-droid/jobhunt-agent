@@ -26,6 +26,8 @@ class PageHeader extends StatelessWidget implements PreferredSizeWidget {
     this.showBack = false,
     this.embedded = false,
     this.actions = const [],
+    this.backgroundColor,
+    this.foregroundColor,
   });
 
   final String title;
@@ -37,6 +39,18 @@ class PageHeader extends StatelessWidget implements PreferredSizeWidget {
   final bool embedded;
 
   final List<Widget> actions;
+
+  /// Null everywhere except the Smart Apply in-app browser, which sets both
+  /// to stand out from the rest of the app AND from the website loaded below
+  /// it — a plain `context.c.surface` header there reads as part of the
+  /// page, not as this app's own chrome. [foregroundColor] must be passed
+  /// whenever [backgroundColor] is, since the title/subtitle text has no
+  /// color of its own otherwise (it inherits the ambient default, which
+  /// assumes the ordinary `context.c.surface` background every other screen
+  /// uses) — [HeaderActionButton] doesn't need one, it already paints its
+  /// own opaque circle behind each icon regardless of what's behind it.
+  final Color? backgroundColor;
+  final Color? foregroundColor;
 
   @override
   Size get preferredSize => const Size.fromHeight(AppSpacing.headerH);
@@ -61,11 +75,16 @@ class PageHeader extends StatelessWidget implements PreferredSizeWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: AppTypography.headingSm, maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text(
+                title,
+                style: AppTypography.headingSm.copyWith(color: foregroundColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               if (subtitle != null)
                 Text(
                   subtitle!,
-                  style: AppTypography.caption.copyWith(color: context.c.inkSoft),
+                  style: AppTypography.caption.copyWith(color: foregroundColor ?? context.c.inkSoft),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -87,8 +106,10 @@ class PageHeader extends StatelessWidget implements PreferredSizeWidget {
     }
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: context.c.surface,
-        border: Border(bottom: BorderSide(color: context.c.border)),
+        color: backgroundColor ?? context.c.surface,
+        // A hairline matching the neutral border colour would look like a
+        // rendering mistake against a solid accent fill — omit it there.
+        border: backgroundColor == null ? Border(bottom: BorderSide(color: context.c.border)) : null,
       ),
       child: SafeArea(
         bottom: false,

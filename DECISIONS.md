@@ -1713,3 +1713,442 @@ suggestion chips with roles the live job pool actually has postings for
 (`tech_category`, migration 028, busiest first), followed by a small curated
 list for roles the pool doesn't specifically label. Replaces a 3-item
 hardcoded list in `target_roles_screen.dart`.
+
+## ADR-055: Posting-legitimacy signal (career-ops integration, Brick 1)
+
+**Context.** `docs/21-career-ops-integration-plan.md` scoped six features
+inspired by the career-ops OSS project; the plan's suggested build order
+starts with the one that's pure Python, gates nothing, and validates the
+"additive, non-breaking" claim before anything generative ships. Career-ops's
+own version (Block G in its `oferta.md` evaluation mode) leans on live
+WebSearch and an LLM judgment call. This app has neither a search
+integration nor a reason to spend an LLM call on every ingested row (Golden
+Rule 2), so the signal set is deliberately narrower and entirely
+deterministic.
+
+**Decision — signals computed from data already on the row, no LLM, no new
+external calls.** `services/job_legitimacy.py::score_posting()` is a pure
+function over `description`, `salary_min`/`max`, `posted_at`, `redirect_url`
+and `source` — every one of those already exists on `jobs` before this
+migration. Three tiers (`high_confidence` / `proceed_with_caution` /
+`suspicious`), same vocabulary and same "observations, not accusations"
+framing career-ops uses. A small point system (description length,
+freshness, salary presence, application-link presence) sets the tier for
+the ambiguous middle; a distinct, India-pool-specific spam-phrase regex
+("earn ₹X per day", "pay a registration fee", "WhatsApp only" — patterns
+that actually recur in this Unstop/Internshala-heavy pool, not career-ops's
+own Glassdoor/Blind-oriented signals) overrides the point system outright
+when matched, the same way career-ops treats "multiple ghost-job
+indicators" as decisive. Missing salary is explicitly NEVER penalized —
+ADR-054 already established that most of this pool carries no salary at
+all, so treating absence as concerning would flag the honest majority.
+Unknown posted-date is neutral, not concerning, for the same "never default
+to Suspicious without evidence" reason career-ops states for its own
+liveness gate.
+
+**Decision — employment-classification language is a separate, orthogonal
+note, not a tier input.** Mirrors career-ops's own posture: a contractor/
+services-status phrase ("1099", "invoice for services", "labour contract")
+is reported alongside the tier, never used to demote a posting that's
+otherwise clean — it's information for the candidate to weigh, not evidence
+of a fake listing.
+
+**Decision — computed inline during ingestion, not as a separate pass.**
+`_dedup_embed_insert()`'s existing per-row loop already computes
+`work_type`/`category` from fields already on `payload`; `legitimacy_tier`/
+`legitimacy_signals` join that same loop rather than becoming a second
+batched step like `tech_category` (which genuinely needs batching because it
+sometimes calls an LLM). `insert_manual_job()` computes it too, so a
+user-pasted job gets a badge like every discovered one.
+`backfill_job_legitimacy()` (mirrors `backfill_tech_categories`/
+`backfill_job_embeddings`) catches rows ingested before migration 031.
+
+**Decision — surfaced as a badge only when there's something to flag.**
+The client (`StatusPill`'s new `PillContext.legitimacy`) renders nothing for
+`high_confidence` and a pill for `proceed_with_caution`/`suspicious` only —
+badging every card green would be noise; the point of this feature is
+directing attention to the minority worth a second look. No new filter
+chip, no new screen — reuses `job_card.dart`/`match_card.dart`'s existing
+meta row, per the plan's "one brick at a time" build order.
+
+**Consequences:** two new nullable `jobs` columns (migration 031), no
+existing column's meaning changes, `GET /jobs`/`GET /matches` pick the new
+fields up automatically (`select("*")`), no new rate-limit surface (no new
+user-triggered endpoint besides the ops-only `/jobs/backfill-legitimacy`,
+same shape as `/jobs/backfill-embeddings`), zero LLM cost. Revisit the point
+weights once real usage surfaces false positives/negatives — the diagnostic
+`legitimacy_signals` column exists specifically so that retuning has
+evidence to work from, same role `guardrail_atom_log` (025) plays for the
+résumé guardrail.
+
+## ADR-056: Cover letter generation (career-ops integration, Brick 2)
+
+**Context.** `docs/21-career-ops-integration-plan.md` §1.1 scoped this as
+the highest-reuse item on the six-feature list: the tailor → guardrail →
+human-approval → PDF chain Brick 6 already built needed a new prompt and a
+new one-page template, not new architecture. career-ops's own version
+(`modes/oferta.md`'s cover-letter block) generates a draft from CV bullets
++ JD and refines it interactively; this app's version is non-interactive
+(matches the existing tailoring UX) but keeps the same anti-fabrication
+posture.
+
+**Decision — a separate `cover_letters` table (migration 032), not a column
+on `tailored_resumes`.** A cover letter and a tailored résumé have
+independent lifecycles: a user may regenerate one without touching the
+other, or have one without the other. Same ownership/RLS shape as
+`tailored_resumes` (mirrors migration 001/004's pattern exactly).
+
+**Decision — no bullet-selection step.** Brick 6's tailoring pipeline runs
+`services/section_tailor.py`'s scoring/selection machinery because a résumé
+has to fit every survivor bullet onto one page. A cover letter is 3-5
+sentences referencing 2-3 achievements the LLM itself picks as most
+JD-relevant — there's nothing to select or trim. `services/llm.py::
+generate_cover_letter` hands the LLM every bullet and project directly, and
+`COVER_LETTER_SYSTEM_PROMPT` asks for exactly `opening` + 1-3
+`body_paragraphs` + `closing`, mirroring `TAILOR_SYSTEM_PROMPT`'s
+anti-fabrication rules line for line.
+
+**Decision — reuse the atom-level guardrail on prose directly, no new
+guardrail code.** `services/guardrail.py::verify_bullet_atoms` is already
+generic over any string of tailored text checked against a
+`SourceContext` — `routers/tailor.py` already calls it on `summary_line`
+(prose, not a bullet) for exactly this reason. `routers/cover_letters.py`
+calls it once per paragraph (opening, each body paragraph, closing) with
+zero changes to guardrail.py. Same diagnostic logging to
+`guardrail_atom_log` (025) as the résumé flow, via a near-identical
+`_log_untraceable_atoms` helper (kept as a small duplicate, not extracted,
+since the two call sites' surrounding context — bullets vs. paragraphs —
+differs enough that a shared helper would need its own parameter for what
+it's logging).
+
+**Decision — a rejected/flagged paragraph is DROPPED from the compiled PDF,
+not swapped for alternate text.** This is the one place cover letters
+diverge from the résumé pattern: `resume_pdf.py`'s `_accepted()` picks
+between the TAILORED and the ORIGINAL bullet text, because a résumé bullet
+always has a real, already-approved fallback. A cover letter paragraph has
+no such fallback — it's new prose about one achievement, not a rephrase of
+something that already exists elsewhere on the page. So
+`cover_letter_pdf.py`'s identically-named `_accepted()` gates INCLUSION,
+not text choice: an excluded paragraph is simply absent from the letter.
+Same "missing `accepted` falls back to `guardrail_pass`" default as the
+résumé flow.
+
+**Decision — Gemini by default, not DeepSeek, for the same reason as
+`tailor`.** Added to `_TASK_PROVIDERS` directly (`"cover_letter": GEMINI`)
+rather than its own settings knob like `tailor_provider` — this is new
+enough that A/B-ing guardrail-pass rates between providers isn't a live
+question yet; revisit only if it becomes one.
+
+**Decision — one screen, not three.** `ResumeDiffScreen` →
+`ResumePreviewScreen` is a two-screen flow because compiling a résumé PDF is
+a distinct step from reviewing the diff. A cover letter's PDF is directly
+the approved paragraphs, so `CoverLetterScreen` combines generate → review →
+approve → share into one screen, reusing `TaskCenter`'s existing 202-poll
+pattern (`TaskKind.coverLetter`, new) and `share_plus`'s share-sheet flow
+(already a dependency, used identically by `ResumePreviewScreen`).
+
+**Consequences:** one new table (032), one new router
+(`routers/cover_letters.py`, registered in `main.py`), one new rate-limit
+key (`rate_limit_cover_letter`, same default as `rate_limit_tailor`), one
+new cost-dashboard task label ("Cover letters"), one new Flutter screen
+reachable from Match Detail as a secondary action alongside "Tailor résumé
+for this JD" — independent actions, since a user may want either without
+the other. No existing table, endpoint, or screen changes meaning.
+
+## ADR-057: Application/referral/cold email drafts (career-ops integration, Brick 3)
+
+**Context.** `docs/21-career-ops-integration-plan.md` §1.6 — the last of the
+three "generate grounded outbound text" bricks (tailoring, cover letters,
+now first-contact emails). career-ops has no direct equivalent (it's a
+local CLI with no send capability at all); this brick is native, modeled on
+this app's own existing `applications.followup_*` columns and
+`routers/applications.py`'s follow-up drafting endpoint — the closest
+prior art in this codebase for "one short grounded email, human approves,
+then sends via Resend."
+
+**Decision — a new `application_emails` table (migration 033), not more
+columns on `applications`.** Follow-up drafts overwrite `applications.
+followup_subject`/`followup_body` in place because there's only ever one
+live follow-up nudge at a time. First-contact emails are different: a
+candidate reasonably wants an application-ask draft, a referral-ask draft
+for a specific contact, and a cold-outreach draft for a different contact,
+side by side — and may want to keep old drafts as history after sending.
+So every draft is its own row (`application_id`, `kind`, `subject`, `body`,
+`guardrail_pass`, `flagged_atoms`, `sent_at`), not an overwrite-in-place
+pair of columns.
+
+**Decision — `kind` is a closed enum (`application` | `referral` | `cold`),
+chosen by the user before drafting, not inferred by the LLM.** Golden Rule
+2: which tone to use is a decision, not a language task, so it's a request
+parameter (`DraftApplicationEmailRequest.kind`) the Flutter kind-selector
+sets, and `APPLICATION_EMAIL_SYSTEM_PROMPT` branches its instructions on it
+server-side. The LLM only ever writes the one tone it's told to.
+
+**Decision — synchronous, not 202-plus-poll.** A ~150-word single Gemini
+call is the same shape as `draft_followup` (which has never needed
+`TaskCenter`), not tailoring or cover letters' multi-paragraph background
+job. `POST /application-emails/{application_id}` returns the finished row
+directly.
+
+**Decision — sync core + thin async route handler, matching
+`tailor_and_store`/`generate_and_store_cover_letter`.**
+`draft_and_store_application_email(profile, application_id, kind) -> dict`
+holds all the logic (ownership check, profile-completeness check, LLM call,
+guardrail, insert) as a plain function with no event loop dependency; the
+`@router.post` handler is three lines that unwrap `body.kind` and re-wrap
+the result in the `{"data": ..., "error": null}` envelope. Keeps every
+router in this codebase directly unit-testable the same way.
+
+**Decision — reuse `verify_bullet_atoms` on the whole email body as one
+block, not per-paragraph like cover letters.** A first-contact email is a
+single short paragraph, not several — cover letters check paragraph by
+paragraph because each one stands alone in the compiled PDF; here there's
+only one block of prose to verify, same `guardrail_atom_log` diagnostic
+logging as both other flows.
+
+**Decision — Gemini by default, same reasoning as `tailor`/`cover_letter`.**
+Added to `_TASK_PROVIDERS` directly (`"application_email": GEMINI`).
+
+**Decision — sending reuses `services/email.py`'s Resend integration via a
+new `send_application_email` function, not a shared `send_followup_email`
+call.** Both delegate to the same private `_send()` helper now (refactored
+out of what was a single follow-up-only function) so the two flows share
+one Resend call path and one error-handling block, but keep separate named
+entry points so logs and error messages stay honest about which flow
+triggered a send. Same "Approve & send" human-gate posture as follow-up
+(Golden Rule: no auto-submitting anywhere) — requires `applications.
+contact_email` to already be set.
+
+**Consequences:** one new table (033), one new router
+(`routers/application_emails.py`, registered in `main.py`), one new
+rate-limit key (`rate_limit_application_email`, same default as the other
+two generation endpoints), one new cost-dashboard task label ("Application
+emails"), a new "Application emails" section on `AppDetailScreen` — a kind
+selector, a drafts list, and a per-draft send action — sitting below the
+existing follow-up card, since the two are independent tools for different
+moments in the pipeline (first contact vs. chasing silence). No existing
+table, endpoint, or screen changes meaning.
+
+## ADR-058: Interview-prep v1 + story bank (career-ops integration, Brick 4)
+
+**Context.** `docs/21-career-ops-integration-plan.md` §1.2. career-ops's own
+interview-prep mode depends on live web search (Glassdoor, levels.fyi,
+Blind) for company-specific research; this app has no search integration
+today. Rather than skip the feature or fake the research, v1 ships the
+search-free half honestly: questions and STAR answers grounded ONLY in the
+JD text plus the match's already-computed `gaps`/`strengths`
+(`services/matching.py`) — zero new data dependency — with anything not
+literally traceable to the JD labeled `inferred=true`, mirroring career-ops's
+own `[inferred from JD]` tagging for ungrounded content. A v2 with real
+company research is explicitly out of scope until a licensed search API is
+chosen (plan §3).
+
+**Decision — a pack is generated fresh every time and never stored; a saved
+story is the only thing that persists (migration 034).** These are two
+different things with two different lifecycles. An interview pack is
+disposable — one Gemini/DeepSeek-cheap call, cheap enough to just re-run,
+and nothing about "5 questions for this JD" is worth a table row and a
+migration. A story the user chooses to keep is different: it's a real,
+reusable answer that should survive across every future interview, not just
+this one job. So `POST /interview-prep/{application_id}` writes nothing;
+`interview_stories` is the only new table, and "Save as story"
+(`InterviewPrepScreen`) is the one explicit bridge between the two.
+
+**Decision — keyed on `application_id`, not `job_id`.** Unlike cover
+letters/tailoring (which run before any application exists), an interview
+pack needs the match's cached `gaps`/`strengths` for the specific job AND
+makes the most sense once a candidate is actually in the pipeline for that
+job — so this follows application-email/follow-up's precedent, not
+tailor/cover-letter's. A manually-added job with no cached `matches` row
+(Add Job, JD-paste) still works — gaps/strengths just come back empty and
+the prompt runs on the JD text and profile alone.
+
+**Decision — reuse `verify_bullet_atoms`, but per STAR FIELD, not on the
+joined block.** First attempt joined situation+task+action+result into one
+string and ran the atom check once; this produced false positives, because
+`verify_bullet_atoms`'s proper-noun pass deliberately skips a sentence's
+first word (ordinary capitalization, not a fabrication signal) — joining
+four independent sentences made three of those first words look
+mid-sentence and wrongly flaggable. Fixed by checking each field
+separately and pooling the flags onto the one question. A real lesson for
+any future caller: this guardrail assumes its input is ONE sentence/block,
+not several concatenated ones.
+
+**Decision — `reflection` is never LLM-generated.** Nothing in this app can
+know how a real interview actually went, so `interview_stories.reflection`
+is nullable and only ever written by the user's own hand, after the fact.
+
+**Consequences:** two new tables — well, one (034; the pack itself is
+stateless) — one new router (`routers/interview_prep.py`, two feature
+families in one file: the disposable pack endpoint and the story-bank
+CRUD), one new rate-limit key (`rate_limit_interview_prep`; the CRUD gets
+none, same as other plain-DB-write endpoints), two new cost-dashboard task
+labels ("Interview prep"; DeepSeek per the plan's own cost table), two new
+Flutter screens (`InterviewPrepScreen`, `StoryBankScreen`) reachable from
+`AppDetailScreen`'s new "Prepare" section and from Profile. No existing
+table, endpoint, or screen changes meaning.
+
+## ADR-059: Offer-prep contract reader (career-ops integration, Brick 5)
+
+**Context.** `docs/21-career-ops-integration-plan.md` §1.3. Pairs with the
+Kanban's existing `offer` state (migration 001), which has tracked that
+pipeline stage since Brick 7 with no feature actually behind it. Hard
+guards copied directly from career-ops's own offer-prep mode because
+they're correct for this domain: never output a verdict ("safe to sign" /
+a risk score), never state what the law requires from memory, no web
+research — contract text and comp figures never leave the model call as a
+search query.
+
+**Decision — the hard guards are structural, not just prompted.** The
+no-verdict guard lives in two places: `OFFER_REVIEW_SYSTEM_PROMPT` asks for
+it, AND `models/offer_review.py::OfferReviewLlmResponse` has no
+verdict/score field for the model to fill in even if a future prompt edit
+slipped and asked for one. This is the same posture as `guardrail.py`'s
+enforcement-vs-prompt distinction elsewhere in this app (Golden Rule 4): a
+prompt instruction is a request, a schema with nowhere to put the thing is
+closer to a guarantee. The jurisdiction guard stays prompt-only by
+necessity — there's no deterministic way to verify a model didn't state law
+from memory — so `questions_for_lawyer` is the honest escape valve, and
+`test_offer_reviews_router.py::test_schema_has_no_verdict_field` pins the
+schema shape so a future change can't silently reintroduce a verdict field.
+
+**Decision — a new deterministic check, `services/offer_review.py::
+verify_clause_grounding`, not a reuse of `guardrail.py`.** Every other
+generative brick's guardrail proves a claim about the CANDIDATE traces to
+their real profile. Offer review generates no claims about the candidate at
+all — it's reading a document handed to it — so the equivalent enforcement
+is different in shape: does the model's quoted `clause_text` actually
+appear (whitespace/case-normalized) in the source document, or did it
+paraphrase/invent one? `OFFER_REVIEW_SYSTEM_PROMPT` explicitly instructs
+verbatim quoting so this check is meaningful, not prompt noise to be
+tolerated away. A new small module rather than a `guardrail.py` addition,
+since the two checks verify fundamentally different things (candidate-fact
+grounding vs. document-quote grounding) and have no shared code between
+them.
+
+**Decision — insert-only (`offer_reviews`), not one row per application.**
+A candidate may paste a revised offer after negotiating; each read is kept
+as history rather than overwritten, same posture as `application_emails`
+(ADR-057) and unlike `applications.followup_*`'s single-slot columns.
+
+**Decision — Gemini, not DeepSeek.** Unlike `interview_prep`, this isn't a
+cost-sensitive high-frequency task (the plan estimates a handful of calls
+per user, ever) and it's a harder structured-extraction task over a full
+contract — worth the higher-quality tier the same way `parse` is, even
+though offer review has no fabrication-guardrail dependency in the
+`tailor`/`cover_letter` sense.
+
+**Consequences:** one new table (035), one new router
+(`routers/offer_reviews.py`), one new service module
+(`services/offer_review.py`), one new rate-limit key
+(`rate_limit_offer_review`), one new cost-dashboard task label ("Offer
+review"), one new Flutter screen (`OfferReviewScreen`) reachable from
+`AppDetailScreen`'s "Prepare" section — paste text, read the clauses, see
+questions for a lawyer, done. No existing table, endpoint, or screen
+changes meaning.
+
+## ADR-060: Contact discovery v1 (career-ops integration, Brick 6)
+
+**Context.** `docs/21-career-ops-integration-plan.md` §1.4. career-ops's
+full version finds NAMED people (hiring manager, recruiter, peer) and
+drafts short outreach messages per contact — real value-add, but real-people
+lookup needs the same licensed search API integration that interview-prep's
+v2 needs (plan §3), and is explicitly out of scope here. v1 ships exactly
+what the plan scoped: a deep-linked LinkedIn people search, zero LLM cost.
+
+**Decision — no backend at all.** Every other brick in this integration
+added a migration, a router, and Flutter plumbing. This one is pure URL
+templating from data the app already has (`job.company`, `job.title`) — so
+it's implemented as one pure Dart function
+(`services/contact_discovery.dart::buildLinkedInSearchUrl`) plus a
+`launchUrl` call, with zero server-side surface. There is nothing to
+validate, log, rate-limit, or guardrail — Golden Rule 2 taken to its
+logical conclusion: when the "logic" is a string template, code handles it
+without needing a network hop to a server that would just template the
+same string.
+
+**Decision — a Google search restricted to LinkedIn (`site:linkedin.com/in
+"{company}" "{role}"`), not a direct LinkedIn search URL.** LinkedIn's own
+search requires a logged-in session and rate-limits/blocks unauthenticated
+query URLs; a search-engine redirect works from a cold browser tab and
+still lands the user on real LinkedIn profile results. The user does the
+actual browsing in their own authenticated session — nothing here scrapes
+or automates LinkedIn itself, which is what keeps this on the right side of
+the ToS line ADR-003 already drew for job-board scraping ("no login-based
+scraping, ever").
+
+**Consequences:** one new file (`services/contact_discovery.dart`), one new
+button on `AppDetailScreen`'s "Prepare" section ("Find people at
+{company}"), opening the external browser via the same `launchUrl` pattern
+`job_card.dart` already uses for "view original posting". No new table, no
+new endpoint, no new LLM cost, no existing screen behavior changed.
+
+## ADR-061: Referral rewards + full-match quota (Plan 21)
+
+**Context.** `docs/` Plan 21 asked for a two-sided referral system tied to
+bonus "full analysis" match unlocks, with a base free limit of 3 and +5 per
+referral to both sides. The stated motivation is twofold: growth, and cost —
+stage-2 re-ranking is the expensive LLM call in this app (ADR-020/021), so
+capping how many jobs reach it caps the bill per profile.
+
+**Conflict found before implementing.** The plan was written assuming "the
+current shape of [any Pro-entitlement] system isn't visible", and treated the
+quota as independent of it. It IS visible: `services/entitlements.py` +
+migration 022 already implement `subscription_tier` (free/pro), documented as
+"the ONLY thing that gates access in this app", with every profile backfilled
+to `'pro'` and `default_tier="pro"`. Building the quota independently would
+have meant every current beta user — all `'pro'` — dropped to 3 full matches,
+so "Pro" would come to mean strictly *less* than it did the day before, and a
+future paying subscriber would still be capped at 3 unless they recruited
+friends.
+
+**Decision — tier wins, quota gates the free tier only.** `subscription_tier`
+stays the single access seam. `effective_match_limit()` returns the full
+`DEFAULT_RERANK_LIMIT` for a `'pro'` profile and only applies
+`BASE_FREE_MATCH_LIMIT + bonus_match_quota` below that. Referrals are the free
+tier's growth lever rather than a tax on Pro, and when billing ships "Pro =
+unlimited matches" is a coherent thing to sell.
+
+**Decision — beta stays on `'pro'`, so the gate ships inert.** This reverses
+the plan's "gate goes live now, for existing beta users too". Flipping the
+beta to `'free'` was the alternative and was considered; keeping them on
+`'pro'` was chosen to avoid visibly shrinking existing users' match lists
+mid-beta. The consequence, accepted deliberately: the gate has no effect on
+anyone today and starts biting only when a real `'free'` tier exists. It also
+makes Plan 21's Phase 3 beta-comms step moot — there is no shrink to warn
+anyone about (see MANUAL_STEPS).
+
+**Decision — the clamp lives in `matching.py`, twice.** `rerank_shortlist`
+clamps before planning any LLM call, so `POST /matches/rerank?limit=50` on a
+3-limit profile re-ranks 3 jobs; the cap is a cost control, not a serializer
+restriction. `get_ranked_matches` clamps again on read, which is NOT redundant:
+the first clamp bounds LLM calls *per run*, so a gated profile legitimately
+accumulates more than 3 cached `matches` rows across daily pipeline runs as the
+job pool turns over. Without the read clamp the gate would widen a little every
+day.
+
+**Decision — locked teasers carry no stage-2 fields.** The `locked` array is
+stage-1 similarity only (title/company/`similarity_pct`). Nothing is withheld
+client-side, because nothing was computed: the LLM never saw those jobs. The
+app blurs placeholder bars rather than real text, so there is no hidden
+analysis sitting in the widget tree — the honest version of a paywall blur.
+
+**Decision — reward on signup alone, guarded at the DB.** Per the plan, the
++5 releases on redemption with no activation gating. The guardrails are
+deliberately lightweight and structural rather than behavioural: a UNIQUE on
+`referrals.referred_profile_id` (the actual once-ever guarantee, holding under
+a double-POST), CHECK constraints against self-referral on both tables, and a
+`MAX_BONUS_MATCH_QUOTA` cap applied to the sum at grant time. No velocity
+checks or device fingerprinting — out of scope until volume justifies them.
+
+**Decision — `referral_code` is generated by a column DEFAULT, not in Python.**
+Migration 036 defines a plpgsql generator and installs it as the column
+default, so every profile-creation path gets a code without any Python change.
+There are two insert sites today and there will be more; a default cannot be
+forgotten the way a code path can. The backfill loops row-at-a-time on purpose
+— a single set-based UPDATE would run every collision check against the
+statement's start snapshot and could mint duplicates within itself.
+
+**Migration numbering.** The plan specified `019_referral_system.sql`; 019
+through 035 were already taken, so it shipped as `036_referral_system.sql`.
+

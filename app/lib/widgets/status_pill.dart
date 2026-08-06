@@ -5,7 +5,7 @@ import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 
 /// Which semantic system a [StatusPill] represents.
-enum PillContext { verdict, guardrail, stage }
+enum PillContext { verdict, guardrail, stage, legitimacy }
 
 enum _Tone { success, warning, critical, info, neutral }
 
@@ -58,6 +58,14 @@ const Map<String, _PillSpec> _guardrailMap = {
   'fail': _PillSpec(_Tone.critical, 'Guardrail fail', AppIconName.alertTriangle),
 };
 
+// Migration 031 (career-ops integration, ADR-055). 'high_confidence' has no
+// entry — the caller (job_card.dart/match_card.dart) only builds this pill
+// for the two lower tiers; badging every card green would be noise.
+const Map<String, _PillSpec> _legitimacyMap = {
+  'proceed_with_caution': _PillSpec(_Tone.warning, 'Verify posting', AppIconName.alertTriangle),
+  'suspicious': _PillSpec(_Tone.critical, 'Possibly fake', AppIconName.alertTriangle),
+};
+
 const Map<String, _PillSpec> _stageMap = {
   'new': _PillSpec(_Tone.neutral, 'New'),
   'saved': _PillSpec(_Tone.neutral, 'Saved'),
@@ -101,6 +109,7 @@ class StatusPill extends StatelessWidget {
       PillContext.verdict => _verdictMap,
       PillContext.guardrail => _guardrailMap,
       PillContext.stage => _stageMap,
+      PillContext.legitimacy => _legitimacyMap,
     };
     return map[value] ?? _PillSpec(_Tone.neutral, value);
   }

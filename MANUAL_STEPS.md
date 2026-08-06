@@ -102,6 +102,37 @@ Dashboard → SQL Editor → paste and run each file:
       age branch — so Unstop postings are judged on age rather than on the real
       `end_date`, which is exactly the imprecision this column removes.
 
+- [ ] **Career-ops integration, Bricks 1-6 (2026-08-03) — NONE of these are
+      applied yet, and NONE of this code is pushed/deployed yet either
+      (confirmed: working tree has 20+ modified files and 30+ untracked new
+      files, `git push --dry-run` has no remote credentials in this
+      session). Run ALL FIVE below before redeploying (§3) — every one is
+      pure `create table if not exists` / new nullable columns, so, like
+      029 above, they're safe to apply in EITHER order relative to the
+      deploy — old code just never writes the new columns/tables.**
+  - [ ] `server/db/migrations/031_jobs_legitimacy.sql` — ADR-055. Adds
+        `jobs.legitimacy_tier`/`legitimacy_signals`. Applying this alone does
+        **not** retroactively badge your existing job pool — `score_posting()`
+        only runs at ingestion time. After applying + redeploying, either wait
+        for the next daily cron (new jobs only) or call
+        `POST /jobs/backfill-legitimacy` once to score the existing pool (see
+        the new bullet under §3 below).
+  - [ ] `server/db/migrations/032_cover_letters.sql` — ADR-056. Creates
+        `cover_letters`. Until applied AND redeployed, every
+        `POST /cover-letters/{job_id}` 404s (the route itself doesn't exist on
+        whatever's currently live) or 500s (table missing) — "could not draft
+        cover letter" is this.
+  - [ ] `server/db/migrations/033_application_emails.sql` — ADR-057. Creates
+        `application_emails`. Same failure mode as 032 for
+        `/application-emails/*` — this is also why `AppDetailScreen` now shows
+        an error loading the "APPLICATION EMAILS" section on old/undeployed
+        code.
+  - [ ] `server/db/migrations/034_interview_stories.sql` — ADR-058. Creates
+        `interview_stories`. Same failure mode for `/interview-prep/*` and
+        `/interview-stories` — "could not load your stories" is this.
+  - [ ] `server/db/migrations/035_offer_reviews.sql` — ADR-059. Creates
+        `offer_reviews`. Same failure mode for `/offer-reviews/*`.
+
 ## 1a1. Cloud Run — Unstop volume env vars (ADR-003 v3)
 
 These four control the broad pool. All have working defaults in `config.py`, so
@@ -312,6 +343,29 @@ must run and approve (see the `gcloud run deploy --source .` command recorded in
 - [ ] No new env vars are required. Optional: `MAX_JOB_AGE_DAYS` (defaults
       to 10 in code).
 
+- [ ] **Career-ops integration, Bricks 1-6 — this session's work is NOT on
+      this revision.** Nothing in `git log` reflects it (uncommitted +
+      unpushed as of 2026-08-03), so the currently-live Cloud Run revision
+      is still the pre-Brick-1 code. This is the actual cause of every
+      "could not load / draft / not found" error reported against the
+      deployed app — the routes genuinely don't exist there yet, it isn't a
+      config issue. In order:
+      1. Commit + push `main` (this session committed locally; push still
+         needs to happen from a machine with GitHub credentials).
+      2. Apply the five migrations under §1's new Brick 1-6 entry, in
+         Supabase SQL Editor, in order (031 → 035). Safe before or after
+         the deploy.
+      3. `cd server && gcloud run deploy jobhunt-agent-server --source . --region=asia-south1`
+      4. Once live, call `POST /jobs/backfill-legitimacy` once (with an
+         authenticated request — Postman, curl with a bearer token, or the
+         app once signed in) to score the existing job pool for Brick 1's
+         legitimacy badges. Without this, badges only appear on jobs
+         ingested by the next daily cron run, not on anything already in
+         the pool — this is why "no badge in jobs" shows even after the
+         deploy if this step is skipped.
+      5. Re-test all six bricks against the live Cloud Run URL (not
+         localhost) using the steps already given in chat.
+
 ## 4. Local verification server (already running this session)
 
 - `uvicorn` is serving the updated backend at `http://localhost:8000`
@@ -323,3 +377,40 @@ must run and approve (see the `gcloud run deploy --source .` command recorded in
   An Android emulator can also use `http://10.0.2.2:8000`.
 - Reminder: the new endpoints 500 until the migrations in §1 are applied —
   they run against the same Supabase project as production.
+
+## 5. Plan 21 — referral system + match gating (ADR-061)
+
+**Order matters: migration BEFORE deploy.** The new code reads
+`profiles.referral_code` / `bonus_match_quota`; deploying first would 500
+`GET /referrals/me` and `GET /matches` until the migration lands.
+
+1. Apply `server/db/migrations/036_referral_system.sql` in the Supabase SQL
+   Editor. (Numbered 036, not the plan's 019 — 019-035 were taken.)
+2. Verify the backfill before deploying:
+   ```sql
+   select count(*) from profiles where referral_code is null;  -- expect 0
+   select count(*), count(distinct referral_code) from profiles; -- expect equal
+   ```
+3. `cd server && gcloud run deploy jobhunt-agent-server --source . --region=asia-south1`
+4. Re-test against the live Cloud Run URL: Profile → "Invite friends" shows a
+   7-character code; sharing works; redeeming an invalid code shows an inline
+   error rather than failing silently.
+
+**No new environment variables.** `BASE_FREE_MATCH_LIMIT` (3),
+`REFERRAL_BONUS_MATCHES` (5) and `MAX_BONUS_MATCH_QUOTA` (50) all have
+defaults in `config.py` — only set them on Cloud Run to override.
+
+**Plan 21 Phase 3 (beta comms) is NOT needed — deliberately.** The plan
+assumed beta users' match lists would visibly shrink to 3 and wanted a
+heads-up push sent. Per ADR-061 the beta stays on `subscription_tier='pro'`,
+which bypasses the quota entirely, so *nothing shrinks for anyone* and there
+is no behaviour change to announce. The comms task becomes live only if/when
+profiles are moved to `'free'` — do not skip it then.
+
+**The gate is inert until a `'free'` tier exists.** To sanity-check it end to
+end before that, flip one test profile:
+```sql
+update profiles set subscription_tier = 'free' where id = '<test-profile-id>';
+```
+That profile should then see 3 unblurred match cards plus locked teasers.
+Set it back to `'pro'` afterwards.

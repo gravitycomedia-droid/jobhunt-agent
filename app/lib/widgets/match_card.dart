@@ -33,7 +33,9 @@ class _Chip extends StatelessWidget {
 
 /// [JobCard] extended with a score ring, verdict pill, and strength/gap
 /// chips. Collapses to a summary (2 strengths + 1 gap); expands to the
-/// full chip lists and the primary "Tailor resume" action.
+/// full chip lists and the primary "Apply now" action (was "Tailor resume"
+/// — the Matches tab's card-level CTA now matches the detail screen's own
+/// bottom Apply button instead of jumping straight to tailoring).
 ///
 /// ```dart
 /// MatchCard(
@@ -43,7 +45,7 @@ class _Chip extends StatelessWidget {
 ///   verdict: 'apply',
 ///   strengths: const ['5+ yrs Flutter', 'Shipped 2 apps'],
 ///   gaps: const ['No Kotlin experience'],
-///   onTailor: () => ...,
+///   onApply: () => ...,
 /// )
 /// ```
 class MatchCard extends StatefulWidget {
@@ -63,9 +65,10 @@ class MatchCard extends StatefulWidget {
     this.strengths = const [],
     this.gaps = const [],
     this.defaultExpanded = false,
-    this.onTailor,
-    this.tailorLabel = 'Tailor resume',
+    this.onApply,
+    this.applyLabel = 'Apply now',
     this.isNew = false,
+    this.legitimacyTier,
   });
 
   final String title;
@@ -93,11 +96,16 @@ class MatchCard extends StatefulWidget {
   final bool defaultExpanded;
 
   /// Primary-action handler shown when expanded.
-  final VoidCallback? onTailor;
-  final String tailorLabel;
+  final VoidCallback? onApply;
+  final String applyLabel;
 
   /// §4.5: show the "NEW" badge (ranked within the last day).
   final bool isNew;
+
+  /// Migration 031 (career-ops integration, ADR-055) — forwarded straight
+  /// through to [JobCard], which already owns the "only badge the two lower
+  /// tiers" rendering rule.
+  final String? legitimacyTier;
 
   @override
   State<MatchCard> createState() => _MatchCardState();
@@ -122,6 +130,7 @@ class _MatchCardState extends State<MatchCard> {
       postedAt: widget.postedAt,
       logoUrl: widget.logoUrl,
       onPress: widget.onPress,
+      legitimacyTier: widget.legitimacyTier,
       trailing: ScoreRing(score: widget.score, size: 52),
       children: [
         DecoratedBox(
@@ -184,18 +193,18 @@ class _MatchCardState extends State<MatchCard> {
                     ...shownGaps.map((g) => _Chip(tone: _ChipTone.gap, label: g)),
                   ],
                 ),
-                if (_open && widget.onTailor != null) ...[
+                if (_open && widget.onApply != null) ...[
                   const SizedBox(height: AppSpacing.space3),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: widget.onTailor == null
+                      onPressed: widget.onApply == null
                           ? null
                           : () {
                               HapticService.instance.light();
-                              widget.onTailor!();
+                              widget.onApply!();
                             },
-                      child: Text(widget.tailorLabel),
+                      child: Text(widget.applyLabel),
                     ),
                   ),
                 ],

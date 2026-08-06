@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/locked_match_item.dart';
 import '../models/match_item.dart';
 import '../router/route_args.dart';
 import '../services/api_client.dart';
@@ -18,6 +19,7 @@ import '../widgets/app_icon.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/background_task_dialog.dart';
+import '../widgets/locked_match_card.dart';
 import '../widgets/match_card.dart';
 import '../widgets/page_header.dart';
 import '../widgets/stale_banner.dart';
@@ -210,16 +212,80 @@ class _MatchesBodyState extends ConsumerState<MatchesBody> {
       );
     }
 
+    // Plan 21: rows are [banner, ...matches, (upsell + locked teasers)]. For an
+    // ungated profile `_locked` is empty and this collapses to exactly the
+    // previous list, so nobody on the pro tier sees any change.
+    final locked = _locked;
+    final lockedRows = locked.isEmpty ? 0 : locked.length + 1; // +1 for the upsell header
+
     return RefreshIndicator(
       onRefresh: _rerankThenReload,
       child: ListView.separated(
         padding: EdgeInsets.zero,
-        itemCount: _items.length + 1,
+        itemCount: _items.length + 1 + lockedRows,
         separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.space3),
-        itemBuilder: (context, index) => index == 0 ? _statusBanner() : _matchCard(_items[index - 1]),
+        itemBuilder: (context, index) {
+          if (index == 0) return _statusBanner();
+          if (index <= _items.length) return _matchCard(_items[index - 1]);
+          final lockedIndex = index - _items.length - 1;
+          if (lockedIndex == 0) return _lockedHeader(locked.length);
+          return LockedMatchCard(item: locked[lockedIndex - 1], onUnlock: _openReferral);
+        },
       ),
     );
   }
+
+  List<LockedMatchItem> get _locked => ref.read(matchFeedProvider).locked;
+
+  void _openReferral() => context.push('/referrals');
+
+  /// The one piece of copy that explains why the list stops where it does. It
+  /// sits above the blurred cards rather than below them so the answer arrives
+  /// before the confusion does.
+  Widget _lockedHeader(int count) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.space4),
+      decoration: BoxDecoration(
+        color: context.c.accentSoft,
+        borderRadius: AppRadius.lgRadius,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AppIcon(AppIconName.lock, size: 16, color: context.c.accent),
+              const SizedBox(width: AppSpacing.space2),
+              Expanded(
+                child: Text(
+                  '$count more ${count == 1 ? 'match' : 'matches'} waiting',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "You're on ${_effectiveLimit > 0 ? _effectiveLimit : 3} full analyses. "
+            'Invite a friend and you both get 5 more.',
+            style: AppTypography.bodySm.copyWith(color: context.c.inkSoft),
+          ),
+          const SizedBox(height: AppSpacing.space3),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openReferral,
+              icon: const AppIcon(AppIconName.share, size: 16),
+              label: const Text('Invite a friend'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int get _effectiveLimit => ref.read(matchFeedProvider).effectiveMatchLimit;
 
   Widget _statusBanner() {
     final staleSince = ref.read(matchFeedProvider).staleSince;
@@ -268,6 +334,7 @@ class _MatchesBodyState extends ConsumerState<MatchesBody> {
       score: item.fitScore,
       verdict: item.verdict,
       isNew: item.isNew,
+      legitimacyTier: job.legitimacyTier,
       strengths: item.strengths,
       gaps: item.gaps,
       // Frontend rebuild Phase 1: the prototype's Matches screen (unlike
@@ -275,10 +342,20 @@ class _MatchesBodyState extends ConsumerState<MatchesBody> {
       // no collapse affordance — MatchCard already supported this via
       // defaultExpanded, just unused until now.
       defaultExpanded: true,
-      // §4.6: the card body opens the full match detail; the inline Tailor
-      // button still jumps straight into tailoring.
+      // §4.6: the card body opens the full match detail; the inline button
+      // now jumps straight into Apply (was Tailor) — same as the detail
+      // screen's own bottom Apply button, including the silent tracker-save.
       onPress: () => context.push('/match', extra: MatchArgs(match: item)),
-      onTailor: () => context.push('/tailor', extra: TailorArgs(jobId: job.id, jobTitle: job.title)),
+      onApply: (job.redirectUrl?.isNotEmpty ?? false) ? () => _apply(item) : null,
+    );
+  }
+
+  void _apply(MatchItem item) {
+    final job = item.job;
+    unawaited(_apiClient.saveToTracker(job.id).catchError((_) {}));
+    context.push(
+      '/form-webview',
+      extra: FormWebViewArgs(browseUrl: job.redirectUrl, formTitle: job.title, jobId: job.id, jobTitle: job.title),
     );
   }
 }

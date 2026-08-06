@@ -6,16 +6,22 @@ import 'package:http_parser/http_parser.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../models/activity_item.dart';
+import '../models/application_email.dart';
 import '../models/application_item.dart';
 import '../models/background_task.dart';
 import '../models/chat_message.dart';
+import '../models/matches_page.dart';
+import '../models/referral_stats.dart';
 import '../models/cost_stats.dart';
+import '../models/cover_letter.dart';
 import '../models/form_fill.dart';
 import '../models/health_status.dart';
+import '../models/interview_prep.dart';
+import '../models/interview_story.dart';
 import '../models/job.dart';
 import '../models/job_extraction.dart';
-import '../models/match_item.dart';
 import '../models/notification_item.dart';
+import '../models/offer_review.dart';
 import '../models/resume_profile.dart';
 import '../models/score_history.dart';
 import '../models/shortlist_item.dart';
@@ -518,7 +524,11 @@ class ApiClient {
 
   /// Cached stage-2 results, best fit first — what [ShortlistScreen] renders
   /// as [MatchCard]s.
-  Future<List<MatchItem>> fetchMatches({int limit = 50}) async {
+  ///
+  /// Plan 21: returns a [MatchesPage] rather than a bare list, because `data`
+  /// now carries the `locked` teasers and the profile's effective limit
+  /// alongside the matches themselves.
+  Future<MatchesPage> fetchMatches({int limit = 50}) async {
     final uri = Uri.parse('$_baseUrl/matches?limit=$limit');
     final response = await http.get(uri, headers: _authHeaders());
 
@@ -527,9 +537,44 @@ class ApiClient {
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['data'] as List)
-        .map((j) => MatchItem.fromJson(j as Map<String, dynamic>))
-        .toList();
+    // fromAny, not fromJson: tolerates the pre-Plan-21 bare-array `data` so a
+    // new app build against a not-yet-deployed server still renders matches.
+    return MatchesPage.fromAny(body['data']);
+  }
+
+  /// Plan 21: this profile's referral code, how many people have used it, and
+  /// the quota that has bought them. Backs [ReferralScreen].
+  Future<ReferralStats> fetchReferralStats() async {
+    final uri = Uri.parse('$_baseUrl/referrals/me');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ReferralStats.fromJson((body['data'] as Map).cast<String, dynamic>());
+  }
+
+  /// Plan 21: applies someone else's invite code to this profile, granting both
+  /// sides bonus matches. The server answers 400 with a human-readable reason
+  /// for an invalid, self-owned, or already-redeemed code — [_extractErrorDetail]
+  /// pulls that message out so onboarding can show it inline rather than
+  /// failing silently.
+  Future<ReferralStats> redeemReferralCode(String code) async {
+    final uri = Uri.parse('$_baseUrl/referrals/redeem');
+    final response = await http.post(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({'code': code}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ReferralStats.fromJson((body['data'] as Map).cast<String, dynamic>());
   }
 
   /// Brick 6: tailors the stored resume toward one job and runs the
@@ -590,6 +635,73 @@ class ApiClient {
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return TailoredResume.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Career-ops integration Brick 2 (ADR-056): drafts a cover letter for one
+  /// job and runs the same anti-fabrication guardrail tailoring uses over
+  /// every paragraph. Same 202-plus-poll shape as [tailorResume] — poll
+  /// [getTaskStatus], then read the row via [fetchCoverLetter].
+  Future<String> generateCoverLetter(String jobId) async {
+    final uri = Uri.parse('$_baseUrl/cover-letters/$jobId');
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 202) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as Map<String, dynamic>)['task_id'] as String;
+  }
+
+  /// Reads back the most recent cover letter for a job, if one exists —
+  /// lets [CoverLetterScreen] skip re-drafting on revisit.
+  Future<CoverLetter?> fetchCoverLetter(String jobId) async {
+    final uri = Uri.parse('$_baseUrl/cover-letters/$jobId');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final data = body['data'];
+    return data == null ? null : CoverLetter.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// The human approval gate — marks a cover letter reviewed. [accepted] is
+  /// the per-paragraph keep/flag decision, one bool per paragraph in the
+  /// same order as [CoverLetter.paragraphs]; omit it to accept every
+  /// paragraph that passed the guardrail.
+  Future<CoverLetter> approveCoverLetter(String coverLetterId, {List<bool>? accepted}) async {
+    final uri = Uri.parse('$_baseUrl/cover-letters/$coverLetterId/approve');
+    final response = await http.patch(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({'accepted': ?accepted}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return CoverLetter.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Downloads the compiled PDF for an approved cover letter — same
+  /// binary-body exception as [downloadResumePdf].
+  Future<Uint8List> downloadCoverLetterPdf(String coverLetterId) async {
+    final uri = Uri.parse('$_baseUrl/cover-letters/$coverLetterId/pdf');
+    final response = await http
+        .get(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+    return response.bodyBytes;
   }
 
   /// Brick 7: adds a job to the Kanban tracker at the 'saved' stage.
@@ -724,6 +836,227 @@ class ApiClient {
     if (response.statusCode != 200) {
       throw Exception(_extractErrorDetail(response.body, response.statusCode));
     }
+  }
+
+  /// Career-ops integration Brick 3 (ADR-057): drafts a first-contact
+  /// application/referral/cold email. Synchronous, not 202-plus-poll — same
+  /// single-short-call shape as [draftFollowup], not [generateCoverLetter]'s
+  /// background task. Every call inserts a NEW row (see
+  /// [ApplicationEmailDraft]'s docstring), so the caller should refresh via
+  /// [listApplicationEmails] afterward rather than trying to patch state in
+  /// place.
+  Future<ApplicationEmailDraft> draftApplicationEmail(String applicationId, String kind) async {
+    final uri = Uri.parse('$_baseUrl/application-emails/$applicationId');
+    final response = await http
+        .post(
+          uri,
+          headers: _authHeaders({'Content-Type': 'application/json'}),
+          body: jsonEncode({'kind': kind}),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ApplicationEmailDraft.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Every drafted variant for this application, newest first, plus the
+  /// résumé/cover-letter attachment checklist (Golden Rule 2 — computed
+  /// server-side, not asked of the LLM).
+  Future<ApplicationEmailList> listApplicationEmails(String applicationId) async {
+    final uri = Uri.parse('$_baseUrl/application-emails/$applicationId');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ApplicationEmailList.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// The "Approve & send" action for one drafted email — same posture as
+  /// [sendFollowup]: requires a contact email already set on the
+  /// application, and the tap itself is the human approval gate (Golden
+  /// Rule: no auto-submitting anywhere).
+  Future<ApplicationEmailDraft> sendApplicationEmail(String applicationId, String emailId) async {
+    final uri = Uri.parse('$_baseUrl/application-emails/$applicationId/$emailId/send');
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ApplicationEmailDraft.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Career-ops integration Brick 4 (ADR-058): generates a fresh interview
+  /// pack for one application. Synchronous, not 202-plus-poll — same
+  /// shape as [draftApplicationEmail]. Every call regenerates; nothing is
+  /// cached server-side (see [InterviewPack]'s docstring), so the caller
+  /// should hold the result in local state, not re-fetch it.
+  Future<InterviewPack> generateInterviewPack(String applicationId) async {
+    final uri = Uri.parse('$_baseUrl/interview-prep/$applicationId');
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 45));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return InterviewPack.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// The persistent story bank (migration 034) — every saved story,
+  /// newest first, independent of any one application.
+  Future<List<InterviewStory>> listInterviewStories() async {
+    final uri = Uri.parse('$_baseUrl/interview-stories');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as List).map((s) => InterviewStory.fromJson(s as Map<String, dynamic>)).toList();
+  }
+
+  /// Saves one story — either a generated pack's STAR answer the user
+  /// chose to keep, or one written from scratch. [sourceJobId] is the job
+  /// that prompted it, if any.
+  Future<InterviewStory> createInterviewStory({
+    required String situation,
+    required String task,
+    required String action,
+    required String result,
+    String? reflection,
+    String? sourceJobId,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/interview-stories');
+    final response = await http.post(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({
+        'situation': situation,
+        'task': task,
+        'action': action,
+        'result': result,
+        if (reflection != null) 'reflection': reflection,
+        if (sourceJobId != null) 'source_job_id': sourceJobId,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return InterviewStory.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Edits an existing story — every field optional, only sent fields
+  /// change (server-side PATCH semantics via `exclude_unset`).
+  Future<InterviewStory> updateInterviewStory(
+    String storyId, {
+    String? situation,
+    String? task,
+    String? action,
+    String? result,
+    String? reflection,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/interview-stories/$storyId');
+    final response = await http.patch(
+      uri,
+      headers: _authHeaders({'Content-Type': 'application/json'}),
+      body: jsonEncode({
+        if (situation != null) 'situation': situation,
+        if (task != null) 'task': task,
+        if (action != null) 'action': action,
+        if (result != null) 'result': result,
+        if (reflection != null) 'reflection': reflection,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return InterviewStory.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Future<void> deleteInterviewStory(String storyId) async {
+    final uri = Uri.parse('$_baseUrl/interview-stories/$storyId');
+    final response = await http.delete(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+  }
+
+  /// Career-ops integration Brick 5 (ADR-059): pastes one offer letter or
+  /// contract's text and gets back a clause-by-clause plain-English read.
+  /// Insert-only server-side — a re-paste after negotiating creates a new
+  /// entry rather than overwriting the first read.
+  Future<OfferReview> analyzeOffer(String applicationId, String rawText) async {
+    final uri = Uri.parse('$_baseUrl/offer-reviews/$applicationId');
+    final response = await http
+        .post(
+          uri,
+          headers: _authHeaders({'Content-Type': 'application/json'}),
+          body: jsonEncode({'raw_text': rawText}),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return OfferReview.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// Every offer read for this application, newest first.
+  Future<List<OfferReview>> listOfferReviews(String applicationId) async {
+    final uri = Uri.parse('$_baseUrl/offer-reviews/$applicationId');
+    final response = await http.get(uri, headers: _authHeaders());
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as List).map((r) => OfferReview.fromJson(r as Map<String, dynamic>)).toList();
+  }
+
+  /// Career-ops integration Brick 1 (ADR-055): one-off catch-up for jobs
+  /// ingested before `jobs.legitimacy_tier` existed —
+  /// `score_posting()` only ever runs at ingestion time, so it never
+  /// retroactively scores the existing pool on its own. Ops-triggered
+  /// (debug gallery only, `kDebugMode`-gated — see routers/jobs.py's own
+  /// docstring: "not something the app surfaces to end users"), safe to
+  /// call repeatedly. Returns how many rows this ONE call scored (capped
+  /// at 500 server-side) — the caller loops until it comes back 0.
+  Future<int> backfillJobLegitimacy() async {
+    final uri = Uri.parse('$_baseUrl/jobs/backfill-legitimacy');
+    final response = await http
+        .post(uri, headers: _authHeaders())
+        .timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200) {
+      throw Exception(_extractErrorDetail(response.body, response.statusCode));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['data'] as Map<String, dynamic>)['backfilled'] as int;
   }
 
   /// Brick 9: manually triggers the agent loop for the caller's own

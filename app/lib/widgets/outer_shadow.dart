@@ -23,7 +23,15 @@ class OuterShadow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (shadows.isEmpty) return child;
-    return CustomPaint(painter: _OuterShadowPainter(borderRadius, shadows), child: child);
+    // RepaintBoundary: this custom painter runs on every JobCard/MatchCard
+    // AND their source chip — two Path.combine boolean-clip ops per row, many
+    // rows in a scrolling ListView. Giving each its own compositing layer is
+    // the standard mitigation for scroll-time rendering artifacts around
+    // repeated complex-path painters on iOS's Impeller renderer, and is safe
+    // regardless of whether that's the actual cause here.
+    return RepaintBoundary(
+      child: CustomPaint(painter: _OuterShadowPainter(borderRadius, shadows), child: child),
+    );
   }
 }
 

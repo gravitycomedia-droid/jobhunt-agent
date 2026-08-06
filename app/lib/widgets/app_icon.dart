@@ -48,6 +48,14 @@ enum AppIconName {
   edit, // §4.10 new-chat (reset)
   trash, // §4.15 delete account
   moreVertical, // §4.8 form-WebView overflow menu
+  mail, // career-ops integration Brick 2 (ADR-056) — cover letter action
+  helpCircle, // career-ops integration Brick 4 (ADR-058) — interview prep
+  book, // career-ops integration Brick 4 (ADR-058) — story bank
+  assignment, // career-ops integration Brick 5 (ADR-059) — offer review
+  people, // career-ops integration Brick 6 (ADR-060) — contact discovery
+  lock, // Plan 21 — locked (past-quota) match teasers
+  copy, // Plan 21 — copy invite code
+  share, // Plan 21 — invite share sheet
 }
 
 const Map<AppIconName, IconData> _iconMap = {
@@ -87,6 +95,14 @@ const Map<AppIconName, IconData> _iconMap = {
   AppIconName.edit: Icons.edit_outlined,
   AppIconName.trash: Icons.delete_outline,
   AppIconName.moreVertical: Icons.more_vert,
+  AppIconName.mail: Icons.mail_outline,
+  AppIconName.helpCircle: Icons.quiz_outlined,
+  AppIconName.book: Icons.auto_stories_outlined,
+  AppIconName.assignment: Icons.assignment_outlined,
+  AppIconName.people: Icons.people_outline,
+  AppIconName.lock: Icons.lock_outline,
+  AppIconName.copy: Icons.content_copy_outlined,
+  AppIconName.share: Icons.ios_share,
 };
 
 /// Line-icon primitive — use for all in-app iconography instead of

@@ -9,16 +9,20 @@ import '../screens/applications_body.dart';
 import '../screens/auth_screen.dart';
 import '../screens/career_chat_screen.dart';
 import '../screens/contact_details_screen.dart';
+import '../screens/cover_letter_screen.dart';
 import '../screens/debug_gallery_screen.dart';
 import '../screens/delete_account_screen.dart';
 import '../screens/form_fill_screen.dart';
 import '../screens/form_webview_screen.dart';
 import '../screens/home_body.dart';
+import '../screens/interview_prep_screen.dart';
 import '../screens/jd_resume_screen.dart';
+import '../screens/job_detail_screen.dart';
 import '../screens/jobs_list_body.dart';
 import '../screens/match_detail_screen.dart';
 import '../screens/matches_body.dart';
 import '../screens/notifications_screen.dart';
+import '../screens/offer_review_screen.dart';
 import '../screens/onboarding_flow.dart';
 import '../screens/profile_body.dart';
 import '../screens/resume_diff_screen.dart';
@@ -27,6 +31,8 @@ import '../screens/resume_upload_screen.dart';
 import '../screens/skill_growth_screen.dart';
 import '../screens/splash_screen.dart';
 import '../screens/startup_loading_screen.dart';
+import '../screens/referral_screen.dart';
+import '../screens/story_bank_screen.dart';
 import '../screens/wallet_screen.dart';
 import '../services/haptic_service.dart';
 import '../widgets/app_shell.dart';
@@ -207,6 +213,7 @@ final GoRouter appRouter = GoRouter(
           jobId: args.jobId,
           jobTitle: args.jobTitle,
           signInUrl: args.signInUrl,
+          browseUrl: args.browseUrl,
         );
       },
     ),
@@ -226,6 +233,13 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => MatchDetailScreen(match: (state.extra as MatchArgs).match),
     ),
     GoRoute(
+      // Smart AI Fill: the Jobs tab's job-tap destination (job_card.dart's
+      // onPress was previously unwired).
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/job',
+      builder: (context, state) => JobDetailScreen(job: (state.extra as JobArgs).job),
+    ),
+    GoRoute(
       parentNavigatorKey: _rootNavigatorKey,
       path: '/tailor',
       builder: (context, state) {
@@ -239,6 +253,48 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final args = state.extra as TailorArgs;
         return ResumePreviewScreen(jobId: args.jobId, jobTitle: args.jobTitle);
+      },
+    ),
+    GoRoute(
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/cover-letter',
+      builder: (context, state) {
+        final args = state.extra as CoverLetterArgs;
+        return CoverLetterScreen(jobId: args.jobId, jobTitle: args.jobTitle);
+      },
+    ),
+    GoRoute(
+      // Career-ops integration Brick 4 (ADR-058).
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/interview-prep',
+      builder: (context, state) {
+        final args = state.extra as ApplicationScopedArgs;
+        return InterviewPrepScreen(applicationId: args.applicationId, jobTitle: args.jobTitle);
+      },
+    ),
+    GoRoute(
+      // Career-ops integration Brick 4 (ADR-058) — reachable from
+      // InterviewPrepScreen's app bar and from Profile, independent of
+      // any one application.
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/story-bank',
+      builder: (context, state) => const StoryBankScreen(),
+    ),
+    GoRoute(
+      // Plan 21 — pushed from the locked-match upsell on the Matches tab and
+      // from Profile. Root navigator so it covers the bottom nav, same as the
+      // other full-screen destinations here.
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/referrals',
+      builder: (context, state) => const ReferralScreen(),
+    ),
+    GoRoute(
+      // Career-ops integration Brick 5 (ADR-059).
+      parentNavigatorKey: _rootNavigatorKey,
+      path: '/offer-review',
+      builder: (context, state) {
+        final args = state.extra as ApplicationScopedArgs;
+        return OfferReviewScreen(applicationId: args.applicationId, jobTitle: args.jobTitle);
       },
     ),
 

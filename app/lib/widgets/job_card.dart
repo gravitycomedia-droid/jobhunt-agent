@@ -7,6 +7,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_metrics.dart';
 import 'app_icon.dart';
 import 'outer_shadow.dart';
+import 'status_pill.dart';
 
 /// Base job card — logo, title, company, location, source chip, plus
 /// optional salary/posted date. Used directly for Jobs List and
@@ -41,6 +42,7 @@ class JobCard extends StatelessWidget {
     this.onPress,
     this.trailing,
     this.children,
+    this.legitimacyTier,
   });
 
   final String title;
@@ -78,9 +80,16 @@ class JobCard extends StatelessWidget {
   /// expandable body).
   final List<Widget>? children;
 
+  /// Migration 031 (career-ops integration, ADR-055): 'proceed_with_caution'
+  /// | 'suspicious' | null | 'high_confidence'. Only the two lower tiers
+  /// render a badge — a clean posting stays unbadged, same "flag problems,
+  /// don't decorate the majority" posture as the rest of this card.
+  final String? legitimacyTier;
+
   @override
   Widget build(BuildContext context) {
-    final hasMetaRow = location != null || postedAt != null || salary != null || source != null;
+    final showLegitimacyBadge = legitimacyTier == 'proceed_with_caution' || legitimacyTier == 'suspicious';
+    final hasMetaRow = location != null || postedAt != null || salary != null || source != null || showLegitimacyBadge;
 
     // Transparent card: the page's `paper` reads straight through, and the card
     // is separated from it by a hairline border plus a drop shadow instead of
@@ -152,6 +161,7 @@ class JobCard extends StatelessWidget {
                       if (postedAt != null) _Meta(icon: AppIconName.clock, text: postedAt!),
                       if (salary != null) _Meta(text: salary!, mono: true),
                       if (source != null) _SourceChip(source: source!, url: sourceUrl),
+                      if (showLegitimacyBadge) StatusPill(context: PillContext.legitimacy, value: legitimacyTier!, size: PillSize.sm),
                     ],
                   ),
                 ],

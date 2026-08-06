@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../models/application_item.dart';
 import '../models/job.dart';
+import '../router/route_args.dart';
 import '../services/api_client.dart';
 import '../services/cache_service.dart';
 import '../services/job_filter.dart';
@@ -354,6 +355,8 @@ class _JobsListBodyState extends ConsumerState<JobsListBody> {
       postedAt: job.postedAtLabel,
       bookmarked: _isTracked(job.id),
       onBookmark: () => _toggleBookmark(job),
+      onPress: () => context.push('/job', extra: JobArgs(job: job)),
+      legitimacyTier: job.legitimacyTier,
     );
   }
 }
