@@ -172,6 +172,15 @@ Three **removed** vars are the thing to actually action:
 - [x] `ENABLE_INDIA_SOURCES=true` — **already set on Cloud Run** (verified
       2026-07-27 against the live service, not the checklist). Master kill switch
       for all three India boards (Internshala, Instahyre, Unstop).
+- [ ] `ENABLE_GLOBAL_REMOTE=true` — **optional, and read the numbers first**
+      (ADR-062). Turns on We Work Remotely + Remotive. These are publisher feeds,
+      not scraping, so there's no ADR-003 sign-off to wait on — but the yield is
+      ~1-3 jobs/day, and on the day it was built the honest count was **zero**
+      genuine fresher roles (215 WWR postings → 1 gate pass → that one a false
+      positive; Remotive's entire feed → 0). Turn it on if you want the handful
+      of genuinely-remote USD roles it does surface; leave it off if you're
+      expecting it to grow the pool, because it won't. Single digits in the
+      ingestion health log are correct behaviour here, not an incident.
 - [ ] `INSTAHYRE_MAX_RESULTS=300` — runaway guard, not a target. Note the cap is
       shared across both job types and internships are crawled FIRST for a
       reason (see the comment on `INSTAHYRE_JOB_TYPES`): full-time is ~7,900 rows

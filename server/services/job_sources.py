@@ -2,7 +2,9 @@ import asyncio
 import html
 import logging
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -1276,4 +1278,330 @@ async def fetch_lever() -> list[JobIn]:
                         ),
                     )
                 )
+    return jobs
+
+
+# ---------------------------------------------------------------------------
+# Global remote boards (ADR-003 v5) — We Work Remotely + Remotive
+# ---------------------------------------------------------------------------
+# Both are free, public, no-auth, no-scrape feeds published BY the boards for
+# exactly this purpose (an RSS feed and a documented JSON API), so unlike the
+# India sources there's no ToS tension to manage here — only Remotive's
+# attribution terms, honoured below.
+#
+# Yield expectation, measured live 2026-08-06 before any of this was written:
+# 221 unique WWR tech postings → 6 that pass the entry-level gate, 3 of those
+# false positives (the JD says "mentor junior engineers"); Remotive's whole
+# public feed is 31 rows → 2 entry-level, both non-technical. This source pair
+# is worth ~1-3 jobs/day, not ~100. It is here because those few are genuinely
+# remote and USD-paying, NOT because it moves pool size — don't be surprised by
+# the health log showing single digits, that is the source working correctly.
+
+WWR_RSS_BASE = "https://weworkremotely.com/categories"
+
+# Only the technical category feeds. WWR's main /remote-jobs.rss is capped at the
+# 100 most recent across ALL categories (design, sales, support), so it returns
+# both less tech volume and more noise than the per-category feeds: measured
+# 2026-08-06, the five below carry 221 unique tech postings versus 100 mixed.
+WWR_CATEGORIES = (
+    "remote-programming-jobs",
+    "remote-front-end-programming-jobs",
+    "remote-back-end-programming-jobs",
+    "remote-full-stack-programming-jobs",
+    "remote-devops-sysadmin-jobs",
+)
+
+WWR_FEED_DELAY_SECONDS = 0.3
+
+# Refuse to hand an oversized body to the XML parser.
+#
+# We use stdlib ElementTree, which does not resolve EXTERNAL entities and raises
+# on undefined ones — so the classic XXE file-read is not reachable here. What it
+# does not defend against is internal entity expansion ("billion laughs"), where
+# a small document inflates to gigabytes in memory. Reaching that would require
+# weworkremotely.com itself to serve a hostile feed over HTTPS, which is a real
+# if unlikely supply-chain scenario, and this is the cheap bound on its blast
+# radius: the largest live feed measured 2026-08-06 was ~600KB, so 8MB is ~13x
+# headroom while still capping a malicious body at something survivable.
+WWR_MAX_FEED_BYTES = 8 * 1024 * 1024
+
+# Remotive's public API. ONE unfiltered call per run, deliberately: the entire
+# public feed is 31 rows (job-count == total-job-count, verified live), so
+# per-category calls would multiply requests without adding rows — and their
+# legal notice asks for at most ~4 calls/day. We make one.
+REMOTIVE_API_URL = "https://remotive.com/api/remote-jobs"
+
+# Remotive's terms (returned in the payload's own `0-legal-notice`) require that
+# we link back to the Remotive URL and name Remotive as the source. We satisfy
+# both structurally: redirect_url IS the remotive.com posting URL, and
+# `source="remotive"` is rendered as the source chip on the job card. Their other
+# conditions — don't resyndicate to third-party job aggregators, don't gate the
+# listing behind an email capture — describe things this app does not do.
+REMOTIVE_ATTRIBUTION = "Remotive"
+
+GLOBAL_REMOTE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, application/rss+xml, text/xml, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+# Which "who may apply" strings admit a candidate sitting in India.
+#
+# This is a POSITIVE allowlist and unknown values are REJECTED, which is the
+# opposite of how _primary_city treats an unrecognized place — on purpose. The
+# live distribution (2026-08-06) is why: of Remotive's 31 rows, 6 are
+# "Worldwide" and 2 name Asia, while the other 23 are hard country locks
+# ("USA", "Brazil", "Uruguay", "Canada", "USA, CST (UTC-6)"). An unrecognized
+# region here is overwhelmingly a country name, and storing a US-only posting
+# costs an embedding and a re-rank slot to show the user a job they cannot
+# legally take. WWR is barely affected either way — 235 of its 253 rows say
+# "Anywhere in the World".
+_GEO_ELIGIBLE = re.compile(
+    r"anywhere | worldwide | \bglobal\b | \bremote\b | \bindia\b | \basia\b"
+    r" | any\s+location | no\s+location\s+restriction",
+    re.I | re.X,
+)
+
+
+def is_geo_eligible(region: str | None) -> bool:
+    """True when a board's candidate-location string admits an applicant in India.
+
+    Empty/missing is treated as ELIGIBLE, not ineligible: a board that simply
+    didn't state a restriction hasn't imposed one, and both feeds omit the field
+    on some rows. Only a stated restriction we can't match rejects.
+    """
+    if not region or not region.strip():
+        return True
+    return bool(_GEO_ELIGIBLE.search(region))
+
+
+def _wwr_split_title(raw: str | None) -> tuple[str | None, str | None]:
+    """WWR packs company and role into one RSS <title>: "Webflow: Customer
+    Success Manager - Pacific Time" → ("Webflow", "Customer Success Manager -
+    Pacific Time").
+
+    Splits on the FIRST colon only, because role titles contain colons of their
+    own ("Acme: Engineer II: Platform"). A title with no colon is all role and no
+    company — returned as (None, title) rather than guessing a company out of the
+    first word, which would put "Senior" in the company column.
+    """
+    if not raw or not raw.strip():
+        return (None, None)
+    company, sep, title = raw.partition(":")
+    if not sep or not title.strip():
+        return (None, raw.strip())
+    return (company.strip() or None, title.strip())
+
+
+def _rfc2822_at(raw: str | None) -> datetime | None:
+    """RSS dates are RFC 2822 ("Thu, 06 Aug 2026 07:30:50 +0000"), which pydantic
+    does not parse — the same class of bug as Unstop's "GMT+0530" that dropped
+    every row in the 2026-07-21 incident. Parse here, never raise."""
+    if not raw or not raw.strip():
+        return None
+    try:
+        return parsedate_to_datetime(raw.strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _wwr_item_to_job(item: ET.Element) -> JobIn | None:
+    """One RSS <item> → JobIn, or None when it carries no usable link or title."""
+    link = (item.findtext("guid") or item.findtext("link") or "").strip()
+    raw_title = item.findtext("title")
+    company, title = _wwr_split_title(raw_title)
+    if not link or not title:
+        return None
+
+    # Every listing on WWR is remote by construction — that's the entire premise
+    # of the board — so "Remote" is structural knowledge, not an inference from
+    # the JD text. Stating it explicitly is what lets job_filter's location gate
+    # pass these rows: its _REMOTE_LOCATION pattern matches "remote", and it does
+    # NOT match "Anywhere in the World", which is what the feed actually says.
+    # Same move as the Unstop wfh branch in _unstop_row_to_job. The <region> the
+    # feed does carry is consumed upstream by parse_wwr_rss's geo filter.
+    return JobIn(
+        source="weworkremotely",
+        # The URL slug, not the full URL: it's stable, unique, and short enough
+        # to read in a log line.
+        external_id=link.rstrip("/").rsplit("/", 1)[-1],
+        title=title,
+        company=company,
+        location="Remote",
+        description=_strip_html(item.findtext("description")),
+        # WWR states no salary anywhere in the feed. Left null rather than parsed
+        # out of JD prose, which is where invented numbers come from.
+        salary_min=None,
+        salary_max=None,
+        salary_currency=None,
+        redirect_url=link,
+        posted_at=_rfc2822_at(item.findtext("pubDate")),
+        # WWR publishes a real per-listing deadline, like Unstop and unlike every
+        # other source here — so these rows are retired on the stated date rather
+        # than on the job_expiry_days age guess.
+        expires_at=_rfc2822_at(item.findtext("expires_at")),
+    )
+
+
+def parse_wwr_rss(xml_text: str, require_geo_eligible: bool = True) -> list[JobIn]:
+    """Pure parse of one WWR category feed — no I/O, so the mapping is unit
+    testable against a captured fixture the way parse_internshala_html is.
+    Malformed XML yields [] rather than raising."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        logger.warning("WWR feed parse failed: %s", e)
+        return []
+
+    jobs: list[JobIn] = []
+    for item in root.findall(".//item"):
+        if require_geo_eligible and not is_geo_eligible(item.findtext("region")):
+            continue
+        job = _wwr_item_to_job(item)
+        if job:
+            jobs.append(job)
+    return jobs
+
+
+def _wwr_categories() -> list[str]:
+    """Feed slugs from settings, falling back to the five technical ones."""
+    configured = [c.strip() for c in settings.wwr_categories.split(",") if c.strip()]
+    return configured or list(WWR_CATEGORIES)
+
+
+async def fetch_weworkremotely() -> list[JobIn]:
+    """We Work Remotely via its own public RSS feeds — free, no key, no scraping.
+
+    One GET per technical category. Follows fetch_adzuna()'s error contract: a
+    failed feed logs and is skipped, never raises, so one dead category still
+    leaves the other four's jobs.
+
+    The same posting appears in several category feeds (a role tagged both
+    full-stack and back-end), so results are deduped on external_id here — that
+    keeps the `fetched` count in the health log honest rather than reporting the
+    same job five times.
+    """
+    jobs: list[JobIn] = []
+    seen_ids: set[str] = set()
+
+    async with httpx.AsyncClient(timeout=30, headers=GLOBAL_REMOTE_HEADERS, follow_redirects=True) as client:
+        for category in _wwr_categories():
+            url = f"{WWR_RSS_BASE}/{category}.rss"
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+            except Exception as e:
+                logger.warning("WWR category %r failed: %s: %s", category, type(e).__name__, e)
+                continue
+
+            if len(response.content) > WWR_MAX_FEED_BYTES:
+                logger.warning(
+                    "WWR category %r returned %d bytes (cap %d) — skipped unparsed",
+                    category,
+                    len(response.content),
+                    WWR_MAX_FEED_BYTES,
+                )
+                continue
+
+            found = parse_wwr_rss(response.text, settings.global_remote_require_geo_eligible)
+            new = [j for j in found if j.external_id not in seen_ids]
+            seen_ids.update(j.external_id for j in new)
+            jobs += new
+            logger.info("WWR %s: %d rows (%d new)", category, len(found), len(new))
+            await asyncio.sleep(WWR_FEED_DELAY_SECONDS)
+
+    logger.info("WWR: fetched %d unique postings across %d feeds", len(jobs), len(_wwr_categories()))
+    return jobs
+
+
+def _remotive_row_to_job(r: dict) -> JobIn | None:
+    """One Remotive `jobs[]` entry → JobIn, or None without a stable id/title."""
+    external_id = r.get("id")
+    title = r.get("title")
+    if not external_id or not title:
+        return None
+
+    # `salary` is free text and wildly inconsistent — "$20k -$35k", "", "60000 -
+    # 80000 USD". parse_salary_text already handles exactly this class of string
+    # for Naukri and returns (None, None, None) rather than guessing when it
+    # can't read one, which is the behaviour we want.
+    salary_min, salary_max, currency = parse_salary_text(r.get("salary"))
+
+    return JobIn(
+        source="remotive",
+        external_id=str(external_id),
+        title=title,
+        # Trailing whitespace is common in this field ("Coalition Technologies ").
+        company=(r.get("company_name") or "").strip() or None,
+        # Remote by construction, same reasoning as WWR above: the feed's
+        # candidate_required_location says "Worldwide", which the location gate's
+        # remote pattern does not match.
+        location="Remote",
+        description=_strip_html(r.get("description")),
+        salary_min=salary_min,
+        salary_max=salary_max,
+        # These boards quote USD unless the text said otherwise. Passing the
+        # ORIGINAL region (not our hardcoded "Remote") to infer_currency keeps an
+        # India-located posting reading as INR.
+        salary_currency=currency or infer_currency(r.get("candidate_required_location"), default="USD"),
+        # Remotive's own posting URL — their terms require the link back point
+        # here, not to the employer's site.
+        redirect_url=r.get("url"),
+        # Naive ISO-8601, no offset ("2026-08-02T20:00:46"), and Remotive
+        # publishes in UTC. Stamping the timezone explicitly stops a naive
+        # datetime reaching the freshness comparison, which subtracts aware ones.
+        posted_at=_remotive_posted_at(r.get("publication_date")),
+        # Remotive states no deadline; these fall back to the job_expiry_days age
+        # rule like Adzuna and JSearch.
+        expires_at=None,
+    )
+
+
+def _remotive_posted_at(raw) -> datetime | None:
+    """Naive ISO-8601 → UTC-aware. Never raises."""
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.strip())
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+
+
+async def fetch_remotive() -> list[JobIn]:
+    """Remotive via its documented public API — free, no key, one call per run.
+
+    Remotive delays its public feed by 24 hours by design (stated in their legal
+    notice), so nothing here is same-day. That's harmless against a 10-day
+    freshness window but worth knowing before reading the health log.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30, headers=GLOBAL_REMOTE_HEADERS, follow_redirects=True) as client:
+            response = await client.get(REMOTIVE_API_URL)
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as e:
+        logger.warning("Remotive fetch failed: %s: %s", type(e).__name__, e)
+        return []
+
+    rows = payload.get("jobs") or []
+    jobs: list[JobIn] = []
+    skipped_geo = 0
+    for r in rows:
+        if settings.global_remote_require_geo_eligible and not is_geo_eligible(r.get("candidate_required_location")):
+            skipped_geo += 1
+            continue
+        job = _remotive_row_to_job(r)
+        if job:
+            jobs.append(job)
+
+    logger.info(
+        "Remotive: fetched %d of %d rows (%d skipped as not open to India)",
+        len(jobs),
+        len(rows),
+        skipped_geo,
+    )
     return jobs

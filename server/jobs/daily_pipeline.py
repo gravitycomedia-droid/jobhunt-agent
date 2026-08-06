@@ -6,6 +6,7 @@ from db.supabase_client import supabase
 from services.ingestion_health import record_and_alert_ingestion
 from services.job_ingestion import (
     backfill_job_embeddings,
+    refresh_global_remote,
     refresh_india_boards,
     refresh_job_pool,
     refresh_scraped_sources,
@@ -225,6 +226,15 @@ async def _refresh_scraped_if_due() -> dict:
         _merge(await refresh_india_boards())
     except Exception as e:
         logger.exception("India boards refresh failed, continuing pipeline: %s", e)
+
+    # --- We Work Remotely + Remotive (publisher feeds) — ADR-003 v5.
+    # Cron-only like the rest, though for a cadence reason rather than a ToS one:
+    # Remotive's terms ask for max ~4 calls/day and "Run agent now" has no such
+    # ceiling. Self-gates on enable_global_remote.
+    try:
+        _merge(await refresh_global_remote())
+    except Exception as e:
+        logger.exception("Global remote refresh failed, continuing pipeline: %s", e)
 
     # --- expiry sweep: hide postings that have closed (migration 029) ---
     # AFTER every fetcher, so a posting that reappeared in today's crawl has

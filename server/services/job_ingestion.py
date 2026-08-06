@@ -16,6 +16,7 @@ from services.dedup import is_duplicate, make_dedup_key
 from services.embeddings import embed_text, embed_texts, job_embedding_text
 from services.job_category import classify_category
 from services.job_filter import classify_work_type, gates_for_source, is_relevant
+from services.job_legitimacy import score_posting
 from services.job_sources import (
     _locations,
     _roles,
@@ -28,7 +29,9 @@ from services.job_sources import (
     fetch_lever,
     fetch_linkedin_apify,
     fetch_naukri_apify,
+    fetch_remotive,
     fetch_unstop,
+    fetch_weworkremotely,
 )
 from services.job_tech_category import classify_tech_categories_batch
 
@@ -191,6 +194,15 @@ def insert_manual_job(extraction: JobExtraction, redirect_url: str | None = None
         "category": classify_category(extraction.title, extraction.description),
         "embedding": embed_text(job_embedding_text(extraction.model_dump())),
     }
+    # Career-ops integration Brick 1 (ADR-055): same signal every other
+    # ingestion path computes, so a manually-added/JD-pasted job gets a
+    # badge too rather than only postings discovered automatically.
+    legitimacy = score_posting({**payload, "posted_at": None, "source": source})
+    payload["legitimacy_tier"] = legitimacy["tier"]
+    payload["legitimacy_signals"] = {
+        "signals": legitimacy["signals"],
+        "contractor_language_note": legitimacy["contractor_language_note"],
+    }
     return supabase.table("jobs").insert(payload).execute().data[0]
 
 
@@ -312,6 +324,17 @@ def _dedup_embed_insert(fetched: list[JobIn]) -> dict:
         # the category is the only thing separating an SDE internship from a
         # telecalling one in the app's list.
         payload["category"] = classify_category(job.title, job.description)
+        # Career-ops integration Brick 1 (ADR-055): computed here, in the same
+        # per-row loop as work_type/category, because it only needs fields
+        # already on `payload` (description, salary, posted_at, redirect_url,
+        # source) — no batching needed, unlike tech_category below which
+        # genuinely benefits from being one call across the whole run.
+        legitimacy = score_posting(payload)
+        payload["legitimacy_tier"] = legitimacy["tier"]
+        payload["legitimacy_signals"] = {
+            "signals": legitimacy["signals"],
+            "contractor_language_note": legitimacy["contractor_language_note"],
+        }
         payloads.append(payload)
 
     # ADR-003 v4 (migration 028): the technical SUB-specialism, which `category`
@@ -796,6 +819,70 @@ async def refresh_india_boards() -> dict:
     return summary
 
 
+def _global_remote_sources() -> list[tuple[str, object]]:
+    """The global remote boards as (name, fetcher) pairs. A function, not a
+    module-level list, for the same patchability reason as
+    _india_board_sources() — a list literal binds the function objects at import
+    time and silently defeats patch("services.job_ingestion.fetch_remotive")."""
+    return [
+        ("weworkremotely", fetch_weworkremotely),
+        ("remotive", fetch_remotive),
+    ]
+
+
+async def refresh_global_remote() -> dict:
+    """We Work Remotely + Remotive (ADR-003 v5) — free, publisher-provided feeds.
+
+    Not scraping: WWR publishes RSS and Remotive publishes a documented public
+    API, both explicitly so that third parties can redistribute their listings.
+    So unlike the India sources there's no ToS risk being managed here. It still
+    runs cron-only, for a different reason — Remotive's terms ask for at most ~4
+    calls a day, and the app's "Run agent now" button has no such ceiling.
+
+    Deliberately NOT calling retire_stale_jobs(), which is the trap this source
+    pair sets. Internshala and Instahyre can use absence-as-closure because their
+    listing pages are a COMPLETE view of what's open. An RSS feed is not — it's a
+    rolling window of the most recent N items, so a perfectly open posting falls
+    out of it simply by being pushed down by newer ones. Retiring on absence here
+    would hide live jobs within days. WWR publishes a real per-listing
+    `expires_at` and Remotive falls back to the job_expiry_days age rule; both
+    are handled by retire_expired_jobs() in the pipeline, which is correct.
+    """
+    if not settings.enable_global_remote:
+        logger.info("Global remote boards skipped: ENABLE_GLOBAL_REMOTE is false")
+        return {"fetched": 0, "inserted": 0, "by_source": {}, "errors": {}, "skipped": "disabled"}
+
+    sources = _global_remote_sources()
+    results = await asyncio.gather(*(fetcher() for _, fetcher in sources), return_exceptions=True)
+
+    fetched: list[JobIn] = []
+    by_source: dict[str, int] = {}
+    errors: dict[str, str] = {}
+
+    for (name, _), result in zip(sources, results):
+        if isinstance(result, Exception):
+            logger.warning("Global remote board %s raised: %s: %s", name, type(result).__name__, result)
+            # An explicit zero plus an error entry, never a missing key: a dead
+            # source the ops alert can't see is worse than a dead source (the
+            # 2026-07-21 Unstop incident).
+            by_source[name] = 0
+            errors[name] = f"{type(result).__name__}: {result}"
+            continue
+        by_source[name] = len(result)
+        fetched.extend(result)
+
+    summary = _dedup_embed_insert(fetched)
+    summary["by_source"] = by_source
+    summary["errors"] = errors
+    logger.info(
+        "Global remote boards: %d fetched, %d inserted after dedup/gate/freshness (%s)",
+        summary["fetched"],
+        summary["inserted"],
+        by_source,
+    )
+    return summary
+
+
 # Sources whose rows the expiry sweep must NEVER touch. These are postings the
 # USER added by hand (pasted a link, pasted a JD) — they were a deliberate act,
 # they're usually attached to an application being tracked, and no external
@@ -1042,6 +1129,44 @@ def backfill_tech_categories(limit: int = 500) -> dict:
         backfilled += 1
 
     logger.info("Backfilled tech_category for %d of %d candidate rows", backfilled, len(rows))
+    return {"backfilled": backfilled, "candidates": len(rows)}
+
+
+def backfill_job_legitimacy(limit: int = 500) -> dict:
+    """Catch-up for rows ingested before migration 031 added
+    legitimacy_tier/legitimacy_signals. Safe to call repeatedly — only
+    touches rows where legitimacy_tier is still null. Same posture as
+    backfill_tech_categories()/backfill_job_embeddings(): pure Python,
+    no LLM, so there's no reason this couldn't run on the whole pool in one
+    pass, but a limit keeps a single call's runtime bounded the same way the
+    other backfills do.
+    """
+    rows = (
+        supabase.table("jobs")
+        .select("id,title,description,salary_min,salary_max,posted_at,redirect_url,source")
+        .is_("legitimacy_tier", "null")
+        .limit(limit)
+        .execute()
+        .data
+    )
+    if not rows:
+        return {"backfilled": 0}
+
+    backfilled = 0
+    for row in rows:
+        legitimacy = score_posting(row, max_job_age_days=settings.max_job_age_days)
+        supabase.table("jobs").update(
+            {
+                "legitimacy_tier": legitimacy["tier"],
+                "legitimacy_signals": {
+                    "signals": legitimacy["signals"],
+                    "contractor_language_note": legitimacy["contractor_language_note"],
+                },
+            }
+        ).eq("id", row["id"]).execute()
+        backfilled += 1
+
+    logger.info("Backfilled legitimacy_tier for %d rows", backfilled)
     return {"backfilled": backfilled, "candidates": len(rows)}
 
 

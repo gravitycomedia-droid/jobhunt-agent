@@ -334,6 +334,8 @@ class _SourceBadge extends StatelessWidget {
     'greenhouse': Color(0xFF23A566),
     'lever': Color(0xFFFF6A55),
     'instahyre': Color(0xFFF5A623),
+    'weworkremotely': Color(0xFF1F5EA8),
+    'remotive': Color(0xFF17A2A2),
   };
 
   @override

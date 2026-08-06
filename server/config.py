@@ -303,6 +303,45 @@ class Settings(BaseSettings):
     # fetch back to specific roles without touching code.
     unstop_search_terms: str = ""
 
+    # --- global remote boards (ADR-003 v5, 2026-08-06) ----------------------
+    # We Work Remotely (public RSS) + Remotive (public documented JSON API).
+    # Separate switch from enable_india_sources on purpose: these two are
+    # publisher-provided feeds, not scraping, so they carry none of ADR-003's
+    # ToS risk — but they DO carry a cadence obligation (Remotive asks for max
+    # ~4 calls/day), which is why they still live on the cron path only.
+    #
+    # Default false, same posture as every other source switch: nothing new
+    # fetches on a fresh deploy without a deliberate env change.
+    #
+    # Set expectations before turning this on. Measured live 2026-08-06, BEFORE
+    # the code was written: 221 unique WWR tech postings yield 6 that pass the
+    # entry-level gate (3 of those are false positives whose JD says "mentor
+    # junior engineers"), and Remotive's entire public feed is 31 rows yielding
+    # 2, both non-technical. Steady state is ~1-3 jobs/day. These boards serve
+    # experienced devs chasing USD contracts; the fresher slice is thin and no
+    # amount of gate-loosening creates supply that isn't there. This is on for
+    # quality (genuinely remote, USD-paying), not for volume.
+    enable_global_remote: bool = False
+
+    # WWR technical category feed slugs. Empty → the five defaults in
+    # job_sources.WWR_CATEGORIES. The main /remote-jobs.rss is deliberately not
+    # among them: it's capped at 100 items across ALL categories, so it carries
+    # less tech volume and more noise than the per-category feeds.
+    wwr_categories: str = (
+        "remote-programming-jobs,remote-front-end-programming-jobs,"
+        "remote-back-end-programming-jobs,remote-full-stack-programming-jobs,"
+        "remote-devops-sysadmin-jobs"
+    )
+
+    # Drop postings whose stated candidate location excludes India.
+    #
+    # Worth having ON: of Remotive's 31 rows, 23 are hard country locks ("USA",
+    # "Brazil", "Uruguay", "USA, CST (UTC-6)") that a candidate in Hyderabad
+    # cannot take, and each one stored costs an embedding plus a re-rank slot.
+    # WWR is barely affected — 235 of 253 rows say "Anywhere in the World".
+    # Turn off to see everything the boards carry regardless of eligibility.
+    global_remote_require_geo_eligible: bool = True
+
     # --- per-source relevance gates (ADR-003 v3) ----------------------------
     # Format: "source:gate+gate, source2:none". Gates are role / entry / location
     # (services/job_filter.py). A source NOT named here gets all three, so every

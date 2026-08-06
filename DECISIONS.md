@@ -2152,3 +2152,108 @@ statement's start snapshot and could mint duplicates within itself.
 **Migration numbering.** The plan specified `019_referral_system.sql`; 019
 through 035 were already taken, so it shipped as `036_referral_system.sql`.
 
+---
+
+## ADR-062: Global remote boards — We Work Remotely + Remotive (ADR-003 v5)
+
+**Date:** 2026-08-06
+**Status:** Accepted, shipped disabled (`ENABLE_GLOBAL_REMOTE=false`)
+
+**Context.** A widely-circulated listicle of "16 websites that pay in USD for
+remote work" prompted the question of whether we could pull from them the way we
+pull from Unstop. Ten were named: We Work Remotely, Hubstaff Talent, Wellfound,
+Remotive, WorkWave, The AI Job Board, Remote Woman, Toptal, FlexJobs, JS
+Remotely.
+
+**Decision — only two of the ten are ingestible, and only two are worth it.**
+
+| Board | Verdict |
+| --- | --- |
+| We Work Remotely | **Adopted.** Public RSS per category, no key, publisher-provided |
+| Remotive | **Adopted.** Public documented JSON API, no key |
+| Wellfound | Rejected — no public API, Cloudflare-gated, ToS forbids scraping |
+| FlexJobs | Rejected — listings sit behind a paid subscription; scraping is paywall circumvention |
+| Toptal | Rejected — not a board. You apply to Toptal's network; there are no listings to fetch |
+| Hubstaff Talent | Rejected — reverse direction, a directory of freelancers for employers |
+| WorkWave | Rejected — **the listicle is wrong.** `workwave.com` is field-service management software |
+| AI Job Board / Remote Woman / JS Remotely | Rejected — no feed or API, HTML-scrape only, for a handful of listings each |
+
+The two adopted are explicitly *not* scraping: both publish these feeds so third
+parties can redistribute their listings. ADR-003's ban is on login-based
+scraping and its risk calculus doesn't apply. They still run cron-only, for a
+different reason — Remotive's terms ask for at most ~4 calls/day and the app's
+"Run agent now" button has no such ceiling.
+
+**Decision — adopted with eyes open, because the yield is near zero.** Measured
+live on 2026-08-06 *before* writing any code, then confirmed end-to-end after:
+
+```
+WWR     215 unique tech postings → 21 fresh (≤10d) → 1 passes the gate
+Remotive 31 rows (whole feed) → 8 open to India → 2 fresh → 0 pass the gate
+```
+
+And the single WWR survivor — "DevOps Engineer IV (Obs)" — is a **false
+positive**: `is_entry_level` reads the description when the title doesn't match,
+and that JD says "mentor junior engineers". The honest yield on the day of
+writing was **zero genuine fresher roles**.
+
+This is a supply problem, not a gate problem, and that distinction is the whole
+point. ADR-003 v3 widened Unstop because the *role gate* was throttling a
+catalogue already full of fresher postings — loosening it unlocked ~87/day. Here
+the catalogue itself is senior-heavy and small: these boards serve experienced
+devs chasing USD contracts. No gate change creates supply that isn't there.
+Expected steady state is ~1-3 jobs/day.
+
+Shipped anyway at the builder's explicit call, having been shown these numbers:
+the few that land are genuinely remote and USD-paying, which no other source in
+the pool offers. **Do not read the health log's single digits as a broken
+source.** That is this source working correctly.
+
+**Decision — a positive geo allowlist, rejecting unknowns.** `is_geo_eligible`
+admits only regions that plausibly include India (worldwide / anywhere / global /
+remote / india / asia) and rejects everything else, which inverts how
+`_primary_city` treats an unrecognized place. The live distribution is why: 23 of
+Remotive's 31 rows are hard country locks ("USA", "Brazil", "Uruguay", "USA, CST
+(UTC-6)"), and storing one costs an embedding and a re-rank slot to show the user
+a job they cannot legally take. An unrecognized region here is nearly always a
+country name. A *missing* region is still treated as eligible — an unstated
+restriction is not a restriction.
+
+**Decision — `location` is hardcoded to `"Remote"`, not copied from the feed.**
+Both boards are remote-only by construction, so this is structural knowledge
+rather than an inference from JD text — the same move as the `wfh` branch in
+`_unstop_row_to_job`. It's also load-bearing: the feeds say "Anywhere in the
+World" and "Worldwide", neither of which `job_filter._REMOTE_LOCATION` matches,
+so without this the location gate would reject the entire source.
+
+**Decision — gate override is `entry` only.** `location` is redundant given the
+line above (it can only pass), and `role` would take an already-thin source to
+zero — requiring fullstack/frontend/cloud on top of entry-level leaves 0 of 215.
+Entry-level stays for the reason it does everywhere: a staff-engineer contract is
+dead weight in a fresher's pool.
+
+**Decision — these sources are NEVER retired on absence.** The trap this pair
+sets. Internshala and Instahyre use `retire_stale_jobs` because their listing
+pages are a *complete* view of what's open. An RSS feed is not — it's a rolling
+window of the most recent N items, so a live posting drops out simply by being
+pushed down by newer ones, and retiring on absence would hide open jobs within
+days. WWR publishes a real per-listing `expires_at` (like Unstop, unlike every
+other source here) and Remotive falls back to the `job_expiry_days` age rule;
+both are handled by `retire_expired_jobs()`. There is a test asserting
+`retire_stale_jobs` is never called.
+
+**Remotive attribution.** Their terms, returned in the payload's own
+`0-legal-notice`, require linking back to the Remotive URL and naming Remotive as
+the source. Both are satisfied structurally: `redirect_url` *is* the remotive.com
+posting URL and `source="remotive"` renders as the source chip. Their other
+conditions (no resyndication to third-party aggregators, no email-capture gating)
+describe things this app does not do. Their feed is also delayed 24h by design —
+harmless against a 10-day freshness window, but it means nothing here is same-day.
+
+**Known follow-up, not fixed here.** `is_entry_level` falling back to the
+description lets "we mentor junior engineers" mark a senior role entry-level. It
+inflates every source's yield slightly and dominates this one's. Tightening
+`_ENTRY` would shift Unstop/Internshala/Instahyre yields too, so it's a
+deliberate separate change rather than a drive-by on a thin new source.
+
+**No migration.** New sources are rows in `jobs`, not schema.

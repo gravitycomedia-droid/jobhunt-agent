@@ -31,6 +31,11 @@ class SourceChip extends StatelessWidget {
     'lever': (Color(0xFF5423E7), 'L'),
     'google_form': (Color(0xFF4285F4), 'G'),
     'manual': (Color(0xFF5B5B66), 'M'),
+    // Global remote boards (ADR-062). Two-letter monograms because a bare "W"
+    // and "R" read as nothing — and "R" would collide with a future Remote OK /
+    // RemoteOK entry.
+    'weworkremotely': (Color(0xFF1F5EA8), 'WW'),
+    'remotive': (Color(0xFF17A2A2), 'Rm'),
   };
 
   @override
