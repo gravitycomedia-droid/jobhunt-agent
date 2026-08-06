@@ -19,6 +19,7 @@ from services.form_parser import (
     FormParseError,
     apply_answer_history,
     build_prefill_url,
+    extract_dom_fields,
     fetch_form_html,
     is_google_form_url,
     normalize_question,
@@ -100,9 +101,17 @@ def _build_answer_history(profile_id: str) -> dict[str, FormAnswer]:
 
 async def _parse_schema_from_html(html: str, form_url: str, profile: dict) -> FormSchema:
     """Shared by /parse (server-fetched HTML) and /parse-html (client-fetched
-    HTML): Google Forms parse deterministically from FB_PUBLIC_LOAD_DATA_ (no
-    LLM); anything else falls back to BeautifulSoup text + LLM extraction
-    flagged source='llm_extracted'."""
+    HTML, incl. Smart AI Fill's manual in-browser trigger — ADR-053's
+    pattern generalized beyond post-Google-sign-in). Three-way fallback:
+    Google Forms parse deterministically from FB_PUBLIC_LOAD_DATA_ (no LLM);
+    otherwise a real ATS page (Unstop/Internshala/Naukri/Indeed's own apply
+    forms) gets extract_dom_fields' deterministic DOM-selector extraction
+    (still no LLM — just structural HTML parsing) so the client can actually
+    inject values, flagged source='dom_extracted'; only when THAT finds
+    nothing fillable (e.g. a JS-rendered SPA whose inputs weren't mounted yet
+    when the page was read) does this fall back to the older BeautifulSoup
+    TEXT + LLM extraction, flagged source='llm_extracted' — copy-paste only,
+    no DOM attachment point to inject into."""
     if is_google_form_url(form_url) or "FB_PUBLIC_LOAD_DATA_" in html:
         try:
             return parse_google_form(html, form_url=form_url)
@@ -110,6 +119,10 @@ async def _parse_schema_from_html(html: str, form_url: str, profile: dict) -> Fo
             raise HTTPException(status_code=403, detail=f"form_auth_required: {e}") from e
         except FormParseError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
+
+    dom_schema = extract_dom_fields(html, form_url)
+    if dom_schema is not None:
+        return dom_schema
 
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript"]):

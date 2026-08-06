@@ -13,6 +13,7 @@ import re
 from urllib.parse import urlencode
 
 import httpx
+from bs4 import BeautifulSoup
 from rapidfuzz import fuzz, process
 
 from models.form import FormAnswer, FormQuestion, FormSchema
@@ -222,6 +223,138 @@ def parse_google_form(html: str, form_url: str) -> FormSchema:
         questions=questions,
         form_url=form_url,
         source="google_form",
+    )
+
+
+# Smart AI Fill (Unstop/Internshala/Naukri/Indeed's own apply forms — real
+# ATS pages, not Google Forms). Skipped entirely: hidden/submit/button/image/
+# reset (not user-fillable), file (browsers block setting a file input's
+# value from script — a platform rule, not a choice here), password/OTP-style
+# inputs (never auto-filled, same posture as _SENSITIVE_QUESTION_RE below).
+# Skipped for now (v1 is text/paragraph only — see extract_dom_fields' own
+# docstring): checkbox/radio, which need group-aware handling a single
+# selector can't express.
+_SKIP_INPUT_TYPES = {"hidden", "submit", "button", "image", "reset", "file", "password", "checkbox", "radio"}
+_TEXTLIKE_INPUT_TYPES = {"text", "email", "tel", "number", "search", "url", "date", "time"}
+
+# Bounds the schema size (and therefore the map_profile_to_form prompt and
+# the client's injection surface) on a page with an unusually large number
+# of inputs — a long multi-page ATS wizard, a page with junk/decorative
+# inputs, etc.
+MAX_DOM_FIELDS = 40
+
+
+def _field_label(soup: BeautifulSoup, el) -> str:
+    """Best-effort human label for one form element, code-only (Golden Rule
+    2) — no LLM involved in finding *which* text describes a field, only in
+    (later, in map_profile_to_form) deciding what profile fact answers it."""
+    el_id = el.get("id")
+    if el_id:
+        label = soup.find("label", attrs={"for": el_id})
+        if label and label.get_text(strip=True):
+            return label.get_text(strip=True)
+    parent_label = el.find_parent("label")
+    if parent_label and parent_label.get_text(strip=True):
+        return parent_label.get_text(strip=True)
+    aria = el.get("aria-label")
+    if aria and aria.strip():
+        return aria.strip()
+    placeholder = el.get("placeholder")
+    if placeholder and placeholder.strip():
+        return placeholder.strip()
+    name = el.get("name") or ""
+    return name.replace("_", " ").replace("-", " ").strip()
+
+
+def _dom_selector(el) -> str:
+    """`name` before `id`: on the ATS pages this targets (server-rendered
+    HTML, not Google's minified React — see extract_dom_fields' docstring),
+    `name` is the attribute the page's own submit handler reads, so it's
+    the more stable of the two across a reskin. Empty return = "don't
+    inject into this one" (multiple elements could otherwise collide on the
+    same generated selector, e.g. two unlabeled inputs with no name/id)."""
+    name = el.get("name")
+    if name:
+        return f'[name="{name}"]'
+    el_id = el.get("id")
+    if el_id:
+        return f"#{el_id}"
+    return ""
+
+
+def extract_dom_fields(html: str, form_url: str) -> FormSchema | None:
+    """Smart AI Fill: deterministic (Golden Rule 2 — no LLM here) structural
+    extraction of real <input>/<textarea>/<select> elements, each carrying a
+    `dom_selector` the client can actually write a value into via JS —
+    unlike extract_form_from_text's stripped-TEXT LLM guess (still the
+    fallback below when this finds nothing), which has no DOM attachment
+    point at all and can only ever produce a copy-paste answer sheet.
+
+    v1 scope, deliberately conservative (ADR-053's "no DOM injection" rule
+    stays intact for anything this function doesn't hand a real selector
+    to): plain text-like inputs and textareas only. <select> is extracted
+    (its options are useful context and it can legitimately be answered) but
+    the client only ever offers it as a tap-to-apply suggestion, never
+    blind-injects it — same for anything a field's `type` marks as complex.
+    checkbox/radio groups are skipped entirely (see _SKIP_INPUT_TYPES).
+
+    Returns None when the page has no usable fields — most commonly a
+    JS-rendered SPA whose real inputs mount AFTER the WebView's one-time HTML
+    read already happened (this is exactly why LinkedIn's heavily-dynamic
+    Easy Apply modal is staged as a fast-follow, not v1 — see
+    docs/21-career-ops-integration-plan.md). The caller falls back to
+    extract_form_from_text in that case."""
+    soup = BeautifulSoup(html, "html.parser")
+    questions: list[FormQuestion] = []
+    seen_selectors: set[str] = set()
+
+    for el in soup.find_all(["input", "textarea", "select"]):
+        if el.name == "input":
+            input_type = (el.get("type") or "text").lower()
+            if input_type in _SKIP_INPUT_TYPES:
+                continue
+            qtype = "short" if input_type in _TEXTLIKE_INPUT_TYPES else "unknown"
+            if qtype == "unknown":
+                continue  # an input type we don't have a fill story for yet
+            options: list[str] = []
+        elif el.name == "textarea":
+            qtype = "paragraph"
+            options = []
+        else:  # select
+            qtype = "dropdown"
+            options = [o.get_text(strip=True) for o in el.find_all("option") if o.get_text(strip=True)]
+
+        selector = _dom_selector(el)
+        if not selector or selector in seen_selectors:
+            continue
+        label = _field_label(soup, el)
+        if not label:
+            continue
+        seen_selectors.add(selector)
+
+        questions.append(
+            FormQuestion(
+                entry_id=f"field_{len(questions)}",
+                text=label,
+                type=qtype,
+                options=options,
+                required=el.has_attr("required"),
+                dom_selector=selector,
+            )
+        )
+        if len(questions) >= MAX_DOM_FIELDS:
+            break
+
+    if not questions:
+        return None
+
+    title_tag = soup.find("title")
+    return FormSchema(
+        title=title_tag.get_text(strip=True) if title_tag and title_tag.get_text(strip=True) else "Application form",
+        description=None,
+        questions=questions,
+        form_url=form_url,
+        source="dom_extracted",
     )
 
 

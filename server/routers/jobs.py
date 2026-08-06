@@ -25,6 +25,7 @@ from services.rate_limit import enforce_rate_limit, enforce_rate_limit_by_user
 from services.job_ingestion import (
     ManualJobFetchError,
     backfill_job_embeddings,
+    backfill_job_legitimacy,
     fetch_manual_job_text,
     insert_manual_job,
     refresh_job_pool,
@@ -237,6 +238,16 @@ async def role_suggestions(user_id: str = Depends(get_current_user_id)):
 @router.post("/backfill-embeddings")
 async def backfill_embeddings(user_id: str = Depends(get_current_user_id)):
     result = backfill_job_embeddings()
+    return {"data": result, "error": None}
+
+
+@router.post("/backfill-legitimacy")
+async def backfill_legitimacy(user_id: str = Depends(get_current_user_id)):
+    """Career-ops integration Brick 1 (ADR-055): one-off catch-up for jobs
+    ingested before migration 031. Same shape as /backfill-embeddings —
+    an ops-triggered, idempotent, repeatable call, not something the app
+    surfaces to end users."""
+    result = backfill_job_legitimacy()
     return {"data": result, "error": None}
 
 

@@ -26,11 +26,12 @@ def _ensure_configured() -> None:
     _configured = True
 
 
-def send_followup_email(*, to: str, subject: str, body: str) -> None:
-    """Sends a follow-up email via Resend. Raises EmailSendError on any
-    failure — missing config, invalid recipient, or a Resend API error —
-    so POST /applications/{id}/followup/send can turn it into a clear 502
-    rather than silently reporting success."""
+def _send(*, to: str, subject: str, body: str) -> None:
+    """Shared Resend call behind every user-triggered send in this module.
+    Extracted for career-ops integration Brick 3 (ADR-057) when
+    send_application_email needed the identical mechanics as
+    send_followup_email — two names because the caller/error context
+    differs (which endpoint a failure is attributed to), one implementation."""
     _ensure_configured()
     try:
         resend.Emails.send(
@@ -44,6 +45,23 @@ def send_followup_email(*, to: str, subject: str, body: str) -> None:
     except Exception as e:
         logger.exception("Resend send failed")
         raise EmailSendError(str(e)) from e
+
+
+def send_followup_email(*, to: str, subject: str, body: str) -> None:
+    """Sends a follow-up email via Resend. Raises EmailSendError on any
+    failure — missing config, invalid recipient, or a Resend API error —
+    so POST /applications/{id}/followup/send can turn it into a clear 502
+    rather than silently reporting success."""
+    _send(to=to, subject=subject, body=body)
+
+
+def send_application_email(*, to: str, subject: str, body: str) -> None:
+    """Sends a first-contact application/referral/cold email via Resend —
+    same mechanics and same EmailSendError contract as send_followup_email,
+    kept as its own named function so logs and error messages are honest
+    about which flow (POST /application-emails/{id}/send) triggered a send.
+    """
+    _send(to=to, subject=subject, body=body)
 
 
 def send_ops_alert(subject: str, body: str) -> bool:

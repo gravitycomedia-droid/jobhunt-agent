@@ -4,8 +4,14 @@ from config import settings
 from db.supabase_client import supabase
 from services.auth import get_current_profile
 from services.background_tasks import create_task, run_task
-from services.matching import DEFAULT_RERANK_LIMIT, get_ranked_matches, rerank_shortlist
+from services.matching import (
+    DEFAULT_RERANK_LIMIT,
+    get_locked_matches,
+    get_ranked_matches,
+    rerank_shortlist,
+)
 from services.rate_limit import enforce_rate_limit
+from services.referrals import effective_match_limit
 
 router = APIRouter(prefix="/matches", tags=["matches"])
 
@@ -64,6 +70,22 @@ async def rerank(
 @router.get("")
 async def matches(limit: int = Query(50, le=100), profile: dict = Depends(get_current_profile)):
     """Cached stage-2 results, best fit first. Call POST /matches/rerank
-    first (or after refreshing jobs) to populate/refresh this."""
+    first (or after refreshing jobs) to populate/refresh this.
+
+    Plan 21: `data` is now an object rather than a bare array, so the gated
+    response can carry its `locked` teasers alongside the real matches. The
+    {"data": ..., "error": null} envelope is unchanged — the shape INSIDE data
+    is what grew, same call the notifications feed makes for its unread count.
+    `locked` is [] for an ungated profile, so the app renders identically for
+    everyone who isn't gated."""
     results = get_ranked_matches(profile, limit=limit)
-    return {"data": results, "error": None}
+    return {
+        "data": {
+            "matches": results,
+            "locked": get_locked_matches(profile, results),
+            # Sent so the app can write "3 of 20" without duplicating the
+            # tier/quota rules client-side — the server owns that arithmetic.
+            "effective_match_limit": effective_match_limit(profile),
+        },
+        "error": None,
+    }

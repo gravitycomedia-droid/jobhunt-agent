@@ -5,13 +5,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers import (
     account,
+    application_emails,
     applications,
     chat,
+    cover_letters,
     forms,
+    interview_prep,
     jobs,
     matches,
     notifications,
+    offer_reviews,
     pipeline,
+    referrals,
     resume,
     stats,
     tailor,
@@ -24,7 +29,11 @@ app.include_router(resume.router)
 app.include_router(jobs.router)
 app.include_router(matches.router)
 app.include_router(tailor.router)
+app.include_router(cover_letters.router)
 app.include_router(applications.router)
+app.include_router(application_emails.router)
+app.include_router(interview_prep.router)
+app.include_router(offer_reviews.router)
 app.include_router(pipeline.router)
 app.include_router(stats.router)
 app.include_router(tasks.router)
@@ -32,6 +41,7 @@ app.include_router(forms.router)
 app.include_router(notifications.router)
 app.include_router(account.router)
 app.include_router(chat.router)
+app.include_router(referrals.router)
 
 # Dev-only: lets Flutter web (served from its own localhost port) call this
 # API from the browser. Native iOS/Android builds never hit CORS at all —

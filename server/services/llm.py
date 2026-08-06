@@ -9,10 +9,14 @@ from pydantic import BaseModel, ValidationError
 
 from config import settings
 from db.supabase_client import supabase
+from models.application_email import ApplicationEmailLlmResponse
+from models.cover_letter import CoverLetterLlmResponse
 from models.followup import FollowupDraft
 from models.form import FormFillResponse, LlmFormExtraction
+from models.interview_prep import InterviewPackLlmResponse
 from models.job import JobExtraction
 from models.match import BatchMatchResponse, MatchResult
+from models.offer_review import OfferReviewLlmResponse
 from models.resume import ResumeProfile
 from models.skill_growth import SkillGrowthResponse
 from models.tailor import TailorLlmResponse
@@ -165,6 +169,184 @@ Return ONLY JSON:
 }"""
 
 
+# Career-ops integration Brick 2 (docs/21-career-ops-integration-plan.md
+# §1.1, DECISIONS.md ADR-056). Same anti-fabrication posture as
+# TAILOR_SYSTEM_PROMPT immediately above — this prompt is a best-effort
+# instruction, not the enforcement; services/guardrail.py's atom check on
+# the result is (Golden Rule 4). Deliberately narrow: 1 hook + 1-3
+# achievement paragraphs + 1 closer, not a full-page letter — the resume
+# already carries the exhaustive detail.
+COVER_LETTER_SYSTEM_PROMPT = """You write a concise, specific cover letter for one job posting, using ONLY
+facts already present in the candidate's profile below. You are not
+summarizing the resume — you are making the case for 2-3 achievements that
+matter most for THIS role, in the candidate's voice, addressed to the
+company.
+
+Structure:
+- opening: 1-2 sentences. Name the role and the company, and give one
+  concrete reason this specific posting is a fit — reference the JD's
+  actual stated need, not a generic "I am excited to apply."
+- body_paragraphs: 1-3 paragraphs. Each one picks ONE real achievement
+  (a resume bullet or a project) and explains, in plain sentences (not
+  bullet fragments), why it matters for this JD's requirements. Use the
+  candidate's real numbers and technologies exactly as given — never round
+  up, never invent a metric that isn't there. If the candidate has no work
+  experience bullets, ground every paragraph in CANDIDATE PROJECTS instead.
+- closing: 1-2 sentences. A confident, non-desperate call to action
+  (available to discuss further / attached resume / thanks for considering).
+
+You may NEVER:
+- invent experience, skills, metrics, employers, or dates not in the
+  profile below
+- claim a technology or tool the candidate hasn't listed
+- inflate a real number (40% becoming "over 50%", etc.)
+If the JD asks for something the candidate genuinely lacks, simply don't
+mention it — do not paper over a gap by implying they have it.
+
+Return ONLY JSON:
+{
+  "opening": str,
+  "body_paragraphs": [str],
+  "closing": str
+}"""
+
+
+# Career-ops integration Brick 3 (docs/21-career-ops-integration-plan.md
+# §1.6, DECISIONS.md ADR-057). Distinct from FOLLOWUP_SYSTEM_PROMPT below —
+# that's a nudge sent 7+ days into silence; this is the FIRST message,
+# before any application history exists to reference. Same anti-fabrication
+# posture as the cover letter prompt immediately above: grounded only in
+# the profile facts given, verified afterward by the guardrail, never
+# trusted from the prompt alone (Golden Rule 4).
+APPLICATION_EMAIL_SYSTEM_PROMPT = """You draft a first-contact email about one job, using ONLY facts already
+present in the candidate's profile below — never invent experience,
+skills, metrics, or employers, and never inflate a real number.
+
+The requested TYPE changes the tone and content, not which facts you may
+use:
+- "application": a formal, direct email to a recruiter/HR inbox. States
+  the role applying for, one concrete line on fit (a real achievement or
+  skill relevant to the JD), and that the resume is attached.
+- "referral": addressed to a known contact or mutual connection, asking
+  them to forward or refer the application. Warmer and briefer than
+  "application" — this is a favor being asked, not a pitch.
+- "cold": addressed to someone with no prior connection (a hiring manager
+  found independently, a generic careers inbox). A little more context on
+  why this company specifically, since there is no warm intro to lean on.
+
+Keep it under 150 words. One clear, low-pressure call to action. No
+desperation, no guilt-tripping, no generic filler ("I am a hard worker
+and fast learner").
+
+Return ONLY JSON: {"subject": str, "body": str}"""
+
+
+# Career-ops integration Brick 4 (docs/21-career-ops-integration-plan.md
+# §1.2, DECISIONS.md ADR-058). v1: no web search, so this is grounded ONLY
+# in the JD text plus the match's already-computed gaps/strengths
+# (services/matching.py) — zero new data dependency. Any question a real
+# interviewer might ask that ISN'T literally traceable to the JD gets
+# honestly labeled `inferred=true`, the way career-ops tags ungrounded
+# questions rather than presenting a guess as fact.
+INTERVIEW_PREP_SYSTEM_PROMPT = """You prepare a candidate for an interview for ONE job, using ONLY the
+candidate's real profile facts below and the job posting below. You have no
+web search and no company research in this version — do not claim to know
+anything about the company beyond what the JD itself states.
+
+Produce 5-8 likely interview questions: a mix of behavioral/STAR questions,
+technical/role-specific questions grounded in the JD's stated requirements,
+and — if CANDIDATE GAPS is non-empty — one or two questions that probe those
+specific gaps, so the candidate can prepare an honest answer for the weak
+spot a recruiter is most likely to raise.
+
+For each question, set inferred=false only if its premise is DIRECTLY
+stated in the JD text; set inferred=true for a question that's reasonable
+for this type of role but isn't literally grounded in the posting. Be
+honest about this split — do not mark everything false.
+
+For each question, also draft a STAR-format suggested answer using ONLY
+real achievements from CANDIDATE RESUME BULLETS / CANDIDATE PROJECTS below:
+- situation: 1 sentence of real context (role, project, or company, as given)
+- task: 1 sentence — what needed to happen
+- action: 1-2 sentences — what the candidate specifically did, their real
+  actions and technologies
+- result: 1 sentence — the real, stated outcome, using real numbers only,
+  never invented or rounded up
+
+If a question targets a GAP the candidate has no real story for, do NOT
+fabricate one — write situation/task/action as an honest strategy for
+discussing that gap (adjacent experience, active learning, a related
+project), and leave result as an empty string.
+
+You may NEVER invent an employer, metric, technology, or outcome not
+present in the candidate's real profile below.
+
+Return ONLY JSON:
+{
+  "questions": [
+    {
+      "question": str,
+      "category": "behavioral" | "technical" | "gap" | "company_fit",
+      "inferred": bool,
+      "situation": str,
+      "task": str,
+      "action": str,
+      "result": str
+    }
+  ]
+}"""
+
+
+# Career-ops integration Brick 5 (docs/21-career-ops-integration-plan.md
+# §1.3, DECISIONS.md ADR-059). Hard guards copied directly from career-ops's
+# own offer-prep mode because they're correct, and enforced two ways: the
+# prompt asks for them here, and the RESPONSE SCHEMA (models/offer_review.py)
+# has no verdict field for the model to fill in even if it tried. The
+# clause-grounding check (services/offer_review.py) is the deterministic
+# half — this prompt is the best-effort half, same posture as every other
+# prompt-injection-adjacent instruction in this file (ADR-025).
+OFFER_REVIEW_SYSTEM_PROMPT = """You are a plain-English reader for one offer letter or employment contract,
+for a candidate who is not a lawyer.
+
+Read the document below and identify every clause that materially affects
+the candidate — compensation, equity/ESOP, notice period, non-compete,
+non-solicit, IP assignment, termination, probation, benefits, bond or
+training-cost-recovery clauses, arbitration, or anything else that binds
+the candidate to something.
+
+For each clause:
+- clause_text: copy the relevant text VERBATIM from the document below —
+  do not paraphrase, summarize, or invent wording. Quote the whole
+  relevant span if it runs several sentences.
+- category: one short label, e.g. "compensation", "equity",
+  "notice_period", "non_compete", "ip_assignment", "termination",
+  "probation", "bond", "arbitration", "other".
+- plain_english: explain what this clause means and what it would require
+  of the candidate, in plain, neutral language a non-lawyer can follow.
+
+You may NEVER:
+- state whether this is "safe to sign," "risky," "favorable," or
+  "unfavorable" — no verdict, no score, no recommendation, anywhere in
+  your output.
+- state what the law requires or permits in any jurisdiction FROM MEMORY.
+  If understanding a clause depends on which jurisdiction's law applies
+  (e.g. whether a non-compete is enforceable, statutory notice minimums,
+  bond enforceability), do not answer that inline — add a specific,
+  concrete question to questions_for_lawyer instead.
+- invent a clause that isn't actually in the document below.
+
+questions_for_lawyer: every jurisdiction-dependent or legally uncertain
+point you deferred above, phrased as a specific question (e.g. "Is the
+2-year non-compete in the termination clause enforceable in the employee's
+state/country?" — not a vague "is this legal?").
+
+Return ONLY JSON:
+{
+  "clauses": [{"clause_text": str, "category": str, "plain_english": str}],
+  "questions_for_lawyer": [str]
+}"""
+
+
 # Mirrors docs/PROMPTS.md section 4 (Follow-up Draft, Brick 8).
 FOLLOWUP_SYSTEM_PROMPT = """You draft brief, warm, professional follow-up emails for job applications
 with no response after 7+ days. Rules: 90-120 words, no desperation, no
@@ -270,6 +452,22 @@ class TailorError(Exception):
     """The model responded, but its output never validated (after the one retry)."""
 
 
+class CoverLetterError(Exception):
+    """The model responded, but its output never validated (after the one retry)."""
+
+
+class ApplicationEmailError(Exception):
+    """The model responded, but its output never validated (after the one retry)."""
+
+
+class InterviewPrepError(Exception):
+    """The model responded, but its output never validated (after the one retry)."""
+
+
+class OfferReviewError(Exception):
+    """The model responded, but its output never validated (after the one retry)."""
+
+
 class FollowupError(Exception):
     """The model responded, but its output never validated (after the one retry)."""
 
@@ -314,12 +512,35 @@ DEEPSEEK = "deepseek"
 # because it's the one guardrail-adjacent task (A5).
 _TASK_PROVIDERS: dict[str, str] = {
     "parse": GEMINI,  # vision-required — DeepSeek is text-only
+    # Career-ops integration Brick 2 (ADR-056): guardrail-adjacent like
+    # `tailor`, for the same reason — this is the one other generation task
+    # a fabricated fact would actually reach the guardrail post-check for.
+    # Kept a simple dict entry rather than its own settings knob (unlike
+    # `tailor_provider`): revisit only if there's ever a reason to A/B the
+    # two providers' guardrail-pass rates on this task specifically.
+    "cover_letter": GEMINI,
+    # Career-ops integration Brick 3 (ADR-057): also guardrail-checked (one
+    # atom pass over the whole body) — same reasoning as `cover_letter`
+    # immediately above.
+    "application_email": GEMINI,
     "rerank": DEEPSEEK,
     "extract_job": DEEPSEEK,
     "followup": DEEPSEEK,
     "skill_growth": DEEPSEEK,
     "extract_form": DEEPSEEK,
     "form_fill": DEEPSEEK,
+    # Career-ops integration Brick 4 (ADR-058): a mix of clustering
+    # (question categorization) and STAR-drafting from real bullets —
+    # same shape as skill_growth/followup, nowhere near the fabrication
+    # guardrail's provider-sensitivity concern. Matches the plan's own
+    # cost estimate (DeepSeek, ~2k/1k tokens).
+    "interview_prep": DEEPSEEK,
+    # Career-ops integration Brick 5 (ADR-059): a higher-stakes structured
+    # extraction over a full contract, not a cost-sensitive high-frequency
+    # task (plan estimates a handful of calls per user, ever) — Gemini for
+    # the same "worth the higher quality tier" reasoning as `parse`, even
+    # though this isn't guardrail-adjacent in the fabrication sense.
+    "offer_review": GEMINI,
     # ADR-003 v4: the Pass-2 residue of technical sub-categorization. One batched
     # call per ingestion run, never per job — see services/job_tech_category.py
     # for why this task gets an LLM at all when job_category.py deliberately
@@ -835,6 +1056,241 @@ def tailor_resume(
         profile_id=profile_id,
         model=model,
         provider=provider,
+    )
+
+
+def _cover_letter_user_prompt(
+    bullets: list[str],
+    projects: list[dict],
+    skills: list[str],
+    headline: str,
+    job_title: str,
+    company: str,
+    job_description: str,
+) -> str:
+    bullets_list = "\n".join(f"- {b}" for b in bullets) if bullets else "(none — see CANDIDATE PROJECTS instead)"
+    skills_list = ", ".join(skills) if skills else "(none listed)"
+    projects_block = ""
+    if projects:
+        lines = []
+        for proj in projects:
+            tech = ", ".join(proj.get("tech") or [])
+            lines.append(f"- {proj.get('name', '')}{f' ({tech})' if tech else ''}: {proj.get('description') or ''}")
+        projects_block = "\n\nCANDIDATE PROJECTS:\n" + "\n".join(lines)
+    return f"""CANDIDATE CURRENT SUMMARY:
+{headline or "(none)"}
+
+CANDIDATE SKILLS:
+{skills_list}
+
+CANDIDATE RESUME BULLETS (real achievements to draw from):
+{bullets_list}{projects_block}
+
+TARGET ROLE: {job_title or "(title not stated)"}
+TARGET COMPANY: {company or "(company not stated)"}
+
+TARGET JOB POSTING:
+{wrap_untrusted(job_description)}"""
+
+
+def generate_cover_letter(
+    bullets: list[str],
+    projects: list[dict],
+    job_title: str,
+    company: str,
+    job_description: str,
+    profile_id: str | None = None,
+    skills: list[str] | None = None,
+    headline: str = "",
+) -> CoverLetterLlmResponse:
+    """Career-ops integration Brick 2 (ADR-056): draft a cover letter grounded
+    only in the candidate's real profile facts. Same posture as
+    tailor_resume() immediately above — the anti-fabrication guarantee is
+    NOT this function's job, services/guardrail.py's atom-level post-check
+    on each returned paragraph is (Golden Rule 4), reusing the exact same
+    `build_source_context`/`verify_bullet_atoms` the résumé tailor uses.
+
+    Unlike tailor_resume, this has no bullet-selection step
+    (services/section_tailor.py) — a cover letter references 2-3
+    achievements the LLM itself picks as most JD-relevant, it doesn't need
+    to fit every survivor bullet onto a page.
+    """
+    return _run_llm_task(
+        task="cover_letter",
+        system=COVER_LETTER_SYSTEM_PROMPT,
+        user=_cover_letter_user_prompt(bullets, projects, skills or [], headline, job_title, company, job_description),
+        response_model=CoverLetterLlmResponse,
+        error_cls=CoverLetterError,
+        temperature=0.6,
+        profile_id=profile_id,
+    )
+
+
+def _application_email_user_prompt(
+    kind: str,
+    bullets: list[str],
+    projects: list[dict],
+    skills: list[str],
+    headline: str,
+    job_title: str,
+    company: str,
+    job_description: str,
+) -> str:
+    bullets_list = "\n".join(f"- {b}" for b in bullets) if bullets else "(none — see CANDIDATE PROJECTS instead)"
+    skills_list = ", ".join(skills) if skills else "(none listed)"
+    projects_block = ""
+    if projects:
+        lines = []
+        for proj in projects:
+            tech = ", ".join(proj.get("tech") or [])
+            lines.append(f"- {proj.get('name', '')}{f' ({tech})' if tech else ''}: {proj.get('description') or ''}")
+        projects_block = "\n\nCANDIDATE PROJECTS:\n" + "\n".join(lines)
+    return f"""EMAIL TYPE: {kind}
+
+CANDIDATE CURRENT SUMMARY:
+{headline or "(none)"}
+
+CANDIDATE SKILLS:
+{skills_list}
+
+CANDIDATE RESUME BULLETS (real achievements to draw from):
+{bullets_list}{projects_block}
+
+TARGET ROLE: {job_title or "(title not stated)"}
+TARGET COMPANY: {company or "(company not stated)"}
+
+TARGET JOB POSTING:
+{wrap_untrusted(job_description)}"""
+
+
+def generate_application_email(
+    kind: str,
+    bullets: list[str],
+    projects: list[dict],
+    job_title: str,
+    company: str,
+    job_description: str,
+    profile_id: str | None = None,
+    skills: list[str] | None = None,
+    headline: str = "",
+) -> ApplicationEmailLlmResponse:
+    """Career-ops integration Brick 3 (ADR-057): a first-contact email draft
+    (application / referral / cold — see models/application_email.py's
+    EmailKind), distinct from generate_followup_draft below (a 7-day-silence
+    nudge, not a first message). Same guardrail posture as
+    generate_cover_letter immediately above: this function only produces
+    language, routers/application_emails.py verifies it against the real
+    profile afterward (Golden Rule 4).
+    """
+    return _run_llm_task(
+        task="application_email",
+        system=APPLICATION_EMAIL_SYSTEM_PROMPT,
+        user=_application_email_user_prompt(kind, bullets, projects, skills or [], headline, job_title, company, job_description),
+        response_model=ApplicationEmailLlmResponse,
+        error_cls=ApplicationEmailError,
+        temperature=0.6,
+        profile_id=profile_id,
+    )
+
+
+def _interview_prep_user_prompt(
+    job_title: str,
+    company: str,
+    job_description: str,
+    gaps: list[str],
+    strengths: list[str],
+    bullets: list[str],
+    projects: list[dict],
+    skills: list[str],
+    headline: str,
+) -> str:
+    bullets_list = "\n".join(f"- {b}" for b in bullets) if bullets else "(none — see CANDIDATE PROJECTS instead)"
+    skills_list = ", ".join(skills) if skills else "(none listed)"
+    projects_block = ""
+    if projects:
+        lines = []
+        for proj in projects:
+            tech = ", ".join(proj.get("tech") or [])
+            lines.append(f"- {proj.get('name', '')}{f' ({tech})' if tech else ''}: {proj.get('description') or ''}")
+        projects_block = "\n\nCANDIDATE PROJECTS:\n" + "\n".join(lines)
+    gaps_list = "\n".join(f"- {g}" for g in gaps) if gaps else "(none computed — this job may not have been through matching yet)"
+    strengths_list = "\n".join(f"- {s}" for s in strengths) if strengths else "(none computed)"
+    return f"""CANDIDATE CURRENT SUMMARY:
+{headline or "(none)"}
+
+CANDIDATE SKILLS:
+{skills_list}
+
+CANDIDATE RESUME BULLETS (real achievements to draw from):
+{bullets_list}{projects_block}
+
+CANDIDATE STRENGTHS FOR THIS ROLE (already computed by matching):
+{strengths_list}
+
+CANDIDATE GAPS FOR THIS ROLE (already computed by matching):
+{gaps_list}
+
+TARGET ROLE: {job_title or "(title not stated)"}
+TARGET COMPANY: {company or "(company not stated)"}
+
+TARGET JOB POSTING:
+{wrap_untrusted(job_description)}"""
+
+
+def generate_interview_pack(
+    job_title: str,
+    company: str,
+    job_description: str,
+    gaps: list[str],
+    strengths: list[str],
+    bullets: list[str],
+    projects: list[dict],
+    profile_id: str | None = None,
+    skills: list[str] | None = None,
+    headline: str = "",
+) -> InterviewPackLlmResponse:
+    """Career-ops integration Brick 4 (ADR-058): a per-job interview pack —
+    likely questions plus STAR-format suggested answers, grounded only in
+    the candidate's real profile plus the JD/match data that already
+    exists (v1: no web search). Same guardrail posture as
+    generate_cover_letter/generate_application_email above: this function
+    only produces language, routers/interview_prep.py verifies each
+    question's STAR content against the real profile afterward (Golden
+    Rule 4).
+    """
+    return _run_llm_task(
+        task="interview_prep",
+        system=INTERVIEW_PREP_SYSTEM_PROMPT,
+        user=_interview_prep_user_prompt(
+            job_title, company, job_description, gaps, strengths, bullets, projects, skills or [], headline
+        ),
+        response_model=InterviewPackLlmResponse,
+        error_cls=InterviewPrepError,
+        temperature=0.6,
+        profile_id=profile_id,
+    )
+
+
+def _offer_review_user_prompt(raw_text: str) -> str:
+    return f"OFFER LETTER / CONTRACT TEXT:\n{wrap_untrusted(raw_text)}"
+
+
+def analyze_offer(raw_text: str, profile_id: str | None = None) -> OfferReviewLlmResponse:
+    """Career-ops integration Brick 5 (ADR-059): clause-by-clause plain-
+    English read of one offer letter/contract. This function only
+    produces the LLM's best-effort read — routers/offer_reviews.py runs
+    the deterministic clause-grounding check (services/offer_review.py)
+    on the result before it's stored (Golden Rule 2's spirit applied to a
+    reading task).
+    """
+    return _run_llm_task(
+        task="offer_review",
+        system=OFFER_REVIEW_SYSTEM_PROMPT,
+        user=_offer_review_user_prompt(raw_text),
+        response_model=OfferReviewLlmResponse,
+        error_cls=OfferReviewError,
+        temperature=0.2,
+        profile_id=profile_id,
     )
 
 

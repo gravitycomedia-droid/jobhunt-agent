@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     # test does exactly this). "pro" keeps the whole beta unrestricted.
     default_tier: str = "pro"
 
+    # --- Plan 21: referral system + match gating (migration 036) ---
+    # Full LLM-reranked matches a profile gets with no referrals at all. The
+    # gate is a COST control first (stage-2 rerank is the expensive call) and a
+    # growth lever second, so it's enforced in matching.py, not in a serializer.
+    base_free_match_limit: int = 3
+    # Granted to BOTH sides when a code is redeemed.
+    referral_bonus_matches: int = 5
+    # Hard ceiling on bonus_match_quota, applied at grant time. Bounds the blast
+    # radius of the deliberate choice to release rewards on signup alone: even a
+    # fully successful farming run tops a profile out here, and the effective
+    # limit is separately clamped to DEFAULT_RERANK_LIMIT (20), so this can be
+    # raised without uncapping LLM spend.
+    max_bonus_match_quota: int = 50
+
     # Which provider services/chat.py routes the grounded assistant through.
     # "deepseek" per the plan (cheap, thinking disabled per ADR-023); an absent
     # DEEPSEEK_API_KEY still falls back to Gemini via llm.py::_provider_for, so
@@ -321,7 +335,18 @@ class Settings(BaseSettings):
     # migration 028's tech_category exists to let users browse. Same reasoning
     # v3 used for Unstop: role and city are reversible per-user in the app, an
     # ingestion gate is not, and a posting we never stored can't be un-filtered.
-    ingestion_gate_overrides: str = "unstop:entry,internshala:entry,instahyre:entry"
+    #
+    # Amended 2026-08-06 (ADR-003 v5): weworkremotely and remotive join them, for
+    # a slightly different reason. The `location` gate is redundant for these two
+    # — both fetchers already set location="Remote" from structural knowledge, so
+    # the gate can only pass — and the `role` cut would take an already-thin
+    # source to zero (6 entry-level rows across 221 WWR postings; requiring
+    # fullstack/frontend/cloud on top leaves 0, measured). Entry-level stays on
+    # for the same reason it does everywhere: these boards are senior-heavy and a
+    # staff-engineer contract is dead weight in a fresher's pool.
+    ingestion_gate_overrides: str = (
+        "unstop:entry,internshala:entry,instahyre:entry,weworkremotely:entry,remotive:entry"
+    )
 
     # --- daily expiry sweep (retire_expired_jobs) ---------------------------
     # How old a posting may get before it's hidden, for sources that publish NO
@@ -384,6 +409,22 @@ class Settings(BaseSettings):
     rate_limit_forms_fill: int = 5  # POST /forms/fill
     rate_limit_followup: int = 5  # POST /applications/{id}/followup
     rate_limit_skill_growth: int = 10  # GET /stats/skill-growth
+    # Career-ops integration Brick 2 (ADR-056): same shape/reasoning as
+    # rate_limit_tailor immediately above — a generation call the guardrail
+    # sits behind.
+    rate_limit_cover_letter: int = 5  # POST /cover-letters/{job_id}
+    # Career-ops integration Brick 3 (ADR-057): same shape/reasoning as
+    # rate_limit_followup — a generation call, plus this one also gates a
+    # real Resend send.
+    rate_limit_application_email: int = 5  # POST /application-emails/{application_id}
+    # Career-ops integration Brick 4 (ADR-058): same shape as
+    # rate_limit_tailor — a generation call. Story bank CRUD is plain
+    # database I/O with no LLM involved, so it gets no rate limit, same as
+    # updateApplicationNotes/updateApplicationContactEmail.
+    rate_limit_interview_prep: int = 5  # POST /interview-prep/{application_id}
+    # Career-ops integration Brick 5 (ADR-059): same shape — a generation
+    # call over a (potentially large) pasted contract.
+    rate_limit_offer_review: int = 5  # POST /offer-reviews/{application_id}
 
     model_config = SettingsConfigDict(env_file=".env")
 

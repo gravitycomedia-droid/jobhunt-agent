@@ -64,3 +64,11 @@ MAX_EXPERIENCE_ITEMS = 50
 MAX_PROJECT_ITEMS = 50
 MAX_EDUCATION_ITEMS = 25
 MAX_BULLETS_PER_ITEM = 50
+
+# Career-ops integration Brick 4 (ADR-058): one STAR-story field. Same order
+# as MAX_BULLET_LEN — a story field is prose, not a whole resume.
+MAX_STORY_FIELD_LEN = 2_000
+# Career-ops integration Brick 5 (ADR-059): a pasted offer letter/contract.
+# Generous like MAX_JD_TEXT_LEN (a contract runs longer than a job posting)
+# but still bounded — this text goes straight into a prompt.
+MAX_OFFER_TEXT_LEN = 40_000

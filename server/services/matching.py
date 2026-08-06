@@ -2,6 +2,7 @@ import re
 
 from db.supabase_client import supabase
 from services.llm import rerank_jobs
+from services.referrals import effective_match_limit
 
 # Stage 2 only re-ranks the top N of the stage-1 shortlist (ADR-001) —
 # sending every embedded job to the LLM would defeat the point of stage 1.
@@ -272,6 +273,13 @@ def rerank_shortlist(profile: dict, limit: int = DEFAULT_RERANK_LIMIT) -> dict:
         role-intent boost is applied here, in Python
     """
     profile_id = profile["id"]
+    # Plan 21, constraint 1: the quota is a COST control, so it clamps here —
+    # before any LLM call is planned — not in the response serializer. A caller
+    # hitting POST /matches/rerank?limit=50 on a 3-limit profile gets 3 jobs
+    # re-ranked, because `limit` is dead from this line onward.
+    limit = min(limit, effective_match_limit(profile))
+    if limit <= 0:
+        return {"reranked": 0, "skipped": 0, "screened_out": 0}
     # Stage 1 pulls a wider net than we'll re-rank, because the prescreen is
     # about to discard part of it — pulling exactly `limit` would leave us
     # re-ranking far fewer than `limit` jobs after screening.
@@ -417,7 +425,18 @@ def rescore_cached_matches(profile: dict) -> int:
 def get_ranked_matches(profile: dict, limit: int = 50) -> list[dict]:
     """Reads cached stage-2 results (Brick 5's persisted output) joined with
     their job rows, ordered best-fit first. Call rerank_shortlist() first
-    to populate/refresh the cache."""
+    to populate/refresh the cache.
+
+    Plan 21: clamped to effective_match_limit here as well as in
+    rerank_shortlist, and the second clamp is not redundant. rerank_shortlist
+    caps LLM calls PER RUN, so a 3-limit profile legitimately accumulates more
+    than 3 cached `matches` rows across daily pipeline runs as the job pool
+    turns over. Without this clamp the gate would quietly widen a little every
+    day. Best-fit-first ordering means the user keeps the best 3 they've ever
+    been matched to, not the oldest 3."""
+    limit = min(limit, effective_match_limit(profile))
+    if limit <= 0:
+        return []
     matches = (
         supabase.table("matches")
         .select("*")
@@ -455,3 +474,55 @@ def get_ranked_matches(profile: dict, limit: int = 50) -> list[dict]:
             }
         )
     return results
+
+
+# How many teaser rows a gated profile sees below their unlocked matches. Enough
+# to make the locked value legible, few enough that the screen doesn't become a
+# wall of blur.
+LOCKED_TEASER_CAP = 10
+
+
+def get_locked_matches(profile: dict, unlocked: list[dict], cap: int = LOCKED_TEASER_CAP) -> list[dict]:
+    """Stage-1-only teasers for jobs past this profile's quota.
+
+    These rows deliberately carry NO stage-2 output — no fit_score, no verdict,
+    no reasoning, no gaps — because none was ever computed for them. That's the
+    honest consequence of constraint 1: the LLM never saw these jobs, so there
+    is nothing to blur out. The app renders the blur; the server simply has
+    nothing more to send. `similarity_pct` is stage-1 cosine distance, which is
+    free (it's already in the pgvector query) and gives the teaser something
+    truthful to show.
+
+    Returns [] for an ungated profile — if nothing is locked, there is no
+    upsell to render."""
+    if not has_locked_matches(profile):
+        return []
+
+    limit = effective_match_limit(profile)
+    unlocked_ids = {m["id"] for m in unlocked}
+    # Pull past the limit plus the cap so that filtering out the already-shown
+    # rows still leaves a full teaser list.
+    candidates = _stage1_shortlist(profile["id"], limit + cap + 5)
+
+    teasers = []
+    for job in candidates:
+        if job["id"] in unlocked_ids:
+            continue
+        teasers.append(
+            {
+                "id": job["id"],
+                "title": job.get("title"),
+                "company": job.get("company"),
+                "similarity_pct": round((job.get("similarity") or 0.0) * 100),
+            }
+        )
+        if len(teasers) >= cap:
+            break
+    return teasers
+
+
+def has_locked_matches(profile: dict) -> bool:
+    """Whether this profile is gated at all. A 'pro' profile's effective limit
+    is DEFAULT_RERANK_LIMIT, which is also everything rerank_shortlist would
+    ever produce, so nothing is withheld and no teaser should be rendered."""
+    return effective_match_limit(profile) < DEFAULT_RERANK_LIMIT
